@@ -15,7 +15,7 @@ var initCmd = &cobra.Command{
 	Use:   "init",
 	Short: "Initialize a ramp project by cloning all configured repositories",
 	Long: `Initialize a ramp project by reading the .ramp/ramp.yaml configuration file
-and cloning all specified repositories into the source/ directory.
+and cloning all specified repositories into their configured locations.
 
 This command must be run from within a directory containing a .ramp/ramp.yaml file.`,
 	Run: func(cmd *cobra.Command, args []string) {
@@ -46,25 +46,27 @@ func runInit() error {
 		return err
 	}
 
-	sourceDir := filepath.Join(projectDir, "source")
-	if err := os.MkdirAll(sourceDir, 0755); err != nil {
-		return fmt.Errorf("failed to create source directory: %w", err)
-	}
-
 	fmt.Printf("Initializing ramp project '%s'\n", cfg.Name)
 	repos := cfg.GetRepos()
 	fmt.Printf("Found %d repositories to clone\n", len(repos))
 
 	for name, repo := range repos {
-		repoDir := filepath.Join(sourceDir, name)
+		// Get the configured path for this repository
+		repoDir := repo.GetRepoPath(projectDir)
+		
+		// Create parent directories if needed
+		if err := os.MkdirAll(filepath.Dir(repoDir), 0755); err != nil {
+			return fmt.Errorf("failed to create directory %s: %w", filepath.Dir(repoDir), err)
+		}
 		
 		if git.IsGitRepo(repoDir) {
-			fmt.Printf("  %s: already exists, skipping\n", name)
+			fmt.Printf("  %s: already exists at %s, skipping\n", name, repoDir)
 			continue
 		}
 
-		fmt.Printf("  %s: cloning from %s\n", name, repo.Path)
-		if err := git.Clone(repo.Path, repoDir); err != nil {
+		gitURL := repo.GetGitURL()
+		fmt.Printf("  %s: cloning from %s to %s\n", name, gitURL, repoDir)
+		if err := git.Clone(gitURL, repoDir); err != nil {
 			return fmt.Errorf("failed to clone %s: %w", name, err)
 		}
 	}

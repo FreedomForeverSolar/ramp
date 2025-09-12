@@ -18,7 +18,7 @@ var newCmd = &cobra.Command{
 	Use:   "new <feature-name>",
 	Short: "Create a new feature branch with git worktrees for all repositories",
 	Long: `Create a new feature branch by creating git worktrees for all repositories
-in the source/ directory. This creates isolated working directories for each repo
+from their configured locations. This creates isolated working directories for each repo
 in the trees/<feature-name>/ directory.
 
 After creating worktrees, runs any setup script specified in the configuration.`,
@@ -59,7 +59,6 @@ func runNew(featureName, prefix string) error {
 		effectivePrefix = cfg.GetBranchPrefix()
 	}
 
-	sourceDir := filepath.Join(projectDir, "source")
 	treesDir := filepath.Join(projectDir, "trees", featureName)
 
 	if err := os.MkdirAll(treesDir, 0755); err != nil {
@@ -70,12 +69,12 @@ func runNew(featureName, prefix string) error {
 	fmt.Printf("Creating worktrees in %s\n", treesDir)
 
 	repos := cfg.GetRepos()
-	for name := range repos {
-		repoDir := filepath.Join(sourceDir, name)
+	for name, repo := range repos {
+		repoDir := repo.GetRepoPath(projectDir)
 		worktreeDir := filepath.Join(treesDir, name)
 
 		if !git.IsGitRepo(repoDir) {
-			fmt.Printf("  %s: source repo not found, run 'ramp init' first\n", name)
+			fmt.Printf("  %s: source repo not found at %s, run 'ramp init' first\n", name, repoDir)
 			continue
 		}
 
@@ -126,7 +125,6 @@ func runSetupScript(projectDir, treesDir, setupScript string) error {
 
 	// Extract feature name from treesDir path
 	featureName := filepath.Base(treesDir)
-	sourceDir := filepath.Join(projectDir, "source")
 
 	cmd := exec.Command("/bin/bash", scriptPath)
 	cmd.Dir = treesDir
@@ -137,7 +135,19 @@ func runSetupScript(projectDir, treesDir, setupScript string) error {
 	cmd.Env = append(os.Environ(), fmt.Sprintf("RAMP_PROJECT_DIR=%s", projectDir))
 	cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_TREES_DIR=%s", treesDir))
 	cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_WORKTREE_NAME=%s", featureName))
-	cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_ROOT_SOURCE_PATH=%s", sourceDir))
+
+	// Add dynamic repository path environment variables
+	cfg, err := config.LoadConfig(projectDir)
+	if err != nil {
+		return fmt.Errorf("failed to load config for env vars: %w", err)
+	}
+	
+	repos := cfg.GetRepos()
+	for name, repo := range repos {
+		envVarName := config.GenerateEnvVarName(name)
+		repoPath := repo.GetRepoPath(projectDir)
+		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", envVarName, repoPath))
+	}
 
 	return cmd.Run()
 }

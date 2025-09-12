@@ -61,7 +61,6 @@ func runCleanup(featureName, prefix string) error {
 		effectivePrefix = cfg.GetBranchPrefix()
 	}
 
-	sourceDir := filepath.Join(projectDir, "source")
 	treesDir := filepath.Join(projectDir, "trees", featureName)
 
 	// Check if trees directory exists
@@ -95,8 +94,8 @@ func runCleanup(featureName, prefix string) error {
 	// Remove git worktrees and branches
 	branchName := effectivePrefix + featureName
 	repos := cfg.GetRepos()
-	for name := range repos {
-		repoDir := filepath.Join(sourceDir, name)
+	for name, repo := range repos {
+		repoDir := repo.GetRepoPath(projectDir)
 		worktreeDir := filepath.Join(treesDir, name)
 
 		if git.IsGitRepo(repoDir) {
@@ -166,7 +165,6 @@ func runCleanupScript(projectDir, treesDir, cleanupScript string) error {
 
 	// Extract feature name from treesDir path
 	featureName := filepath.Base(treesDir)
-	sourceDir := filepath.Join(projectDir, "source")
 
 	cmd := exec.Command("/bin/bash", scriptPath)
 	cmd.Dir = treesDir
@@ -177,7 +175,19 @@ func runCleanupScript(projectDir, treesDir, cleanupScript string) error {
 	cmd.Env = append(os.Environ(), fmt.Sprintf("RAMP_PROJECT_DIR=%s", projectDir))
 	cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_TREES_DIR=%s", treesDir))
 	cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_WORKTREE_NAME=%s", featureName))
-	cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_ROOT_SOURCE_PATH=%s", sourceDir))
+
+	// Add dynamic repository path environment variables
+	cfg, err := config.LoadConfig(projectDir)
+	if err != nil {
+		return fmt.Errorf("failed to load config for env vars: %w", err)
+	}
+	
+	repos := cfg.GetRepos()
+	for name, repo := range repos {
+		envVarName := config.GenerateEnvVarName(name)
+		repoPath := repo.GetRepoPath(projectDir)
+		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", envVarName, repoPath))
+	}
 
 	return cmd.Run()
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -11,6 +12,7 @@ import (
 
 type Repo struct {
 	Path          string `yaml:"path"`
+	Git           string `yaml:"git"`
 	DefaultBranch string `yaml:"default_branch"`
 }
 
@@ -25,7 +27,7 @@ type Config struct {
 func (c *Config) GetRepos() map[string]*Repo {
 	result := make(map[string]*Repo)
 	for _, repo := range c.Repos {
-		name := extractRepoName(repo.Path)
+		name := extractRepoName(repo.Git)
 		result[name] = repo
 	}
 	return result
@@ -91,4 +93,32 @@ func FindRampProject(startDir string) (string, error) {
 	}
 	
 	return "", fmt.Errorf("no ramp project found (looking for .ramp/ramp.yaml)")
+}
+
+// GetRepoPath returns the absolute path where a repository should be located
+func (r *Repo) GetRepoPath(projectDir string) string {
+	repoName := extractRepoName(r.Git)
+	return filepath.Join(projectDir, r.Path, repoName)
+}
+
+// GetGitURL returns the git URL for cloning
+func (r *Repo) GetGitURL() string {
+	return r.Git
+}
+
+// GenerateEnvVarName generates an environment variable name from a repo name
+func GenerateEnvVarName(repoName string) string {
+	// Convert to uppercase and replace hyphens with underscores
+	re := regexp.MustCompile(`[^A-Za-z0-9_]`)
+	cleaned := re.ReplaceAllString(repoName, "_")
+	cleaned = strings.ToUpper(cleaned)
+	
+	// Remove multiple consecutive underscores
+	re = regexp.MustCompile(`_{2,}`)
+	cleaned = re.ReplaceAllString(cleaned, "_")
+	
+	// Trim leading/trailing underscores
+	cleaned = strings.Trim(cleaned, "_")
+	
+	return "RAMP_REPO_PATH_" + cleaned
 }
