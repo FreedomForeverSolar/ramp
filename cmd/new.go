@@ -10,6 +10,7 @@ import (
 
 	"ramp/internal/config"
 	"ramp/internal/git"
+	"ramp/internal/ports"
 	"ramp/internal/ui"
 )
 
@@ -119,6 +120,21 @@ func runNew(featureName, prefix string) error {
 
 	progress.Success("Creating worktrees")
 
+	// Allocate port for this feature
+	progress.Start("Allocating port for feature")
+	portAllocations, err := ports.NewPortAllocations(projectDir, cfg.GetBasePort(), cfg.GetMaxPorts())
+	if err != nil {
+		progress.Error("Failed to initialize port allocations")
+		return fmt.Errorf("failed to initialize port allocations: %w", err)
+	}
+
+	allocatedPort, err := portAllocations.AllocatePort(featureName)
+	if err != nil {
+		progress.Error("Failed to allocate port")
+		return fmt.Errorf("failed to allocate port for feature: %w", err)
+	}
+	progress.Success(fmt.Sprintf("Allocated port %d for feature", allocatedPort))
+
 	if cfg.Setup != "" {
 		if err := runSetupScriptWithProgress(projectDir, treesDir, cfg.Setup, progress); err != nil {
 			progress.Error("Setup script failed")
@@ -151,10 +167,19 @@ func runSetupScript(projectDir, treesDir, setupScript string) error {
 	cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_TREES_DIR=%s", treesDir))
 	cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_WORKTREE_NAME=%s", featureName))
 
-	// Add dynamic repository path environment variables
+	// Add RAMP_PORT environment variable
 	cfg, err := config.LoadConfig(projectDir)
 	if err != nil {
 		return fmt.Errorf("failed to load config for env vars: %w", err)
+	}
+
+	portAllocations, err := ports.NewPortAllocations(projectDir, cfg.GetBasePort(), cfg.GetMaxPorts())
+	if err != nil {
+		return fmt.Errorf("failed to initialize port allocations for env vars: %w", err)
+	}
+
+	if port, exists := portAllocations.GetPort(featureName); exists {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_PORT=%d", port))
 	}
 	
 	repos := cfg.GetRepos()
@@ -185,10 +210,19 @@ func runSetupScriptWithProgress(projectDir, treesDir, setupScript string, progre
 	cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_TREES_DIR=%s", treesDir))
 	cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_WORKTREE_NAME=%s", featureName))
 
-	// Add dynamic repository path environment variables
+	// Add RAMP_PORT environment variable
 	cfg, err := config.LoadConfig(projectDir)
 	if err != nil {
 		return fmt.Errorf("failed to load config for env vars: %w", err)
+	}
+
+	portAllocations, err := ports.NewPortAllocations(projectDir, cfg.GetBasePort(), cfg.GetMaxPorts())
+	if err != nil {
+		return fmt.Errorf("failed to initialize port allocations for env vars: %w", err)
+	}
+
+	if port, exists := portAllocations.GetPort(featureName); exists {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_PORT=%d", port))
 	}
 	
 	repos := cfg.GetRepos()

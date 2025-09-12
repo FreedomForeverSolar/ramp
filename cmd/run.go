@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"ramp/internal/config"
+	"ramp/internal/ports"
 	"ramp/internal/ui"
 )
 
@@ -141,10 +142,19 @@ func runCommandWithEnv(projectDir, treesDir, commandScript string, progress *ui.
 	cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_TREES_DIR=%s", treesDir))
 	cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_WORKTREE_NAME=%s", featureName))
 
-	// Add dynamic repository path environment variables
+	// Add RAMP_PORT environment variable
 	cfg, err := config.LoadConfig(projectDir)
 	if err != nil {
 		return fmt.Errorf("failed to load config for env vars: %w", err)
+	}
+
+	portAllocations, err := ports.NewPortAllocations(projectDir, cfg.GetBasePort(), cfg.GetMaxPorts())
+	if err != nil {
+		return fmt.Errorf("failed to initialize port allocations for env vars: %w", err)
+	}
+
+	if port, exists := portAllocations.GetPort(featureName); exists {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_PORT=%d", port))
 	}
 	
 	repos := cfg.GetRepos()
