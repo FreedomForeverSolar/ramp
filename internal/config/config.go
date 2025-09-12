@@ -15,9 +15,10 @@ type Repo struct {
 }
 
 type Config struct {
-	Name  string  `yaml:"name"`
-	Repos []*Repo `yaml:"repos"`
-	Setup string  `yaml:"setup,omitempty"`
+	Name    string  `yaml:"name"`
+	Repos   []*Repo `yaml:"repos"`
+	Setup   string  `yaml:"setup,omitempty"`
+	Cleanup string  `yaml:"cleanup,omitempty"`
 }
 
 func (c *Config) GetRepos() map[string]*Repo {
