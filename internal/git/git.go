@@ -235,6 +235,30 @@ func HasRemoteTrackingBranch(repoDir string) (bool, error) {
 	return true, nil
 }
 
+func RenameBranch(repoDir, oldBranch, newBranch string) error {
+	cmd := exec.Command("git", "branch", "-m", oldBranch, newBranch)
+	cmd.Dir = repoDir
+	message := fmt.Sprintf("renaming branch %s to %s", oldBranch, newBranch)
+
+	if err := ui.RunCommandWithProgress(cmd, message); err != nil {
+		return fmt.Errorf("failed to rename branch %s to %s: %w", oldBranch, newBranch, err)
+	}
+
+	return nil
+}
+
+func MoveWorktree(repoDir, oldPath, newPath string) error {
+	cmd := exec.Command("git", "worktree", "move", oldPath, newPath)
+	cmd.Dir = repoDir
+	message := fmt.Sprintf("moving worktree from %s to %s", filepath.Base(oldPath), filepath.Base(newPath))
+
+	if err := ui.RunCommandWithProgress(cmd, message); err != nil {
+		return fmt.Errorf("failed to move worktree from %s to %s: %w", oldPath, newPath, err)
+	}
+
+	return nil
+}
+
 func IsGitRepo(dir string) bool {
 	gitDir := filepath.Join(dir, ".git")
 	_, err := os.Stat(gitDir)
