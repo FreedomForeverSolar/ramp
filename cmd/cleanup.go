@@ -12,6 +12,7 @@ import (
 
 	"ramp/internal/config"
 	"ramp/internal/git"
+	"ramp/internal/ui"
 )
 
 var cleanupCmd = &cobra.Command{
@@ -67,7 +68,9 @@ func runCleanup(featureName string) error {
 		return fmt.Errorf("feature '%s' not found (trees directory does not exist)", featureName)
 	}
 
-	fmt.Printf("Cleaning up feature '%s' for project '%s'\n", featureName, cfg.Name)
+	progress := ui.NewProgress()
+	progress.Start(fmt.Sprintf("Cleaning up feature '%s' for project '%s'", featureName, cfg.Name))
+	progress.Success(fmt.Sprintf("Cleaning up feature '%s' for project '%s'", featureName, cfg.Name))
 
 	// Check for uncommitted changes first
 	hasUncommitted, err := checkForUncommittedChanges(cfg, treesDir)
@@ -84,9 +87,8 @@ func runCleanup(featureName string) error {
 
 	// Run cleanup script if configured
 	if cfg.Cleanup != "" {
-		fmt.Printf("Running cleanup script: %s\n", cfg.Cleanup)
-		if err := runCleanupScript(projectDir, treesDir, cfg.Cleanup); err != nil {
-			fmt.Printf("Warning: cleanup script failed: %v\n", err)
+		if err := runCleanupScriptWithProgress(projectDir, treesDir, cfg.Cleanup, progress); err != nil {
+			progress.Warning(fmt.Sprintf("Cleanup script failed: %v", err))
 		}
 	}
 
@@ -103,39 +105,40 @@ func runCleanup(featureName string) error {
 			if _, err := os.Stat(worktreeDir); err == nil {
 				if detectedBranch, err := git.GetWorktreeBranch(worktreeDir); err == nil {
 					branchName = detectedBranch
-					fmt.Printf("  %s: detected branch %s\n", name, branchName)
+					progress.Info(fmt.Sprintf("%s: detected branch %s", name, branchName))
 				} else {
 					// Fallback to constructed branch name
 					branchName = configPrefix + featureName
-					fmt.Printf("  %s: could not detect branch, using fallback %s\n", name, branchName)
+					progress.Info(fmt.Sprintf("%s: could not detect branch, using fallback %s", name, branchName))
 				}
 				
 				// Remove worktree
-				fmt.Printf("  %s: removing worktree\n", name)
+				progress.Info(fmt.Sprintf("%s: removing worktree", name))
 				if err := git.RemoveWorktree(repoDir, worktreeDir); err != nil {
-					fmt.Printf("    Warning: failed to remove worktree: %v\n", err)
+					progress.Warning(fmt.Sprintf("Failed to remove worktree for %s: %v", name, err))
 				}
 			} else {
 				// No worktree exists, use fallback branch name
 				branchName = configPrefix + featureName
-				fmt.Printf("  %s: no worktree found, using fallback branch %s\n", name, branchName)
+				progress.Info(fmt.Sprintf("%s: no worktree found, using fallback branch %s", name, branchName))
 			}
 
 			// Delete branch
-			fmt.Printf("  %s: deleting branch %s\n", name, branchName)
+			progress.Info(fmt.Sprintf("%s: deleting branch %s", name, branchName))
 			if err := git.DeleteBranch(repoDir, branchName); err != nil {
-				fmt.Printf("    Warning: failed to delete branch: %v\n", err)
+				progress.Warning(fmt.Sprintf("Failed to delete branch for %s: %v", name, err))
 			}
 		}
 	}
 
 	// Remove trees directory
-	fmt.Printf("Removing trees directory: %s\n", treesDir)
+	progress.Info(fmt.Sprintf("Removing trees directory: %s", treesDir))
 	if err := os.RemoveAll(treesDir); err != nil {
+		progress.Error(fmt.Sprintf("Failed to remove trees directory: %s", treesDir))
 		return fmt.Errorf("failed to remove trees directory: %w", err)
 	}
 
-	fmt.Printf("✅ Feature '%s' cleaned up successfully!\n", featureName)
+	progress.Success(fmt.Sprintf("Feature '%s' cleaned up successfully!", featureName))
 	return nil
 }
 
@@ -150,7 +153,9 @@ func checkForUncommittedChanges(cfg *config.Config, treesDir string) (bool, erro
 					return false, fmt.Errorf("failed to check uncommitted changes in %s: %w", name, err)
 				}
 				if hasChanges {
-					fmt.Printf("⚠️  Uncommitted changes found in %s\n", name)
+					progress := ui.NewProgress()
+					progress.Warning(fmt.Sprintf("Uncommitted changes found in %s", name))
+					progress.Stop()
 					return true, nil
 				}
 			}
@@ -204,4 +209,39 @@ func runCleanupScript(projectDir, treesDir, cleanupScript string) error {
 	}
 
 	return cmd.Run()
+}
+
+func runCleanupScriptWithProgress(projectDir, treesDir, cleanupScript string, progress *ui.ProgressUI) error {
+	scriptPath := filepath.Join(projectDir, ".ramp", cleanupScript)
+	
+	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
+		return fmt.Errorf("cleanup script not found: %s", scriptPath)
+	}
+
+	// Extract feature name from treesDir path
+	featureName := filepath.Base(treesDir)
+
+	cmd := exec.Command("/bin/bash", scriptPath)
+	cmd.Dir = treesDir
+	
+	// Set up environment variables that the cleanup script expects
+	cmd.Env = append(os.Environ(), fmt.Sprintf("RAMP_PROJECT_DIR=%s", projectDir))
+	cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_TREES_DIR=%s", treesDir))
+	cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_WORKTREE_NAME=%s", featureName))
+
+	// Add dynamic repository path environment variables
+	cfg, err := config.LoadConfig(projectDir)
+	if err != nil {
+		return fmt.Errorf("failed to load config for env vars: %w", err)
+	}
+	
+	repos := cfg.GetRepos()
+	for name, repo := range repos {
+		envVarName := config.GenerateEnvVarName(name)
+		repoPath := repo.GetRepoPath(projectDir)
+		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", envVarName, repoPath))
+	}
+
+	message := fmt.Sprintf("Running cleanup script: %s", cleanupScript)
+	return ui.RunCommandWithProgress(cmd, message)
 }

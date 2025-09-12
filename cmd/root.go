@@ -4,6 +4,8 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	
+	"ramp/internal/ui"
 )
 
 var rootCmd = &cobra.Command{
@@ -14,6 +16,10 @@ with git worktrees and automated setup scripts.
 
 Find a project directory with a .ramp/ramp.yaml configuration file and run
 commands to initialize repositories and create feature branches.`,
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		verbose, _ := cmd.Flags().GetBool("verbose")
+		ui.Verbose = verbose
+	},
 }
 
 func Execute() {
@@ -25,4 +31,5 @@ func Execute() {
 
 func init() {
 	rootCmd.CompletionOptions.DisableDefaultCmd = true
+	rootCmd.PersistentFlags().BoolP("verbose", "v", false, "Show detailed output during operations")
 }
