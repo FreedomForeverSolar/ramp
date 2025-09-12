@@ -16,12 +16,18 @@ type Repo struct {
 	DefaultBranch string `yaml:"default_branch"`
 }
 
+type Command struct {
+	Name    string `yaml:"name"`
+	Command string `yaml:"command"`
+}
+
 type Config struct {
-	Name                string  `yaml:"name"`
-	Repos               []*Repo `yaml:"repos"`
-	Setup               string  `yaml:"setup,omitempty"`
-	Cleanup             string  `yaml:"cleanup,omitempty"`
-	DefaultBranchPrefix string  `yaml:"default-branch-prefix,omitempty"`
+	Name                string     `yaml:"name"`
+	Repos               []*Repo    `yaml:"repos"`
+	Setup               string     `yaml:"setup,omitempty"`
+	Cleanup             string     `yaml:"cleanup,omitempty"`
+	DefaultBranchPrefix string     `yaml:"default-branch-prefix,omitempty"`
+	Commands            []*Command `yaml:"commands,omitempty"`
 }
 
 func (c *Config) GetRepos() map[string]*Repo {
@@ -35,6 +41,15 @@ func (c *Config) GetRepos() map[string]*Repo {
 
 func (c *Config) GetBranchPrefix() string {
 	return c.DefaultBranchPrefix
+}
+
+func (c *Config) GetCommand(name string) *Command {
+	for _, cmd := range c.Commands {
+		if cmd.Name == name {
+			return cmd
+		}
+	}
+	return nil
 }
 
 func extractRepoName(repoPath string) string {
