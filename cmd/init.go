@@ -30,6 +30,28 @@ func init() {
 	rootCmd.AddCommand(initCmd)
 }
 
+// isProjectInitialized checks if all configured repositories are present
+func isProjectInitialized(cfg *config.Config, projectDir string) bool {
+	repos := cfg.GetRepos()
+	for _, repo := range repos {
+		repoDir := repo.GetRepoPath(projectDir)
+		if !git.IsGitRepo(repoDir) {
+			return false
+		}
+	}
+	return true
+}
+
+// autoInitializeIfNeeded checks if the project is initialized, and if not, runs initialization
+func autoInitializeIfNeeded(projectDir string, cfg *config.Config) error {
+	if isProjectInitialized(cfg, projectDir) {
+		return nil
+	}
+
+	fmt.Printf("🚀 Project not initialized, running auto-initialization...\n")
+	return runInitForProject(projectDir, cfg)
+}
+
 func runInit() error {
 	wd, err := os.Getwd()
 	if err != nil {
@@ -46,6 +68,10 @@ func runInit() error {
 		return err
 	}
 
+	return runInitForProject(projectDir, cfg)
+}
+
+func runInitForProject(projectDir string, cfg *config.Config) error {
 	fmt.Printf("Initializing ramp project '%s'\n", cfg.Name)
 	repos := cfg.GetRepos()
 	fmt.Printf("Found %d repositories to clone\n", len(repos))

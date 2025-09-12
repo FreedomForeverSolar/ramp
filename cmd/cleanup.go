@@ -52,6 +52,11 @@ func runCleanup(featureName string) error {
 		return err
 	}
 
+	// Auto-initialize if needed
+	if err := autoInitializeIfNeeded(projectDir, cfg); err != nil {
+		return fmt.Errorf("auto-initialization failed: %w", err)
+	}
+
 	// Get config prefix for fallback when branch detection fails
 	configPrefix := cfg.GetBranchPrefix()
 

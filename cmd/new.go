@@ -53,6 +53,11 @@ func runNew(featureName, prefix string) error {
 		return err
 	}
 
+	// Auto-initialize if needed
+	if err := autoInitializeIfNeeded(projectDir, cfg); err != nil {
+		return fmt.Errorf("auto-initialization failed: %w", err)
+	}
+
 	// Determine effective prefix - flag takes precedence, then config, then empty
 	effectivePrefix := prefix
 	if effectivePrefix == "" {
@@ -74,8 +79,7 @@ func runNew(featureName, prefix string) error {
 		worktreeDir := filepath.Join(treesDir, name)
 
 		if !git.IsGitRepo(repoDir) {
-			fmt.Printf("  %s: source repo not found at %s, run 'ramp init' first\n", name, repoDir)
-			continue
+			return fmt.Errorf("source repo not found at %s even after auto-initialization", repoDir)
 		}
 
 		branchName := effectivePrefix + featureName
