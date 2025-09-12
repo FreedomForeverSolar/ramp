@@ -9,6 +9,7 @@ import (
 
 	"ramp/internal/config"
 	"ramp/internal/git"
+	"ramp/internal/ui"
 )
 
 var initCmd = &cobra.Command{
@@ -48,7 +49,9 @@ func autoInitializeIfNeeded(projectDir string, cfg *config.Config) error {
 		return nil
 	}
 
-	fmt.Printf("🚀 Project not initialized, running auto-initialization...\n")
+	progress := ui.NewProgress()
+	progress.Info("🚀 Project not initialized, running auto-initialization...")
+	progress.Stop()
 	return runInitForProject(projectDir, cfg)
 }
 
@@ -72,9 +75,12 @@ func runInit() error {
 }
 
 func runInitForProject(projectDir string, cfg *config.Config) error {
-	fmt.Printf("Initializing ramp project '%s'\n", cfg.Name)
+	progress := ui.NewProgress()
+	progress.Start(fmt.Sprintf("Initializing ramp project '%s'", cfg.Name))
+	progress.Success(fmt.Sprintf("Initializing ramp project '%s'", cfg.Name))
+	
 	repos := cfg.GetRepos()
-	fmt.Printf("Found %d repositories to clone\n", len(repos))
+	progress.Info(fmt.Sprintf("Found %d repositories to clone", len(repos)))
 
 	for name, repo := range repos {
 		// Get the configured path for this repository
@@ -82,21 +88,23 @@ func runInitForProject(projectDir string, cfg *config.Config) error {
 		
 		// Create parent directories if needed
 		if err := os.MkdirAll(filepath.Dir(repoDir), 0755); err != nil {
+			progress.Error(fmt.Sprintf("Failed to create directory %s", filepath.Dir(repoDir)))
 			return fmt.Errorf("failed to create directory %s: %w", filepath.Dir(repoDir), err)
 		}
 		
 		if git.IsGitRepo(repoDir) {
-			fmt.Printf("  %s: already exists at %s, skipping\n", name, repoDir)
+			progress.Info(fmt.Sprintf("%s: already exists at %s, skipping", name, repoDir))
 			continue
 		}
 
 		gitURL := repo.GetGitURL()
-		fmt.Printf("  %s: cloning from %s to %s\n", name, gitURL, repoDir)
+		progress.Info(fmt.Sprintf("%s: cloning from %s to %s", name, gitURL, repoDir))
 		if err := git.Clone(gitURL, repoDir); err != nil {
+			progress.Error(fmt.Sprintf("Failed to clone %s", name))
 			return fmt.Errorf("failed to clone %s: %w", name, err)
 		}
 	}
 
-	fmt.Println("✅ Initialization complete!")
+	progress.Success("Initialization complete!")
 	return nil
 }

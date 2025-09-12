@@ -10,6 +10,7 @@ import (
 
 	"ramp/internal/config"
 	"ramp/internal/git"
+	"ramp/internal/ui"
 )
 
 var prefixFlag string
@@ -70,8 +71,11 @@ func runNew(featureName, prefix string) error {
 		return fmt.Errorf("failed to create trees directory: %w", err)
 	}
 
-	fmt.Printf("Creating feature '%s' for project '%s'\n", featureName, cfg.Name)
-	fmt.Printf("Creating worktrees in %s\n", treesDir)
+	progress := ui.NewProgress()
+	progress.Start(fmt.Sprintf("Creating feature '%s' for project '%s'", featureName, cfg.Name))
+	progress.Success(fmt.Sprintf("Creating feature '%s' for project '%s'", featureName, cfg.Name))
+	
+	progress.Start(fmt.Sprintf("Creating worktrees in %s", treesDir))
 
 	repos := cfg.GetRepos()
 	for name, repo := range repos {
@@ -79,6 +83,7 @@ func runNew(featureName, prefix string) error {
 		worktreeDir := filepath.Join(treesDir, name)
 
 		if !git.IsGitRepo(repoDir) {
+			progress.Error(fmt.Sprintf("Source repo not found at %s even after auto-initialization", repoDir))
 			return fmt.Errorf("source repo not found at %s even after auto-initialization", repoDir)
 		}
 
@@ -87,36 +92,42 @@ func runNew(featureName, prefix string) error {
 		// Check branch status to provide informative message
 		localExists, err := git.LocalBranchExists(repoDir, branchName)
 		if err != nil {
+			progress.Error(fmt.Sprintf("Failed to check local branch for %s", name))
 			return fmt.Errorf("failed to check local branch for %s: %w", name, err)
 		}
 		
 		remoteExists, err := git.RemoteBranchExists(repoDir, branchName)
 		if err != nil {
+			progress.Error(fmt.Sprintf("Failed to check remote branch for %s", name))
 			return fmt.Errorf("failed to check remote branch for %s: %w", name, err)
 		}
 
+		// Show detailed branch info in verbose mode or as info messages
 		if localExists {
-			fmt.Printf("  %s: creating worktree with existing local branch %s\n", name, branchName)
+			progress.Info(fmt.Sprintf("%s: creating worktree with existing local branch %s", name, branchName))
 		} else if remoteExists {
-			fmt.Printf("  %s: creating worktree with existing remote branch %s\n", name, branchName)
+			progress.Info(fmt.Sprintf("%s: creating worktree with existing remote branch %s", name, branchName))
 		} else {
-			fmt.Printf("  %s: creating worktree with new branch %s\n", name, branchName)
+			progress.Info(fmt.Sprintf("%s: creating worktree with new branch %s", name, branchName))
 		}
 
 		if err := git.CreateWorktree(repoDir, worktreeDir, branchName); err != nil {
+			progress.Error(fmt.Sprintf("Failed to create worktree for %s", name))
 			return fmt.Errorf("failed to create worktree for %s: %w", name, err)
 		}
 	}
 
+	progress.Success("Creating worktrees")
+
 	if cfg.Setup != "" {
-		fmt.Printf("Running setup script: %s\n", cfg.Setup)
-		if err := runSetupScript(projectDir, treesDir, cfg.Setup); err != nil {
+		if err := runSetupScriptWithProgress(projectDir, treesDir, cfg.Setup, progress); err != nil {
+			progress.Error("Setup script failed")
 			return fmt.Errorf("setup script failed: %w", err)
 		}
 	}
 
-	fmt.Printf("✅ Feature '%s' created successfully!\n", featureName)
-	fmt.Printf("📁 Worktrees are located in: %s\n", treesDir)
+	progress.Success(fmt.Sprintf("Feature '%s' created successfully!", featureName))
+	progress.Info(fmt.Sprintf("📁 Worktrees are located in: %s", treesDir))
 	return nil
 }
 
@@ -154,4 +165,39 @@ func runSetupScript(projectDir, treesDir, setupScript string) error {
 	}
 
 	return cmd.Run()
+}
+
+func runSetupScriptWithProgress(projectDir, treesDir, setupScript string, progress *ui.ProgressUI) error {
+	scriptPath := filepath.Join(projectDir, ".ramp", setupScript)
+
+	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
+		return fmt.Errorf("setup script not found: %s", scriptPath)
+	}
+
+	// Extract feature name from treesDir path
+	featureName := filepath.Base(treesDir)
+
+	cmd := exec.Command("/bin/bash", scriptPath)
+	cmd.Dir = treesDir
+	
+	// Set up environment variables that the setup script expects
+	cmd.Env = append(os.Environ(), fmt.Sprintf("RAMP_PROJECT_DIR=%s", projectDir))
+	cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_TREES_DIR=%s", treesDir))
+	cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_WORKTREE_NAME=%s", featureName))
+
+	// Add dynamic repository path environment variables
+	cfg, err := config.LoadConfig(projectDir)
+	if err != nil {
+		return fmt.Errorf("failed to load config for env vars: %w", err)
+	}
+	
+	repos := cfg.GetRepos()
+	for name, repo := range repos {
+		envVarName := config.GenerateEnvVarName(name)
+		repoPath := repo.GetRepoPath(projectDir)
+		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", envVarName, repoPath))
+	}
+
+	message := fmt.Sprintf("Running setup script: %s", setupScript)
+	return ui.RunCommandWithProgress(cmd, message)
 }

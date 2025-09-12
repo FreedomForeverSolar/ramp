@@ -6,6 +6,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	
+	"ramp/internal/ui"
 )
 
 func Clone(repoURL, destDir string) error {
@@ -14,10 +16,9 @@ func Clone(repoURL, destDir string) error {
 	}
 
 	cmd := exec.Command("git", "clone", repoURL, destDir)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	if err := cmd.Run(); err != nil {
+	message := fmt.Sprintf("cloning %s", repoURL)
+	
+	if err := ui.RunCommandWithProgress(cmd, message); err != nil {
 		return fmt.Errorf("failed to clone %s to %s: %w", repoURL, destDir, err)
 	}
 
@@ -46,9 +47,12 @@ func CreateWorktree(repoDir, worktreeDir, branchName string) error {
 	}
 
 	var cmd *exec.Cmd
+	var message string
+	
 	if localExists {
 		// Use existing local branch
 		cmd = exec.Command("git", "worktree", "add", worktreeDir, branchName)
+		message = fmt.Sprintf("creating worktree with existing local branch %s", branchName)
 	} else if remoteExists {
 		// Create local branch tracking the remote
 		remoteBranch, err := getRemoteBranchName(repoDir, branchName)
@@ -56,16 +60,16 @@ func CreateWorktree(repoDir, worktreeDir, branchName string) error {
 			return fmt.Errorf("failed to get remote branch name: %w", err)
 		}
 		cmd = exec.Command("git", "worktree", "add", "-b", branchName, worktreeDir, remoteBranch)
+		message = fmt.Sprintf("creating worktree with existing remote branch %s", branchName)
 	} else {
 		// Create new branch
 		cmd = exec.Command("git", "worktree", "add", "-b", branchName, worktreeDir)
+		message = fmt.Sprintf("creating worktree with new branch %s", branchName)
 	}
 
 	cmd.Dir = repoDir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
 
-	if err := cmd.Run(); err != nil {
+	if err := ui.RunCommandWithProgress(cmd, message); err != nil {
 		return fmt.Errorf("failed to create worktree %s with branch %s: %w", worktreeDir, branchName, err)
 	}
 
@@ -141,10 +145,9 @@ func HasUncommittedChanges(repoDir string) (bool, error) {
 func RemoveWorktree(repoDir, worktreeDir string) error {
 	cmd := exec.Command("git", "worktree", "remove", worktreeDir, "--force")
 	cmd.Dir = repoDir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	message := fmt.Sprintf("removing worktree %s", worktreeDir)
 
-	if err := cmd.Run(); err != nil {
+	if err := ui.RunCommandWithProgress(cmd, message); err != nil {
 		return fmt.Errorf("failed to remove worktree %s: %w", worktreeDir, err)
 	}
 
@@ -154,10 +157,9 @@ func RemoveWorktree(repoDir, worktreeDir string) error {
 func DeleteBranch(repoDir, branchName string) error {
 	cmd := exec.Command("git", "branch", "-D", branchName)
 	cmd.Dir = repoDir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	message := fmt.Sprintf("deleting branch %s", branchName)
 
-	if err := cmd.Run(); err != nil {
+	if err := ui.RunCommandWithProgress(cmd, message); err != nil {
 		return fmt.Errorf("failed to delete branch %s: %w", branchName, err)
 	}
 
