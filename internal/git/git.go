@@ -199,10 +199,9 @@ func GetCurrentBranch(repoDir string) (string, error) {
 func FetchAll(repoDir string) error {
 	cmd := exec.Command("git", "fetch", "--all")
 	cmd.Dir = repoDir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	message := "fetching from all remotes"
 	
-	if err := cmd.Run(); err != nil {
+	if err := ui.RunCommandWithProgress(cmd, message); err != nil {
 		return fmt.Errorf("failed to fetch: %w", err)
 	}
 	
@@ -212,10 +211,9 @@ func FetchAll(repoDir string) error {
 func Pull(repoDir string) error {
 	cmd := exec.Command("git", "pull")
 	cmd.Dir = repoDir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	message := "pulling changes"
 	
-	if err := cmd.Run(); err != nil {
+	if err := ui.RunCommandWithProgress(cmd, message); err != nil {
 		return fmt.Errorf("failed to pull: %w", err)
 	}
 	

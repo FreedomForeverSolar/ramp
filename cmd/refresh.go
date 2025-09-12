@@ -8,6 +8,7 @@ import (
 
 	"ramp/internal/config"
 	"ramp/internal/git"
+	"ramp/internal/ui"
 )
 
 var refreshCmd = &cobra.Command{
@@ -55,52 +56,52 @@ func runRefresh() error {
 		return fmt.Errorf("auto-initialization failed: %w", err)
 	}
 
-	fmt.Printf("Refreshing repositories for project '%s'\n", cfg.Name)
+	progress := ui.NewProgress()
+	progress.Start(fmt.Sprintf("Refreshing repositories for project '%s'", cfg.Name))
+	progress.Success(fmt.Sprintf("Refreshing repositories for project '%s'", cfg.Name))
 
 	repos := cfg.GetRepos()
 	for name, repo := range repos {
 		repoDir := repo.GetRepoPath(projectDir)
 
 		if !git.IsGitRepo(repoDir) {
-			fmt.Printf("  %s: not a git repository, skipping\n", name)
+			progress.Warning(fmt.Sprintf("%s: not a git repository, skipping", name))
 			continue
 		}
-
-		fmt.Printf("  %s: ", name)
 
 		// Get current branch
 		currentBranch, err := git.GetCurrentBranch(repoDir)
 		if err != nil {
-			fmt.Printf("failed to get current branch: %v\n", err)
+			progress.Warning(fmt.Sprintf("%s: failed to get current branch: %v", name, err))
 			continue
 		}
 
 		// Fetch all remotes first
-		fmt.Printf("fetching... ")
+		progress.Info(fmt.Sprintf("%s: fetching from remotes", name))
 		if err := git.FetchAll(repoDir); err != nil {
-			fmt.Printf("fetch failed: %v\n", err)
+			progress.Warning(fmt.Sprintf("%s: fetch failed: %v", name, err))
 			continue
 		}
 
 		// Check if current branch has a remote tracking branch
 		hasRemote, err := git.HasRemoteTrackingBranch(repoDir)
 		if err != nil {
-			fmt.Printf("failed to check remote tracking branch: %v\n", err)
+			progress.Warning(fmt.Sprintf("%s: failed to check remote tracking branch: %v", name, err))
 			continue
 		}
 
 		if hasRemote {
-			fmt.Printf("pulling %s... ", currentBranch)
+			progress.Info(fmt.Sprintf("%s: pulling changes for branch %s", name, currentBranch))
 			if err := git.Pull(repoDir); err != nil {
-				fmt.Printf("pull failed: %v\n", err)
+				progress.Warning(fmt.Sprintf("%s: pull failed: %v", name, err))
 				continue
 			}
-			fmt.Printf("✅ updated\n")
+			progress.Info(fmt.Sprintf("%s: ✅ updated", name))
 		} else {
-			fmt.Printf("branch %s has no remote tracking branch, skipped pull\n", currentBranch)
+			progress.Info(fmt.Sprintf("%s: branch %s has no remote tracking branch, skipped pull", name, currentBranch))
 		}
 	}
 
-	fmt.Printf("✅ Refresh complete!\n")
+	progress.Success("Refresh complete!")
 	return nil
 }
