@@ -84,14 +84,9 @@ func runRename(oldFeatureName, newFeatureName, prefix string) error {
 	progress.Start(fmt.Sprintf("Renaming feature '%s' to '%s' for project '%s'", oldFeatureName, newFeatureName, cfg.Name))
 	progress.Success(fmt.Sprintf("Renaming feature '%s' to '%s' for project '%s'", oldFeatureName, newFeatureName, cfg.Name))
 
-	// Check for uncommitted changes first
-	hasUncommitted, err := checkForUncommittedChanges(cfg, oldTreesDir)
-	if err != nil {
-		return fmt.Errorf("failed to check for uncommitted changes: %w", err)
-	}
-
-	if hasUncommitted {
-		progress.Warning("Uncommitted changes found - rename will preserve all changes")
+	// Create the new trees directory before moving worktrees
+	if err := os.MkdirAll(newTreesDir, 0755); err != nil {
+		return fmt.Errorf("failed to create new trees directory: %w", err)
 	}
 
 	// Rename branches and move worktrees for each repository
@@ -146,18 +141,65 @@ func runRename(oldFeatureName, newFeatureName, prefix string) error {
 
 	progress.Success("Renamed branches and moved worktrees")
 
-	// The worktree moves above should have moved the individual repo directories,
-	// but we may need to handle the case where the parent trees directory structure changed
-	// In most cases, git worktree move should handle the directory structure properly
-
-	// Run setup script in new location if configured
-	if cfg.Setup != "" {
-		if err := runSetupScriptWithProgress(projectDir, newTreesDir, cfg.Setup, progress); err != nil {
-			progress.Warning(fmt.Sprintf("Setup script failed: %v", err))
-		}
+	// Move any remaining files from old feature directory to new one
+	// This handles build artifacts, generated files, or other non-git files
+	if err := moveRemainingFiles(oldTreesDir, newTreesDir, repos, progress); err != nil {
+		progress.Warning(fmt.Sprintf("Failed to move remaining files: %v", err))
 	}
 
 	progress.Success(fmt.Sprintf("Feature '%s' renamed to '%s' successfully!", oldFeatureName, newFeatureName))
 	progress.Info(fmt.Sprintf("📁 Worktrees are now located in: %s", newTreesDir))
 	return nil
+}
+
+func moveRemainingFiles(oldTreesDir, newTreesDir string, repos map[string]*config.Repo, progress *ui.ProgressUI) error {
+	// Check if old directory exists and has any remaining files/directories
+	oldEntries, err := os.ReadDir(oldTreesDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil // Nothing to move
+		}
+		return fmt.Errorf("failed to read old trees directory: %w", err)
+	}
+
+	// Get list of repository names to skip (these were moved by git worktree)
+	repoNames := make(map[string]bool)
+	for name := range repos {
+		repoNames[name] = true
+	}
+
+	// Move any files/directories that aren't repository worktrees
+	for _, entry := range oldEntries {
+		if repoNames[entry.Name()] {
+			// Skip repository directories - these were moved by git worktree
+			continue
+		}
+
+		oldPath := filepath.Join(oldTreesDir, entry.Name())
+		newPath := filepath.Join(newTreesDir, entry.Name())
+
+		progress.Info(fmt.Sprintf("Moving additional file: %s", entry.Name()))
+		
+		if err := os.Rename(oldPath, newPath); err != nil {
+			return fmt.Errorf("failed to move %s: %w", entry.Name(), err)
+		}
+	}
+
+	// Remove the old trees directory if it's now empty
+	if isEmpty, err := isDirEmpty(oldTreesDir); err == nil && isEmpty {
+		progress.Info("Removing empty old feature directory")
+		if err := os.Remove(oldTreesDir); err != nil {
+			progress.Warning(fmt.Sprintf("Failed to remove old directory: %v", err))
+		}
+	}
+
+	return nil
+}
+
+func isDirEmpty(dirPath string) (bool, error) {
+	entries, err := os.ReadDir(dirPath)
+	if err != nil {
+		return false, err
+	}
+	return len(entries) == 0, nil
 }
