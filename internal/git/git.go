@@ -184,6 +184,57 @@ func GetWorktreeBranch(worktreeDir string) (string, error) {
 	return branchRef, nil
 }
 
+func GetCurrentBranch(repoDir string) (string, error) {
+	cmd := exec.Command("git", "symbolic-ref", "--short", "HEAD")
+	cmd.Dir = repoDir
+	
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to get current branch: %w", err)
+	}
+	
+	return strings.TrimSpace(string(output)), nil
+}
+
+func FetchAll(repoDir string) error {
+	cmd := exec.Command("git", "fetch", "--all")
+	cmd.Dir = repoDir
+	message := "fetching from all remotes"
+	
+	if err := ui.RunCommandWithProgress(cmd, message); err != nil {
+		return fmt.Errorf("failed to fetch: %w", err)
+	}
+	
+	return nil
+}
+
+func Pull(repoDir string) error {
+	cmd := exec.Command("git", "pull")
+	cmd.Dir = repoDir
+	message := "pulling changes"
+	
+	if err := ui.RunCommandWithProgress(cmd, message); err != nil {
+		return fmt.Errorf("failed to pull: %w", err)
+	}
+	
+	return nil
+}
+
+func HasRemoteTrackingBranch(repoDir string) (bool, error) {
+	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
+	cmd.Dir = repoDir
+	
+	_, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 128 {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to check remote tracking branch: %w", err)
+	}
+	
+	return true, nil
+}
+
 func IsGitRepo(dir string) bool {
 	gitDir := filepath.Join(dir, ".git")
 	_, err := os.Stat(gitDir)
