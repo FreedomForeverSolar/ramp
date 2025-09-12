@@ -17,6 +17,7 @@ Ramp is a CLI tool for managing multi-repository development workflows using git
 ### CLI Usage
 - `ramp init` - Initialize a project by cloning all configured repositories
 - `ramp new <feature-name>` - Create feature branches with git worktrees for all repos
+- `ramp cleanup <feature-name>` - Clean up feature branches by removing worktrees and branches
 - `ramp --help` - Show help information
 
 ## Architecture
