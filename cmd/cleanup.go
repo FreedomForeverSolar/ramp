@@ -14,8 +14,6 @@ import (
 	"ramp/internal/git"
 )
 
-var cleanupPrefixFlag string
-
 var cleanupCmd = &cobra.Command{
 	Use:   "cleanup <feature-name>",
 	Short: "Clean up a feature branch by removing worktrees and branches",
@@ -27,7 +25,7 @@ var cleanupCmd = &cobra.Command{
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		featureName := args[0]
-		if err := runCleanup(featureName, cleanupPrefixFlag); err != nil {
+		if err := runCleanup(featureName); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -36,10 +34,9 @@ var cleanupCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(cleanupCmd)
-	cleanupCmd.Flags().StringVar(&cleanupPrefixFlag, "prefix", "", "Override the branch prefix (defaults to config default_branch_prefix)")
 }
 
-func runCleanup(featureName, prefix string) error {
+func runCleanup(featureName string) error {
 	wd, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)
@@ -55,11 +52,8 @@ func runCleanup(featureName, prefix string) error {
 		return err
 	}
 
-	// Determine effective prefix - flag takes precedence, then config, then empty
-	effectivePrefix := prefix
-	if effectivePrefix == "" {
-		effectivePrefix = cfg.GetBranchPrefix()
-	}
+	// Get config prefix for fallback when branch detection fails
+	configPrefix := cfg.GetBranchPrefix()
 
 	treesDir := filepath.Join(projectDir, "trees", featureName)
 
@@ -92,19 +86,34 @@ func runCleanup(featureName, prefix string) error {
 	}
 
 	// Remove git worktrees and branches
-	branchName := effectivePrefix + featureName
 	repos := cfg.GetRepos()
 	for name, repo := range repos {
 		repoDir := repo.GetRepoPath(projectDir)
 		worktreeDir := filepath.Join(treesDir, name)
 
 		if git.IsGitRepo(repoDir) {
-			// Remove worktree
+			var branchName string
+			
+			// Try to detect the actual branch name from the worktree
 			if _, err := os.Stat(worktreeDir); err == nil {
+				if detectedBranch, err := git.GetWorktreeBranch(worktreeDir); err == nil {
+					branchName = detectedBranch
+					fmt.Printf("  %s: detected branch %s\n", name, branchName)
+				} else {
+					// Fallback to constructed branch name
+					branchName = configPrefix + featureName
+					fmt.Printf("  %s: could not detect branch, using fallback %s\n", name, branchName)
+				}
+				
+				// Remove worktree
 				fmt.Printf("  %s: removing worktree\n", name)
 				if err := git.RemoveWorktree(repoDir, worktreeDir); err != nil {
 					fmt.Printf("    Warning: failed to remove worktree: %v\n", err)
 				}
+			} else {
+				// No worktree exists, use fallback branch name
+				branchName = configPrefix + featureName
+				fmt.Printf("  %s: no worktree found, using fallback branch %s\n", name, branchName)
 			}
 
 			// Delete branch

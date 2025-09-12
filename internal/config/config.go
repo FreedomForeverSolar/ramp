@@ -21,7 +21,7 @@ type Config struct {
 	Repos               []*Repo `yaml:"repos"`
 	Setup               string  `yaml:"setup,omitempty"`
 	Cleanup             string  `yaml:"cleanup,omitempty"`
-	DefaultBranchPrefix string  `yaml:"default_branch_prefix,omitempty"`
+	DefaultBranchPrefix string  `yaml:"default-branch-prefix,omitempty"`
 }
 
 func (c *Config) GetRepos() map[string]*Repo {

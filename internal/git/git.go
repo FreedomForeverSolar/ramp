@@ -164,6 +164,24 @@ func DeleteBranch(repoDir, branchName string) error {
 	return nil
 }
 
+func GetWorktreeBranch(worktreeDir string) (string, error) {
+	cmd := exec.Command("git", "symbolic-ref", "HEAD")
+	cmd.Dir = worktreeDir
+	
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to get branch name from worktree: %w", err)
+	}
+	
+	branchRef := strings.TrimSpace(string(output))
+	// Remove "refs/heads/" prefix to get just the branch name
+	if strings.HasPrefix(branchRef, "refs/heads/") {
+		return strings.TrimPrefix(branchRef, "refs/heads/"), nil
+	}
+	
+	return branchRef, nil
+}
+
 func IsGitRepo(dir string) bool {
 	gitDir := filepath.Join(dir, ".git")
 	_, err := os.Stat(gitDir)
