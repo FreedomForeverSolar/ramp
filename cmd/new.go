@@ -12,6 +12,8 @@ import (
 	"ramp/internal/git"
 )
 
+var prefixFlag string
+
 var newCmd = &cobra.Command{
 	Use:   "new <feature-name>",
 	Short: "Create a new feature branch with git worktrees for all repositories",
@@ -23,7 +25,7 @@ After creating worktrees, runs any setup script specified in the configuration.`
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		featureName := args[0]
-		if err := runNew(featureName); err != nil {
+		if err := runNew(featureName, prefixFlag); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -32,9 +34,10 @@ After creating worktrees, runs any setup script specified in the configuration.`
 
 func init() {
 	rootCmd.AddCommand(newCmd)
+	newCmd.Flags().StringVar(&prefixFlag, "prefix", "", "Override the branch prefix (defaults to config default_branch_prefix)")
 }
 
-func runNew(featureName string) error {
+func runNew(featureName, prefix string) error {
 	wd, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)
@@ -48,6 +51,12 @@ func runNew(featureName string) error {
 	cfg, err := config.LoadConfig(projectDir)
 	if err != nil {
 		return err
+	}
+
+	// Determine effective prefix - flag takes precedence, then config, then empty
+	effectivePrefix := prefix
+	if effectivePrefix == "" {
+		effectivePrefix = cfg.GetBranchPrefix()
 	}
 
 	sourceDir := filepath.Join(projectDir, "source")
@@ -70,7 +79,7 @@ func runNew(featureName string) error {
 			continue
 		}
 
-		branchName := fmt.Sprintf("feature/%s", featureName)
+		branchName := effectivePrefix + featureName
 		
 		// Check branch status to provide informative message
 		localExists, err := git.LocalBranchExists(repoDir, branchName)

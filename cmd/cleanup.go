@@ -14,6 +14,8 @@ import (
 	"ramp/internal/git"
 )
 
+var cleanupPrefixFlag string
+
 var cleanupCmd = &cobra.Command{
 	Use:   "cleanup <feature-name>",
 	Short: "Clean up a feature branch by removing worktrees and branches",
@@ -25,7 +27,7 @@ var cleanupCmd = &cobra.Command{
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		featureName := args[0]
-		if err := runCleanup(featureName); err != nil {
+		if err := runCleanup(featureName, cleanupPrefixFlag); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -34,9 +36,10 @@ var cleanupCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(cleanupCmd)
+	cleanupCmd.Flags().StringVar(&cleanupPrefixFlag, "prefix", "", "Override the branch prefix (defaults to config default_branch_prefix)")
 }
 
-func runCleanup(featureName string) error {
+func runCleanup(featureName, prefix string) error {
 	wd, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)
@@ -50,6 +53,12 @@ func runCleanup(featureName string) error {
 	cfg, err := config.LoadConfig(projectDir)
 	if err != nil {
 		return err
+	}
+
+	// Determine effective prefix - flag takes precedence, then config, then empty
+	effectivePrefix := prefix
+	if effectivePrefix == "" {
+		effectivePrefix = cfg.GetBranchPrefix()
 	}
 
 	sourceDir := filepath.Join(projectDir, "source")
@@ -84,7 +93,7 @@ func runCleanup(featureName string) error {
 	}
 
 	// Remove git worktrees and branches
-	branchName := fmt.Sprintf("feature/%s", featureName)
+	branchName := effectivePrefix + featureName
 	repos := cfg.GetRepos()
 	for name := range repos {
 		repoDir := filepath.Join(sourceDir, name)
