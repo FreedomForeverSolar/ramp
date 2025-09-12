@@ -28,6 +28,8 @@ type Config struct {
 	Cleanup             string     `yaml:"cleanup,omitempty"`
 	DefaultBranchPrefix string     `yaml:"default-branch-prefix,omitempty"`
 	Commands            []*Command `yaml:"commands,omitempty"`
+	BasePort            int        `yaml:"base_port,omitempty"`
+	MaxPorts            int        `yaml:"max_ports,omitempty"`
 }
 
 func (c *Config) GetRepos() map[string]*Repo {
@@ -50,6 +52,20 @@ func (c *Config) GetCommand(name string) *Command {
 		}
 	}
 	return nil
+}
+
+func (c *Config) GetBasePort() int {
+	if c.BasePort <= 0 {
+		return 3000 // Default base port
+	}
+	return c.BasePort
+}
+
+func (c *Config) GetMaxPorts() int {
+	if c.MaxPorts <= 0 {
+		return 100 // Default max ports
+	}
+	return c.MaxPorts
 }
 
 func extractRepoName(repoPath string) string {

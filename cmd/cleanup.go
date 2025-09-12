@@ -12,6 +12,7 @@ import (
 
 	"ramp/internal/config"
 	"ramp/internal/git"
+	"ramp/internal/ports"
 	"ramp/internal/ui"
 )
 
@@ -131,6 +132,19 @@ func runCleanup(featureName string) error {
 		}
 	}
 
+	// Release allocated port
+	progress.Info("Releasing allocated port")
+	portAllocations, err := ports.NewPortAllocations(projectDir, cfg.GetBasePort(), cfg.GetMaxPorts())
+	if err != nil {
+		progress.Warning(fmt.Sprintf("Failed to initialize port allocations for cleanup: %v", err))
+	} else {
+		if err := portAllocations.ReleasePort(featureName); err != nil {
+			progress.Warning(fmt.Sprintf("Failed to release port: %v", err))
+		} else {
+			progress.Info("Port released successfully")
+		}
+	}
+
 	// Remove trees directory
 	progress.Info(fmt.Sprintf("Removing trees directory: %s", treesDir))
 	if err := os.RemoveAll(treesDir); err != nil {
@@ -195,10 +209,19 @@ func runCleanupScript(projectDir, treesDir, cleanupScript string) error {
 	cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_TREES_DIR=%s", treesDir))
 	cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_WORKTREE_NAME=%s", featureName))
 
-	// Add dynamic repository path environment variables
+	// Add RAMP_PORT environment variable
 	cfg, err := config.LoadConfig(projectDir)
 	if err != nil {
 		return fmt.Errorf("failed to load config for env vars: %w", err)
+	}
+
+	portAllocations, err := ports.NewPortAllocations(projectDir, cfg.GetBasePort(), cfg.GetMaxPorts())
+	if err != nil {
+		return fmt.Errorf("failed to initialize port allocations for env vars: %w", err)
+	}
+
+	if port, exists := portAllocations.GetPort(featureName); exists {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_PORT=%d", port))
 	}
 	
 	repos := cfg.GetRepos()
@@ -229,10 +252,19 @@ func runCleanupScriptWithProgress(projectDir, treesDir, cleanupScript string, pr
 	cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_TREES_DIR=%s", treesDir))
 	cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_WORKTREE_NAME=%s", featureName))
 
-	// Add dynamic repository path environment variables
+	// Add RAMP_PORT environment variable
 	cfg, err := config.LoadConfig(projectDir)
 	if err != nil {
 		return fmt.Errorf("failed to load config for env vars: %w", err)
+	}
+
+	portAllocations, err := ports.NewPortAllocations(projectDir, cfg.GetBasePort(), cfg.GetMaxPorts())
+	if err != nil {
+		return fmt.Errorf("failed to initialize port allocations for env vars: %w", err)
+	}
+
+	if port, exists := portAllocations.GetPort(featureName); exists {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_PORT=%d", port))
 	}
 	
 	repos := cfg.GetRepos()
