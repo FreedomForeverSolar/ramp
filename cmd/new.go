@@ -71,7 +71,25 @@ func runNew(featureName string) error {
 		}
 
 		branchName := fmt.Sprintf("feature/%s", featureName)
-		fmt.Printf("  %s: creating worktree with branch %s\n", name, branchName)
+		
+		// Check branch status to provide informative message
+		localExists, err := git.LocalBranchExists(repoDir, branchName)
+		if err != nil {
+			return fmt.Errorf("failed to check local branch for %s: %w", name, err)
+		}
+		
+		remoteExists, err := git.RemoteBranchExists(repoDir, branchName)
+		if err != nil {
+			return fmt.Errorf("failed to check remote branch for %s: %w", name, err)
+		}
+
+		if localExists {
+			fmt.Printf("  %s: creating worktree with existing local branch %s\n", name, branchName)
+		} else if remoteExists {
+			fmt.Printf("  %s: creating worktree with existing remote branch %s\n", name, branchName)
+		} else {
+			fmt.Printf("  %s: creating worktree with new branch %s\n", name, branchName)
+		}
 
 		if err := git.CreateWorktree(repoDir, worktreeDir, branchName); err != nil {
 			return fmt.Errorf("failed to create worktree for %s: %w", name, err)

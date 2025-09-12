@@ -34,16 +34,28 @@ func CreateWorktree(repoDir, worktreeDir, branchName string) error {
 		return fmt.Errorf("worktree directory already exists: %s", worktreeDir)
 	}
 
-	// Check if branch exists
-	branchExists, err := BranchExists(repoDir, branchName)
+	// Check branch status
+	localExists, err := LocalBranchExists(repoDir, branchName)
 	if err != nil {
-		return fmt.Errorf("failed to check if branch exists: %w", err)
+		return fmt.Errorf("failed to check if local branch exists: %w", err)
+	}
+
+	remoteExists, err := RemoteBranchExists(repoDir, branchName)
+	if err != nil {
+		return fmt.Errorf("failed to check if remote branch exists: %w", err)
 	}
 
 	var cmd *exec.Cmd
-	if branchExists {
-		// Use existing branch
+	if localExists {
+		// Use existing local branch
 		cmd = exec.Command("git", "worktree", "add", worktreeDir, branchName)
+	} else if remoteExists {
+		// Create local branch tracking the remote
+		remoteBranch, err := getRemoteBranchName(repoDir, branchName)
+		if err != nil {
+			return fmt.Errorf("failed to get remote branch name: %w", err)
+		}
+		cmd = exec.Command("git", "worktree", "add", "-b", branchName, worktreeDir, remoteBranch)
 	} else {
 		// Create new branch
 		cmd = exec.Command("git", "worktree", "add", "-b", branchName, worktreeDir)
@@ -60,8 +72,50 @@ func CreateWorktree(repoDir, worktreeDir, branchName string) error {
 	return nil
 }
 
+func getRemoteBranchName(repoDir, branchName string) (string, error) {
+	cmd := exec.Command("git", "branch", "-r", "--list", "*/"+branchName)
+	cmd.Dir = repoDir
+	
+	output, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	if len(lines) == 0 || lines[0] == "" {
+		return "", fmt.Errorf("no remote branch found for %s", branchName)
+	}
+	
+	// Return the first match, trimmed of whitespace
+	return strings.TrimSpace(lines[0]), nil
+}
+
 func BranchExists(repoDir, branchName string) (bool, error) {
+	local, err := LocalBranchExists(repoDir, branchName)
+	if err != nil {
+		return false, err
+	}
+	if local {
+		return true, nil
+	}
+	
+	return RemoteBranchExists(repoDir, branchName)
+}
+
+func LocalBranchExists(repoDir, branchName string) (bool, error) {
 	cmd := exec.Command("git", "branch", "--list", branchName)
+	cmd.Dir = repoDir
+	
+	output, err := cmd.Output()
+	if err != nil {
+		return false, err
+	}
+	
+	return strings.TrimSpace(string(output)) != "", nil
+}
+
+func RemoteBranchExists(repoDir, branchName string) (bool, error) {
+	cmd := exec.Command("git", "branch", "-r", "--list", "*/"+branchName)
 	cmd.Dir = repoDir
 	
 	output, err := cmd.Output()
