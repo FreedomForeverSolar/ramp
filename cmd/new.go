@@ -1,0 +1,116 @@
+package cmd
+
+import (
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+
+	"github.com/spf13/cobra"
+
+	"ramp/internal/config"
+	"ramp/internal/git"
+)
+
+var newCmd = &cobra.Command{
+	Use:   "new <feature-name>",
+	Short: "Create a new feature branch with git worktrees for all repositories",
+	Long: `Create a new feature branch by creating git worktrees for all repositories
+in the source/ directory. This creates isolated working directories for each repo
+in the trees/<feature-name>/ directory.
+
+After creating worktrees, runs any setup script specified in the configuration.`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		featureName := args[0]
+		if err := runNew(featureName); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+	},
+}
+
+func init() {
+	rootCmd.AddCommand(newCmd)
+}
+
+func runNew(featureName string) error {
+	wd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("failed to get current directory: %w", err)
+	}
+
+	projectDir, err := config.FindRampProject(wd)
+	if err != nil {
+		return err
+	}
+
+	cfg, err := config.LoadConfig(projectDir)
+	if err != nil {
+		return err
+	}
+
+	sourceDir := filepath.Join(projectDir, "source")
+	treesDir := filepath.Join(projectDir, "trees", featureName)
+
+	if err := os.MkdirAll(treesDir, 0755); err != nil {
+		return fmt.Errorf("failed to create trees directory: %w", err)
+	}
+
+	fmt.Printf("Creating feature '%s' for project '%s'\n", featureName, cfg.Name)
+	fmt.Printf("Creating worktrees in %s\n", treesDir)
+
+	repos := cfg.GetRepos()
+	for name := range repos {
+		repoDir := filepath.Join(sourceDir, name)
+		worktreeDir := filepath.Join(treesDir, name)
+
+		if !git.IsGitRepo(repoDir) {
+			fmt.Printf("  %s: source repo not found, run 'ramp init' first\n", name)
+			continue
+		}
+
+		branchName := fmt.Sprintf("feature/%s", featureName)
+		fmt.Printf("  %s: creating worktree with branch %s\n", name, branchName)
+
+		if err := git.CreateWorktree(repoDir, worktreeDir, branchName); err != nil {
+			return fmt.Errorf("failed to create worktree for %s: %w", name, err)
+		}
+	}
+
+	if cfg.Setup != "" {
+		fmt.Printf("Running setup script: %s\n", cfg.Setup)
+		if err := runSetupScript(projectDir, treesDir, cfg.Setup); err != nil {
+			return fmt.Errorf("setup script failed: %w", err)
+		}
+	}
+
+	fmt.Printf("✅ Feature '%s' created successfully!\n", featureName)
+	fmt.Printf("📁 Worktrees are located in: %s\n", treesDir)
+	return nil
+}
+
+func runSetupScript(projectDir, treesDir, setupScript string) error {
+	scriptPath := filepath.Join(projectDir, ".ramp", setupScript)
+
+	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
+		return fmt.Errorf("setup script not found: %s", scriptPath)
+	}
+
+	// Extract feature name from treesDir path
+	featureName := filepath.Base(treesDir)
+	sourceDir := filepath.Join(projectDir, "source")
+
+	cmd := exec.Command("/bin/bash", scriptPath)
+	cmd.Dir = treesDir
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	// Set up environment variables that the setup script expects
+	cmd.Env = append(os.Environ(), fmt.Sprintf("RAMP_PROJECT_DIR=%s", projectDir))
+	cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_TREES_DIR=%s", treesDir))
+	cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_WORKTREE_NAME=%s", featureName))
+	cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_ROOT_SOURCE_PATH=%s", sourceDir))
+
+	return cmd.Run()
+}
