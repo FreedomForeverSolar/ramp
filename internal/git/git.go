@@ -77,7 +77,8 @@ func CreateWorktree(repoDir, worktreeDir, branchName string) error {
 }
 
 func getRemoteBranchName(repoDir, branchName string) (string, error) {
-	cmd := exec.Command("git", "branch", "-r", "--list", "*/"+branchName)
+	// Get all remote branches and check for exact matches
+	cmd := exec.Command("git", "branch", "-r")
 	cmd.Dir = repoDir
 	
 	output, err := cmd.Output()
@@ -86,12 +87,19 @@ func getRemoteBranchName(repoDir, branchName string) (string, error) {
 	}
 	
 	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-	if len(lines) == 0 || lines[0] == "" {
-		return "", fmt.Errorf("no remote branch found for %s", branchName)
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		// Skip HEAD references
+		if strings.Contains(line, "HEAD ->") {
+			continue
+		}
+		// Check if this line matches "origin/branchName" exactly
+		if line == "origin/"+branchName {
+			return line, nil
+		}
 	}
 	
-	// Return the first match, trimmed of whitespace
-	return strings.TrimSpace(lines[0]), nil
+	return "", fmt.Errorf("no remote branch found for %s", branchName)
 }
 
 func BranchExists(repoDir, branchName string) (bool, error) {
@@ -119,7 +127,8 @@ func LocalBranchExists(repoDir, branchName string) (bool, error) {
 }
 
 func RemoteBranchExists(repoDir, branchName string) (bool, error) {
-	cmd := exec.Command("git", "branch", "-r", "--list", "*/"+branchName)
+	// Get all remote branches and check for exact matches
+	cmd := exec.Command("git", "branch", "-r")
 	cmd.Dir = repoDir
 	
 	output, err := cmd.Output()
@@ -127,7 +136,20 @@ func RemoteBranchExists(repoDir, branchName string) (bool, error) {
 		return false, err
 	}
 	
-	return strings.TrimSpace(string(output)) != "", nil
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		// Skip HEAD references
+		if strings.Contains(line, "HEAD ->") {
+			continue
+		}
+		// Check if this line matches "origin/branchName" exactly
+		if line == "origin/"+branchName {
+			return true, nil
+		}
+	}
+	
+	return false, nil
 }
 
 func HasUncommittedChanges(repoDir string) (bool, error) {
@@ -239,4 +261,81 @@ func IsGitRepo(dir string) bool {
 	gitDir := filepath.Join(dir, ".git")
 	_, err := os.Stat(gitDir)
 	return err == nil
+}
+
+func Checkout(repoDir, branchName string) error {
+	cmd := exec.Command("git", "checkout", branchName)
+	cmd.Dir = repoDir
+	message := fmt.Sprintf("checking out branch %s", branchName)
+
+	if err := ui.RunCommandWithProgress(cmd, message); err != nil {
+		return fmt.Errorf("failed to checkout branch %s: %w", branchName, err)
+	}
+
+	return nil
+}
+
+func FetchBranch(repoDir, branchName string) error {
+	cmd := exec.Command("git", "fetch", "origin", branchName)
+	cmd.Dir = repoDir
+	message := fmt.Sprintf("fetching branch %s from origin", branchName)
+
+	if err := ui.RunCommandWithProgress(cmd, message); err != nil {
+		return fmt.Errorf("failed to fetch branch %s: %w", branchName, err)
+	}
+
+	return nil
+}
+
+func StashChanges(repoDir string) (bool, error) {
+	// First check if there are changes to stash
+	hasChanges, err := HasUncommittedChanges(repoDir)
+	if err != nil {
+		return false, err
+	}
+	
+	if !hasChanges {
+		return false, nil
+	}
+
+	cmd := exec.Command("git", "stash", "push", "-m", "ramp rebase stash")
+	cmd.Dir = repoDir
+	message := "stashing uncommitted changes"
+
+	if err := ui.RunCommandWithProgress(cmd, message); err != nil {
+		return false, fmt.Errorf("failed to stash changes: %w", err)
+	}
+
+	return true, nil
+}
+
+func PopStash(repoDir string) error {
+	cmd := exec.Command("git", "stash", "pop")
+	cmd.Dir = repoDir
+	message := "restoring stashed changes"
+
+	if err := ui.RunCommandWithProgress(cmd, message); err != nil {
+		return fmt.Errorf("failed to pop stash: %w", err)
+	}
+
+	return nil
+}
+
+func CheckoutRemoteBranch(repoDir, branchName string) error {
+	// First try to fetch the branch
+	if err := FetchBranch(repoDir, branchName); err != nil {
+		return err
+	}
+
+	// Create local branch tracking the remote
+	remoteBranch := "origin/" + branchName
+	cmd := exec.Command("git", "checkout", "-b", branchName, remoteBranch)
+	cmd.Dir = repoDir
+	message := fmt.Sprintf("creating local branch %s tracking %s", branchName, remoteBranch)
+
+	if err := ui.RunCommandWithProgress(cmd, message); err != nil {
+		return fmt.Errorf("failed to checkout remote branch %s: %w", branchName, err)
+	}
+
+	return nil
 }
