@@ -174,33 +174,36 @@ func runUp(featureName, prefix string) error {
 	}
 	progress.Success("All worktrees created successfully")
 
-	// Allocate port for this feature
-	progress.Start("Allocating port for feature")
-	portAllocations, err := ports.NewPortAllocations(projectDir, cfg.GetBasePort(), cfg.GetMaxPorts())
-	if err != nil {
-		progress.Error("Failed to initialize port allocations")
-		// Rollback all successful operations
-		if rollbackErr := rollbackUp(projectDir, treesDir, featureName, states, progress); rollbackErr != nil {
-			return fmt.Errorf("port allocation initialization failed (%v) and rollback failed: %w", err, rollbackErr)
+	// Allocate port for this feature only if port configuration is present
+	var allocatedPort int
+	if cfg.HasPortConfig() {
+		progress.Start("Allocating port for feature")
+		portAllocations, err := ports.NewPortAllocations(projectDir, cfg.GetBasePort(), cfg.GetMaxPorts())
+		if err != nil {
+			progress.Error("Failed to initialize port allocations")
+			// Rollback all successful operations
+			if rollbackErr := rollbackUp(projectDir, treesDir, featureName, states, progress); rollbackErr != nil {
+				return fmt.Errorf("port allocation initialization failed (%v) and rollback failed: %w", err, rollbackErr)
+			}
+			return fmt.Errorf("failed to initialize port allocations: %w", err)
 		}
-		return fmt.Errorf("failed to initialize port allocations: %w", err)
-	}
 
-	allocatedPort, err := portAllocations.AllocatePort(featureName)
-	if err != nil {
-		progress.Error("Failed to allocate port")
-		// Rollback all successful operations
-		if rollbackErr := rollbackUp(projectDir, treesDir, featureName, states, progress); rollbackErr != nil {
-			return fmt.Errorf("port allocation failed (%v) and rollback failed: %w", err, rollbackErr)
+		allocatedPort, err = portAllocations.AllocatePort(featureName)
+		if err != nil {
+			progress.Error("Failed to allocate port")
+			// Rollback all successful operations
+			if rollbackErr := rollbackUp(projectDir, treesDir, featureName, states, progress); rollbackErr != nil {
+				return fmt.Errorf("port allocation failed (%v) and rollback failed: %w", err, rollbackErr)
+			}
+			return fmt.Errorf("failed to allocate port for feature: %w", err)
 		}
-		return fmt.Errorf("failed to allocate port for feature: %w", err)
-	}
 
-	// Mark that we allocated a port
-	for _, state := range states {
-		state.PortAllocated = true
+		// Mark that we allocated a port
+		for _, state := range states {
+			state.PortAllocated = true
+		}
+		progress.Success(fmt.Sprintf("Allocated port %d for feature", allocatedPort))
 	}
-	progress.Success(fmt.Sprintf("Allocated port %d for feature", allocatedPort))
 
 	// Run setup script if configured
 	if cfg.Setup != "" {
@@ -338,19 +341,21 @@ func runSetupScript(projectDir, treesDir, setupScript string) error {
 	cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_TREES_DIR=%s", treesDir))
 	cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_WORKTREE_NAME=%s", featureName))
 
-	// Add RAMP_PORT environment variable
+	// Add RAMP_PORT environment variable only if port configuration exists
 	cfg, err := config.LoadConfig(projectDir)
 	if err != nil {
 		return fmt.Errorf("failed to load config for env vars: %w", err)
 	}
 
-	portAllocations, err := ports.NewPortAllocations(projectDir, cfg.GetBasePort(), cfg.GetMaxPorts())
-	if err != nil {
-		return fmt.Errorf("failed to initialize port allocations for env vars: %w", err)
-	}
+	if cfg.HasPortConfig() {
+		portAllocations, err := ports.NewPortAllocations(projectDir, cfg.GetBasePort(), cfg.GetMaxPorts())
+		if err != nil {
+			return fmt.Errorf("failed to initialize port allocations for env vars: %w", err)
+		}
 
-	if port, exists := portAllocations.GetPort(featureName); exists {
-		cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_PORT=%d", port))
+		if port, exists := portAllocations.GetPort(featureName); exists {
+			cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_PORT=%d", port))
+		}
 	}
 	
 	repos := cfg.GetRepos()
@@ -381,19 +386,21 @@ func runSetupScriptWithProgress(projectDir, treesDir, setupScript string, progre
 	cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_TREES_DIR=%s", treesDir))
 	cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_WORKTREE_NAME=%s", featureName))
 
-	// Add RAMP_PORT environment variable
+	// Add RAMP_PORT environment variable only if port configuration exists
 	cfg, err := config.LoadConfig(projectDir)
 	if err != nil {
 		return fmt.Errorf("failed to load config for env vars: %w", err)
 	}
 
-	portAllocations, err := ports.NewPortAllocations(projectDir, cfg.GetBasePort(), cfg.GetMaxPorts())
-	if err != nil {
-		return fmt.Errorf("failed to initialize port allocations for env vars: %w", err)
-	}
+	if cfg.HasPortConfig() {
+		portAllocations, err := ports.NewPortAllocations(projectDir, cfg.GetBasePort(), cfg.GetMaxPorts())
+		if err != nil {
+			return fmt.Errorf("failed to initialize port allocations for env vars: %w", err)
+		}
 
-	if port, exists := portAllocations.GetPort(featureName); exists {
-		cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_PORT=%d", port))
+		if port, exists := portAllocations.GetPort(featureName); exists {
+			cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_PORT=%d", port))
+		}
 	}
 	
 	repos := cfg.GetRepos()
