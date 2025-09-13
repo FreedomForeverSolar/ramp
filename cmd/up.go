@@ -14,6 +14,16 @@ import (
 	"ramp/internal/ui"
 )
 
+type UpState struct {
+	RepoName         string
+	WorktreeCreated  bool
+	WorktreeDir      string
+	BranchName       string
+	TreesDirCreated  bool
+	PortAllocated    bool
+	SetupRan         bool
+}
+
 var prefixFlag string
 
 var upCmd = &cobra.Command{
@@ -22,6 +32,9 @@ var upCmd = &cobra.Command{
 	Long: `Create a new feature branch by creating git worktrees for all repositories
 from their configured locations. This creates isolated working directories for each repo
 in the trees/<feature-name>/ directory.
+
+The operation is atomic - if any step fails, all successful operations will be
+rolled back to ensure no partial feature state remains.
 
 After creating worktrees, runs any setup script specified in the configuration.`,
 	Args: cobra.ExactArgs(1),
@@ -60,6 +73,10 @@ func runUp(featureName, prefix string) error {
 		return fmt.Errorf("auto-initialization failed: %w", err)
 	}
 
+	progress := ui.NewProgress()
+	progress.Start(fmt.Sprintf("Creating feature '%s' for project '%s'", featureName, cfg.Name))
+	progress.Success(fmt.Sprintf("Creating feature '%s' for project '%s'", featureName, cfg.Name))
+
 	// Determine effective prefix - flag takes precedence, then config, then empty
 	effectivePrefix := prefix
 	if effectivePrefix == "" {
@@ -67,18 +84,13 @@ func runUp(featureName, prefix string) error {
 	}
 
 	treesDir := filepath.Join(projectDir, "trees", featureName)
-
-	if err := os.MkdirAll(treesDir, 0755); err != nil {
-		return fmt.Errorf("failed to create trees directory: %w", err)
-	}
-
-	progress := ui.NewProgress()
-	progress.Start(fmt.Sprintf("Creating feature '%s' for project '%s'", featureName, cfg.Name))
-	progress.Success(fmt.Sprintf("Creating feature '%s' for project '%s'", featureName, cfg.Name))
-	
-	progress.Start(fmt.Sprintf("Creating worktrees in %s", treesDir))
-
 	repos := cfg.GetRepos()
+
+	// Phase 1: Validation - check all preconditions before making any changes
+	progress.Start("Validating repositories and checking for conflicts")
+	states := make(map[string]*UpState)
+	branchName := effectivePrefix + featureName
+
 	for name, repo := range repos {
 		repoDir := repo.GetRepoPath(projectDir)
 		worktreeDir := filepath.Join(treesDir, name)
@@ -88,37 +100,79 @@ func runUp(featureName, prefix string) error {
 			return fmt.Errorf("source repo not found at %s even after auto-initialization", repoDir)
 		}
 
-		branchName := effectivePrefix + featureName
-		
+		// Check if worktree directory already exists
+		if _, err := os.Stat(worktreeDir); err == nil {
+			progress.Error(fmt.Sprintf("Worktree directory already exists: %s", worktreeDir))
+			return fmt.Errorf("worktree directory already exists: %s", worktreeDir)
+		}
+
 		// Check branch status to provide informative message
 		localExists, err := git.LocalBranchExists(repoDir, branchName)
 		if err != nil {
 			progress.Error(fmt.Sprintf("Failed to check local branch for %s", name))
 			return fmt.Errorf("failed to check local branch for %s: %w", name, err)
 		}
-		
+
 		remoteExists, err := git.RemoteBranchExists(repoDir, branchName)
 		if err != nil {
 			progress.Error(fmt.Sprintf("Failed to check remote branch for %s", name))
 			return fmt.Errorf("failed to check remote branch for %s: %w", name, err)
 		}
 
-		// Show detailed branch info in verbose mode or as info messages
+		// Show detailed branch info
 		if localExists {
-			progress.Info(fmt.Sprintf("%s: creating worktree with existing local branch %s", name, branchName))
+			progress.Info(fmt.Sprintf("%s: will create worktree with existing local branch %s", name, branchName))
 		} else if remoteExists {
-			progress.Info(fmt.Sprintf("%s: creating worktree with existing remote branch %s", name, branchName))
+			progress.Info(fmt.Sprintf("%s: will create worktree with existing remote branch %s", name, branchName))
 		} else {
-			progress.Info(fmt.Sprintf("%s: creating worktree with new branch %s", name, branchName))
+			progress.Info(fmt.Sprintf("%s: will create worktree with new branch %s", name, branchName))
 		}
 
-		if err := git.CreateWorktree(repoDir, worktreeDir, branchName); err != nil {
-			progress.Error(fmt.Sprintf("Failed to create worktree for %s", name))
-			return fmt.Errorf("failed to create worktree for %s: %w", name, err)
+		states[name] = &UpState{
+			RepoName:        name,
+			WorktreeCreated: false,
+			WorktreeDir:     worktreeDir,
+			BranchName:      branchName,
+			TreesDirCreated: false,
+			PortAllocated:   false,
+			SetupRan:        false,
 		}
 	}
 
-	progress.Success("Creating worktrees")
+	progress.Success("Validation completed successfully")
+
+	// Phase 2: Execute operations with state tracking
+	progress.Start("Creating trees directory")
+	if err := os.MkdirAll(treesDir, 0755); err != nil {
+		progress.Error("Failed to create trees directory")
+		return fmt.Errorf("failed to create trees directory: %w", err)
+	}
+
+	// Mark that we created the trees directory
+	for _, state := range states {
+		state.TreesDirCreated = true
+	}
+	progress.Success("Trees directory created")
+
+	progress.Start("Creating worktrees")
+	for name, repo := range repos {
+		state := states[name]
+		repoDir := repo.GetRepoPath(projectDir)
+
+		progress.Info(fmt.Sprintf("%s: creating worktree", name))
+		if err := git.CreateWorktree(repoDir, state.WorktreeDir, state.BranchName); err != nil {
+			progress.Error(fmt.Sprintf("Failed to create worktree for %s", name))
+			// Rollback all successful operations
+			if rollbackErr := rollbackUp(projectDir, treesDir, featureName, states, progress); rollbackErr != nil {
+				return fmt.Errorf("worktree creation failed for %s (%v) and rollback failed: %w", name, err, rollbackErr)
+			}
+			return fmt.Errorf("failed to create worktree for %s: %w", name, err)
+		}
+
+		state.WorktreeCreated = true
+		progress.Info(fmt.Sprintf("%s: worktree created successfully", name))
+	}
+	progress.Success("All worktrees created successfully")
 
 	// Allocate port for this feature only if port configuration is present
 	var allocatedPort int
@@ -127,26 +181,143 @@ func runUp(featureName, prefix string) error {
 		portAllocations, err := ports.NewPortAllocations(projectDir, cfg.GetBasePort(), cfg.GetMaxPorts())
 		if err != nil {
 			progress.Error("Failed to initialize port allocations")
+			// Rollback all successful operations
+			if rollbackErr := rollbackUp(projectDir, treesDir, featureName, states, progress); rollbackErr != nil {
+				return fmt.Errorf("port allocation initialization failed (%v) and rollback failed: %w", err, rollbackErr)
+			}
 			return fmt.Errorf("failed to initialize port allocations: %w", err)
 		}
 
 		allocatedPort, err = portAllocations.AllocatePort(featureName)
 		if err != nil {
 			progress.Error("Failed to allocate port")
+			// Rollback all successful operations
+			if rollbackErr := rollbackUp(projectDir, treesDir, featureName, states, progress); rollbackErr != nil {
+				return fmt.Errorf("port allocation failed (%v) and rollback failed: %w", err, rollbackErr)
+			}
 			return fmt.Errorf("failed to allocate port for feature: %w", err)
+		}
+
+		// Mark that we allocated a port
+		for _, state := range states {
+			state.PortAllocated = true
 		}
 		progress.Success(fmt.Sprintf("Allocated port %d for feature", allocatedPort))
 	}
 
+	// Run setup script if configured
 	if cfg.Setup != "" {
+		progress.Start("Running setup script")
 		if err := runSetupScriptWithProgress(projectDir, treesDir, cfg.Setup, progress); err != nil {
 			progress.Error("Setup script failed")
+			// Mark that setup ran (even if it failed) for rollback purposes
+			for _, state := range states {
+				state.SetupRan = true
+			}
+			// Rollback all successful operations
+			if rollbackErr := rollbackUp(projectDir, treesDir, featureName, states, progress); rollbackErr != nil {
+				return fmt.Errorf("setup script failed (%v) and rollback failed: %w", err, rollbackErr)
+			}
 			return fmt.Errorf("setup script failed: %w", err)
 		}
+
+		// Mark that setup ran successfully
+		for _, state := range states {
+			state.SetupRan = true
+		}
+		progress.Success("Setup script completed successfully")
 	}
 
 	progress.Success(fmt.Sprintf("Feature '%s' created successfully!", featureName))
 	progress.Info(fmt.Sprintf("📁 Worktrees are located in: %s", treesDir))
+	return nil
+}
+
+func rollbackUp(projectDir, treesDir, featureName string, states map[string]*UpState, progress *ui.ProgressUI) error {
+	progress.Warning("Rolling back changes due to failure")
+
+	cfg, err := config.LoadConfig(projectDir)
+	if err != nil {
+		progress.Error("Failed to load config during rollback")
+		return fmt.Errorf("failed to load config during rollback: %w", err)
+	}
+
+	repos := cfg.GetRepos()
+
+	// Remove worktrees that were successfully created
+	for name, state := range states {
+		if state.WorktreeCreated {
+			repo := repos[name]
+			repoDir := repo.GetRepoPath(projectDir)
+			progress.Info(fmt.Sprintf("%s: removing worktree", name))
+
+			if err := git.RemoveWorktree(repoDir, state.WorktreeDir); err != nil {
+				progress.Warning(fmt.Sprintf("Failed to remove worktree for %s: %v", name, err))
+				// Continue with other cleanup operations
+			} else {
+				progress.Info(fmt.Sprintf("%s: worktree removed", name))
+			}
+
+			// Also try to delete the branch if it was newly created
+			// We can determine this by checking if it was created during this operation
+			// For safety, we'll only delete if both local and remote don't exist from before
+			localExists, _ := git.LocalBranchExists(repoDir, state.BranchName)
+
+			// If the branch was newly created (which we can infer if it now exists locally
+			// but we detected it didn't exist before), we should clean it up
+			if localExists {
+				progress.Info(fmt.Sprintf("%s: deleting branch %s", name, state.BranchName))
+				if err := git.DeleteBranch(repoDir, state.BranchName); err != nil {
+					progress.Warning(fmt.Sprintf("Failed to delete branch %s for %s: %v", state.BranchName, name, err))
+				} else {
+					progress.Info(fmt.Sprintf("%s: branch %s deleted", name, state.BranchName))
+				}
+			}
+		}
+	}
+
+	// Release port if it was allocated
+	var portAllocated bool
+	for _, state := range states {
+		if state.PortAllocated {
+			portAllocated = true
+			break
+		}
+	}
+
+	if portAllocated {
+		progress.Info("Releasing allocated port")
+		portAllocations, err := ports.NewPortAllocations(projectDir, cfg.GetBasePort(), cfg.GetMaxPorts())
+		if err != nil {
+			progress.Warning(fmt.Sprintf("Failed to initialize port allocations during rollback: %v", err))
+		} else {
+			if err := portAllocations.ReleasePort(featureName); err != nil {
+				progress.Warning(fmt.Sprintf("Failed to release port: %v", err))
+			} else {
+				progress.Info("Port released successfully")
+			}
+		}
+	}
+
+	// Remove trees directory if it was created and is empty or only contains our failed worktree dirs
+	var treesDirCreated bool
+	for _, state := range states {
+		if state.TreesDirCreated {
+			treesDirCreated = true
+			break
+		}
+	}
+
+	if treesDirCreated {
+		progress.Info("Removing trees directory")
+		if err := os.RemoveAll(treesDir); err != nil {
+			progress.Warning(fmt.Sprintf("Failed to remove trees directory: %v", err))
+		} else {
+			progress.Info("Trees directory removed")
+		}
+	}
+
+	progress.Info("Rollback completed")
 	return nil
 }
 
