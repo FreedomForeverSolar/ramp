@@ -59,9 +59,11 @@ Ramp is a sophisticated CLI tool for managing multi-repository development workf
 - Provides detailed progress feedback with warnings for any failures
 
 #### `ramp list`
-**Purpose**: List all current feature worktrees and their status.
+**Purpose**: List all current feature worktrees and their status, sorted by creation date.
 **How it works**:
 - Scans `trees/` directory for existing feature directories
+- Collects creation timestamps for each feature directory using file system metadata
+- Sorts features chronologically by creation date (oldest to newest)
 - For each feature, shows which repositories have active worktrees
 - Displays tree structure showing feature name and associated repository worktrees
 - Handles cases where features exist but may have incomplete worktree setups

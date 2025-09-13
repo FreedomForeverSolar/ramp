@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -27,6 +29,11 @@ which repositories have active worktrees for each feature.`,
 
 func init() {
 	rootCmd.AddCommand(listCmd)
+}
+
+type featureInfo struct {
+	name    string
+	modTime time.Time
 }
 
 func runList() error {
@@ -60,11 +67,19 @@ func runList() error {
 		return fmt.Errorf("failed to read trees directory: %w", err)
 	}
 
-	// Filter to only directories
-	var features []string
+	// Collect feature info with creation times
+	var features []featureInfo
 	for _, entry := range entries {
 		if entry.IsDir() {
-			features = append(features, entry.Name())
+			featurePath := filepath.Join(treesDir, entry.Name())
+			stat, err := os.Stat(featurePath)
+			if err != nil {
+				continue // Skip entries we can't stat
+			}
+			features = append(features, featureInfo{
+				name:    entry.Name(),
+				modTime: stat.ModTime(),
+			})
 		}
 	}
 
@@ -74,13 +89,18 @@ func runList() error {
 		return nil
 	}
 
+	// Sort features by creation time (oldest first)
+	sort.Slice(features, func(i, j int) bool {
+		return features[i].modTime.Before(features[j].modTime)
+	})
+
 	fmt.Printf("Active features for project '%s':\n\n", cfg.Name)
 
 	repos := cfg.GetRepos()
-	for _, featureName := range features {
-		fmt.Printf("📁 %s\n", featureName)
+	for _, feature := range features {
+		fmt.Printf("📁 %s\n", feature.name)
 		
-		featureDir := filepath.Join(treesDir, featureName)
+		featureDir := filepath.Join(treesDir, feature.name)
 		featureEntries, err := os.ReadDir(featureDir)
 		if err != nil {
 			fmt.Printf("   ⚠️  Error reading feature directory: %v\n", err)
