@@ -78,6 +78,20 @@ Ramp is a sophisticated CLI tool for managing multi-repository development workf
   - If no remote tracking, reports status but skips pull operation
 - Provides detailed status for each repository including success/failure states
 
+#### `ramp rebase <branch-name>`
+**Purpose**: Switch all source repositories to an existing branch across the multi-repo project.
+**How it works**:
+- Auto-initializes the project if repositories aren't cloned yet (calls `ramp init` internally)
+- Validates that the target branch exists in at least one repository (lenient mode)
+- For each configured repository:
+  - Checks if branch exists locally or remotely using exact name matching
+  - If branch exists: switches to that branch (local checkout or remote tracking)
+  - If branch doesn't exist: skips repository and keeps it on current branch
+- Handles uncommitted changes by prompting user to stash them before switching
+- Implements atomic operations with rollback - if any switch fails, reverts all successful switches
+- Provides detailed feedback showing which repositories were switched vs skipped
+- Restores stashed changes after successful branch switching
+
 #### `ramp run <command-name> [feature-name]`
 **Purpose**: Execute custom commands defined in the ramp configuration within feature context.
 **How it works**:
@@ -100,6 +114,7 @@ The application uses the Cobra CLI framework with commands organized in `cmd/`:
 - `cmd/down.go` - Feature cleanup with safety checks and confirmation prompts
 - `cmd/list.go` - Feature discovery and status reporting
 - `cmd/refresh.go` - Source repository synchronization
+- `cmd/rebase.go` - Repository branch switching with atomic operations and rollback
 - `cmd/run.go` - Custom command execution with environment context
 
 ### Core Internal Packages
@@ -122,12 +137,16 @@ The application uses the Cobra CLI framework with commands organized in `cmd/`:
 **Key Functions**:
 - `Clone(repoURL, destDir)` - Clones repositories with progress feedback
 - `CreateWorktree(repoDir, worktreeDir, branchName)` - Intelligent worktree creation with branch detection
-- `LocalBranchExists()` / `RemoteBranchExists()` - Branch existence checking
+- `LocalBranchExists()` / `RemoteBranchExists()` - Branch existence checking with exact name matching
 - `RemoveWorktree()` / `DeleteBranch()` - Cleanup operations with force flags
 - `HasUncommittedChanges()` - Safety check using `git status --porcelain`
 - `GetWorktreeBranch()` - Extracts actual branch name from worktree
 - `FetchAll()` / `Pull()` - Repository synchronization operations
 - `HasRemoteTrackingBranch()` - Detects if current branch tracks a remote
+- `Checkout(repoDir, branchName)` - Switches to existing local branch
+- `CheckoutRemoteBranch(repoDir, branchName)` - Creates and switches to remote tracking branch
+- `StashChanges(repoDir)` / `PopStash(repoDir)` - Stash management for uncommitted changes
+- `FetchBranch(repoDir, branchName)` - Fetches specific branch from remote
 
 #### `internal/ports/`
 **Purpose**: Port allocation management for features.
