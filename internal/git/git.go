@@ -339,3 +339,49 @@ func CheckoutRemoteBranch(repoDir, branchName string) error {
 
 	return nil
 }
+
+func GetRemoteTrackingStatus(repoDir string) (string, error) {
+	// Check if current branch has a remote tracking branch
+	hasRemote, err := HasRemoteTrackingBranch(repoDir)
+	if err != nil {
+		return "", err
+	}
+
+	if !hasRemote {
+		return "(no remote tracking)", nil
+	}
+
+	// Get ahead/behind status using git rev-list
+	cmd := exec.Command("git", "rev-list", "--count", "--left-right", "HEAD...@{upstream}")
+	cmd.Dir = repoDir
+
+	output, err := cmd.Output()
+	if err != nil {
+		// If this fails, the remote tracking might be broken
+		return "(remote tracking broken)", nil
+	}
+
+	status := strings.TrimSpace(string(output))
+	parts := strings.Fields(status)
+
+	if len(parts) != 2 {
+		return "", nil
+	}
+
+	ahead := parts[0]
+	behind := parts[1]
+
+	if ahead == "0" && behind == "0" {
+		return "(up to date)", nil
+	}
+
+	var statusParts []string
+	if ahead != "0" {
+		statusParts = append(statusParts, fmt.Sprintf("ahead %s", ahead))
+	}
+	if behind != "0" {
+		statusParts = append(statusParts, fmt.Sprintf("behind %s", behind))
+	}
+
+	return fmt.Sprintf("(%s)", strings.Join(statusParts, ", ")), nil
+}

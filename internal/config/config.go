@@ -68,6 +68,10 @@ func (c *Config) GetMaxPorts() int {
 	return c.MaxPorts
 }
 
+func (c *Config) HasPortConfig() bool {
+	return c.BasePort > 0 || c.MaxPorts > 0
+}
+
 func extractRepoName(repoPath string) string {
 	// Handle git@github.com:owner/repo.git format
 	if strings.Contains(repoPath, ":") {

@@ -58,15 +58,6 @@ Ramp is a sophisticated CLI tool for managing multi-repository development workf
 - Removes entire `trees/<feature-name>/` directory structure
 - Provides detailed progress feedback with warnings for any failures
 
-#### `ramp list`
-**Purpose**: List all current feature worktrees and their status, sorted by creation date.
-**How it works**:
-- Scans `trees/` directory for existing feature directories
-- Collects creation timestamps for each feature directory using file system metadata
-- Sorts features chronologically by creation date (oldest to newest)
-- For each feature, shows which repositories have active worktrees
-- Displays tree structure showing feature name and associated repository worktrees
-- Handles cases where features exist but may have incomplete worktree setups
 
 #### `ramp refresh`
 **Purpose**: Update all source repositories by pulling changes from their remotes.
@@ -101,6 +92,26 @@ Ramp is a sophisticated CLI tool for managing multi-repository development workf
 - Sets up full environment context identical to setup/cleanup scripts
 - Provides progress feedback and error handling for command execution
 
+#### `ramp status`
+**Purpose**: Display comprehensive project and repository status information, including all active feature worktrees.
+**How it works**:
+- Shows project name from configuration
+- For each configured source repository:
+  - Displays repository name and absolute path
+  - Shows current branch with remote tracking status (up to date, ahead/behind commits)
+  - Indicates clean vs. uncommitted changes with visual status icons (✅ for clean, ⚠️ for changes)
+  - Reports errors for missing or problematic repositories (❌)
+- Displays project information:
+  - Count of active feature worktrees
+  - Port allocation usage (only shown if ports are configured in ramp.yaml)
+- Shows detailed list of all active feature worktrees:
+  - Scans `trees/` directory for existing feature directories
+  - Sorts features chronologically by creation date (oldest to newest)
+  - For each feature, shows which repositories have active worktrees
+  - Displays tree structure showing feature name and associated repository worktrees
+  - Handles cases where features exist but may have incomplete worktree setups
+- Provides comprehensive overview of entire project state and all active development branches
+
 ### Global Flags
 - `-v, --verbose` - Shows detailed output during all operations, disabling progress spinners for full command visibility
 
@@ -112,10 +123,10 @@ The application uses the Cobra CLI framework with commands organized in `cmd/`:
 - `cmd/init.go` - Repository initialization logic with auto-initialization support
 - `cmd/up.go` - Feature branch and worktree creation with smart branch handling
 - `cmd/down.go` - Feature cleanup with safety checks and confirmation prompts
-- `cmd/list.go` - Feature discovery and status reporting
 - `cmd/refresh.go` - Source repository synchronization
 - `cmd/rebase.go` - Repository branch switching with atomic operations and rollback
 - `cmd/run.go` - Custom command execution with environment context
+- `cmd/status.go` - Project and repository status display with comprehensive information and feature worktree listing
 
 ### Core Internal Packages
 
@@ -147,6 +158,7 @@ The application uses the Cobra CLI framework with commands organized in `cmd/`:
 - `CheckoutRemoteBranch(repoDir, branchName)` - Creates and switches to remote tracking branch
 - `StashChanges(repoDir)` / `PopStash(repoDir)` - Stash management for uncommitted changes
 - `FetchBranch(repoDir, branchName)` - Fetches specific branch from remote
+- `GetRemoteTrackingStatus(repoDir)` - Gets ahead/behind commit status relative to remote tracking branch
 
 #### `internal/ports/`
 **Purpose**: Port allocation management for features.
