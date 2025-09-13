@@ -16,8 +16,8 @@ Ramp is a CLI tool for managing multi-repository development workflows using git
 
 ### CLI Usage
 - `ramp init` - Initialize a project by cloning all configured repositories
-- `ramp new <feature-name>` - Create feature branches with git worktrees for all repos
-- `ramp cleanup <feature-name>` - Clean up feature branches by removing worktrees and branches
+- `ramp up <feature-name>` - Create feature branches with git worktrees for all repos
+- `ramp down <feature-name>` - Clean up feature branches by removing worktrees and branches
 - `ramp --help` - Show help information
 
 ## Architecture
@@ -26,7 +26,7 @@ Ramp is a CLI tool for managing multi-repository development workflows using git
 The application uses the Cobra CLI framework with commands organized in `cmd/`:
 - `cmd/root.go` - Main command definition and CLI entry point
 - `cmd/init.go` - Repository initialization logic  
-- `cmd/new.go` - Feature branch and worktree creation
+- `cmd/up.go` - Feature branch and worktree creation
 
 ### Core Packages
 - `internal/config/` - Configuration file parsing (.ramp/ramp.yaml)
