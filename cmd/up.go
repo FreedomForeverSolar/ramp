@@ -16,8 +16,8 @@ import (
 
 var prefixFlag string
 
-var newCmd = &cobra.Command{
-	Use:   "new <feature-name>",
+var upCmd = &cobra.Command{
+	Use:   "up <feature-name>",
 	Short: "Create a new feature branch with git worktrees for all repositories",
 	Long: `Create a new feature branch by creating git worktrees for all repositories
 from their configured locations. This creates isolated working directories for each repo
@@ -27,7 +27,7 @@ After creating worktrees, runs any setup script specified in the configuration.`
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		featureName := args[0]
-		if err := runNew(featureName, prefixFlag); err != nil {
+		if err := runUp(featureName, prefixFlag); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -35,11 +35,11 @@ After creating worktrees, runs any setup script specified in the configuration.`
 }
 
 func init() {
-	rootCmd.AddCommand(newCmd)
-	newCmd.Flags().StringVar(&prefixFlag, "prefix", "", "Override the branch prefix (defaults to config default_branch_prefix)")
+	rootCmd.AddCommand(upCmd)
+	upCmd.Flags().StringVar(&prefixFlag, "prefix", "", "Override the branch prefix (defaults to config default_branch_prefix)")
 }
 
-func runNew(featureName, prefix string) error {
+func runUp(featureName, prefix string) error {
 	wd, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)

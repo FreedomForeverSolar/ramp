@@ -16,8 +16,8 @@ import (
 	"ramp/internal/ui"
 )
 
-var cleanupCmd = &cobra.Command{
-	Use:   "cleanup <feature-name>",
+var downCmd = &cobra.Command{
+	Use:   "down <feature-name>",
 	Short: "Clean up a feature branch by removing worktrees and branches",
 	Long: `Clean up a feature branch by:
 1. Running the cleanup script (if configured)
@@ -27,7 +27,7 @@ var cleanupCmd = &cobra.Command{
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		featureName := args[0]
-		if err := runCleanup(featureName); err != nil {
+		if err := runDown(featureName); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -35,10 +35,10 @@ var cleanupCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(cleanupCmd)
+	rootCmd.AddCommand(downCmd)
 }
 
-func runCleanup(featureName string) error {
+func runDown(featureName string) error {
 	wd, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)
