@@ -2,3 +2,8 @@
 ramp
 
 .claude
+
+# Demo project generated files
+demo/**/source/
+demo/**/trees/
+demo/**/.ramp/port_allocations.json

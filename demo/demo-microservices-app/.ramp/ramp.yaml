@@ -1,0 +1,28 @@
+name: demo-microservices-app
+
+repos:
+  - path: frontend
+    git: https://github.com/typicode/json-server.git
+    default_branch: main
+  - path: api-gateway
+    git: https://github.com/jsynowiec/node-typescript-boilerplate.git
+    default_branch: main
+  - path: auth-service
+    git: https://github.com/octocat/Hello-World.git
+    default_branch: main
+
+setup: scripts/setup.sh
+cleanup: scripts/cleanup.sh
+
+default-branch-prefix: feature/
+
+base_port: 3000
+max_ports: 50
+
+commands:
+  - name: open
+    command: scripts/open.sh
+  - name: logs
+    command: scripts/logs.sh
+  - name: dev
+    command: scripts/dev.sh
