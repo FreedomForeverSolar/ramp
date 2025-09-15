@@ -94,24 +94,24 @@ See [demo/demo-microservices-app/README.md](demo/demo-microservices-app/README.m
 
 2. **Create configuration (`.ramp/ramp.yaml`):**
    ```yaml
-   name: my-project
+   name: my-project                          # Display name for the project
    repos:
-     - path: frontend
-       git: git@github.com:yourorg/frontend.git
-       default_branch: main
-     - path: backend
-       git: git@github.com:yourorg/backend.git
-       default_branch: main
+     - path: frontend                        # Local directory name
+       git: git@github.com:yourorg/frontend.git  # Git clone URL
+       auto_refresh: true                    # Optional: auto-refresh before 'ramp up' (default: true)
+     - path: backend                         # Local directory name
+       git: git@github.com:yourorg/backend.git   # Git clone URL
+       auto_refresh: false                   # Optional: disable auto-refresh for this repo
 
-   setup: scripts/setup.sh
-   cleanup: scripts/cleanup.sh
-   default-branch-prefix: feature/
-   base_port: 3000
-   max_ports: 50
+   setup: scripts/setup.sh                  # Optional: script to run after 'ramp up'
+   cleanup: scripts/cleanup.sh              # Optional: script to run before 'ramp down'
+   default-branch-prefix: feature/          # Optional: prefix for new branch names
+   base_port: 3000                          # Optional: starting port for allocation (default: 3000)
+   max_ports: 50                            # Optional: maximum ports to allocate (default: 100)
 
-   commands:
-     - name: dev
-       command: scripts/dev.sh
+   commands:                                # Optional: custom commands for 'ramp run'
+     - name: dev                            # Command name for 'ramp run dev'
+       command: scripts/dev.sh              # Script path (relative to .ramp/)
    ```
 
 3. **Create setup script (`.ramp/scripts/setup.sh`):**
@@ -137,26 +137,43 @@ See [demo/demo-microservices-app/README.md](demo/demo-microservices-app/README.m
 Initialize project by cloning all configured repositories.
 ```bash
 ramp init
+ramp init -v    # Verbose output showing clone operations
 ```
 
+**Flags:**
+- `-v, --verbose`: Show detailed command output instead of progress spinners
+
 #### `ramp up <feature-name>`
-Create feature branch with worktrees across all repositories.
+Create feature branch with worktrees across all repositories. Automatically refreshes repositories that have `auto_refresh` enabled (defaults to true).
 ```bash
 ramp up user-auth-feature
 ramp up --prefix hotfix/ urgent-fix  # Custom branch prefix
+ramp up -v my-feature               # Verbose output showing all commands
 ```
+
+**Flags:**
+- `--prefix <prefix>`: Override the branch prefix from config (e.g., `--prefix hotfix/`)
+- `-v, --verbose`: Show detailed command output instead of progress spinners
 
 #### `ramp down <feature-name>`
 Clean up feature branch, worktrees, and allocated resources.
 ```bash
 ramp down user-auth-feature  # Prompts for confirmation if uncommitted changes
+ramp down -v my-feature      # Verbose output showing cleanup steps
 ```
+
+**Flags:**
+- `-v, --verbose`: Show detailed command output instead of progress spinners
 
 #### `ramp status`
 Show comprehensive project status, including active features.
 ```bash
 ramp status
+ramp status -v      # Verbose output with additional repository details
 ```
+
+**Flags:**
+- `-v, --verbose`: Show detailed command output instead of progress spinners
 
 ### Repository Management
 
@@ -164,14 +181,22 @@ ramp status
 Update all source repositories by pulling from remotes.
 ```bash
 ramp refresh
+ramp refresh -v     # Verbose output showing git operations
 ```
+
+**Flags:**
+- `-v, --verbose`: Show detailed command output instead of progress spinners
 
 #### `ramp rebase <branch-name>`
 Switch all repositories to specified branch.
 ```bash
 ramp rebase develop        # Switch all repos to develop branch
 ramp rebase feature/shared # Switch to shared feature branch
+ramp rebase -v main       # Verbose output showing branch switching
 ```
+
+**Flags:**
+- `-v, --verbose`: Show detailed command output instead of progress spinners
 
 ### Custom Commands
 
@@ -181,7 +206,11 @@ Execute custom commands defined in configuration.
 ramp run dev               # Auto-detect current feature
 ramp run dev my-feature    # Specify feature explicitly
 ramp run test my-feature   # Run custom test command
+ramp run -v dev my-feature # Verbose output showing script execution
 ```
+
+**Flags:**
+- `-v, --verbose`: Show detailed command output instead of progress spinners
 
 ### Global Options
 
@@ -200,11 +229,11 @@ name: my-project
 repos:
   - path: frontend              # Local directory name
     git: git@github.com:org/frontend.git  # Git clone URL
-    default_branch: main        # Default branch for new features
+    auto_refresh: true          # Optional: auto-refresh before 'ramp up' (default: true)
 
   - path: api
     git: https://github.com/org/api.git
-    default_branch: develop
+    auto_refresh: false         # Optional: disable auto-refresh for this repo
 
 # Optional: Scripts to run during lifecycle events
 setup: scripts/setup.sh       # After 'ramp up'

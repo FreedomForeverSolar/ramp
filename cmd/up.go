@@ -73,6 +73,32 @@ func runUp(featureName, prefix string) error {
 		return fmt.Errorf("auto-initialization failed: %w", err)
 	}
 
+	// Auto-refresh repositories that have auto_refresh enabled (or not explicitly disabled)
+	repos := cfg.GetRepos()
+	hasAutoRefreshRepos := false
+	for _, repo := range repos {
+		if repo.ShouldAutoRefresh() {
+			hasAutoRefreshRepos = true
+			break
+		}
+	}
+
+	if hasAutoRefreshRepos {
+		progress := ui.NewProgress()
+		progress.Start("Auto-refreshing repositories before creating feature")
+
+		for name, repo := range repos {
+			if repo.ShouldAutoRefresh() {
+				repoDir := repo.GetRepoPath(projectDir)
+				RefreshRepository(repoDir, name, progress)
+			} else {
+				progress.Info(fmt.Sprintf("%s: auto-refresh disabled, skipping", name))
+			}
+		}
+
+		progress.Success("Auto-refresh completed")
+	}
+
 	progress := ui.NewProgress()
 	progress.Start(fmt.Sprintf("Creating feature '%s' for project '%s'", featureName, cfg.Name))
 	progress.Success(fmt.Sprintf("Creating feature '%s' for project '%s'", featureName, cfg.Name))
@@ -84,7 +110,6 @@ func runUp(featureName, prefix string) error {
 	}
 
 	treesDir := filepath.Join(projectDir, "trees", featureName)
-	repos := cfg.GetRepos()
 
 	// Phase 1: Validation - check all preconditions before making any changes
 	progress.Start("Validating repositories and checking for conflicts")
