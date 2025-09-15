@@ -25,7 +25,7 @@ func Clone(repoURL, destDir string) error {
 	return nil
 }
 
-func CreateWorktree(repoDir, worktreeDir, branchName string) error {
+func CreateWorktree(repoDir, worktreeDir, branchName, repoName string) error {
 	if err := os.MkdirAll(filepath.Dir(worktreeDir), 0755); err != nil {
 		return fmt.Errorf("failed to create directory %s: %w", filepath.Dir(worktreeDir), err)
 	}
@@ -52,7 +52,7 @@ func CreateWorktree(repoDir, worktreeDir, branchName string) error {
 	if localExists {
 		// Use existing local branch
 		cmd = exec.Command("git", "worktree", "add", worktreeDir, branchName)
-		message = fmt.Sprintf("creating worktree with existing local branch %s", branchName)
+		message = fmt.Sprintf("%s: creating worktree with existing local branch %s", repoName, branchName)
 	} else if remoteExists {
 		// Create local branch tracking the remote
 		remoteBranch, err := getRemoteBranchName(repoDir, branchName)
@@ -60,11 +60,11 @@ func CreateWorktree(repoDir, worktreeDir, branchName string) error {
 			return fmt.Errorf("failed to get remote branch name: %w", err)
 		}
 		cmd = exec.Command("git", "worktree", "add", "-b", branchName, worktreeDir, remoteBranch)
-		message = fmt.Sprintf("creating worktree with existing remote branch %s", branchName)
+		message = fmt.Sprintf("%s: creating worktree with existing remote branch %s", repoName, branchName)
 	} else {
 		// Create new branch
 		cmd = exec.Command("git", "worktree", "add", "-b", branchName, worktreeDir)
-		message = fmt.Sprintf("creating worktree with new branch %s", branchName)
+		message = fmt.Sprintf("%s: creating worktree with new branch %s", repoName, branchName)
 	}
 
 	cmd.Dir = repoDir

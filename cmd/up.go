@@ -179,13 +179,21 @@ func runUp(featureName, prefix string) error {
 	}
 	progress.Success("Trees directory created")
 
-	progress.Start("Creating worktrees")
+	var worktreesMessage string
+	if len(repos) == 1 {
+		for name := range repos {
+			worktreesMessage = fmt.Sprintf("Created worktree: %s", name)
+		}
+	} else {
+		worktreesMessage = fmt.Sprintf("Created %d worktrees", len(repos))
+	}
+
+	progress.Update("Creating worktrees")
 	for name, repo := range repos {
 		state := states[name]
 		repoDir := repo.GetRepoPath(projectDir)
 
-		progress.Info(fmt.Sprintf("%s: creating worktree", name))
-		if err := git.CreateWorktree(repoDir, state.WorktreeDir, state.BranchName); err != nil {
+		if err := git.CreateWorktree(repoDir, state.WorktreeDir, state.BranchName, name); err != nil {
 			progress.Error(fmt.Sprintf("Failed to create worktree for %s", name))
 			// Rollback all successful operations
 			if rollbackErr := rollbackUp(projectDir, treesDir, featureName, states, progress); rollbackErr != nil {
@@ -195,14 +203,13 @@ func runUp(featureName, prefix string) error {
 		}
 
 		state.WorktreeCreated = true
-		progress.Info(fmt.Sprintf("%s: worktree created successfully", name))
 	}
-	progress.Success("All worktrees created successfully")
+	progress.Success(worktreesMessage)
 
 	// Allocate port for this feature only if port configuration is present
 	var allocatedPort int
 	if cfg.HasPortConfig() {
-		progress.Start("Allocating port for feature")
+		progress.Update("Allocating port for feature")
 		portAllocations, err := ports.NewPortAllocations(projectDir, cfg.GetBasePort(), cfg.GetMaxPorts())
 		if err != nil {
 			progress.Error("Failed to initialize port allocations")
@@ -227,12 +234,12 @@ func runUp(featureName, prefix string) error {
 		for _, state := range states {
 			state.PortAllocated = true
 		}
-		progress.Success(fmt.Sprintf("Allocated port %d for feature", allocatedPort))
+		progress.Success(fmt.Sprintf("Allocated port %d", allocatedPort))
 	}
 
 	// Run setup script if configured
 	if cfg.Setup != "" {
-		progress.Start("Running setup script")
+		progress.Update("Running setup script")
 		if err := runSetupScriptWithProgress(projectDir, treesDir, cfg.Setup, progress); err != nil {
 			progress.Error("Setup script failed")
 			// Mark that setup ran (even if it failed) for rollback purposes
@@ -250,11 +257,11 @@ func runUp(featureName, prefix string) error {
 		for _, state := range states {
 			state.SetupRan = true
 		}
-		progress.Success("Setup script completed successfully")
+		progress.Success("Ran setup script")
 	}
 
-	progress.Success(fmt.Sprintf("Feature '%s' created successfully!", featureName))
-	progress.Info(fmt.Sprintf("📁 Worktrees are located in: %s", treesDir))
+	progress.Success(fmt.Sprintf("Feature '%s' created successfully", featureName))
+	fmt.Printf("Feature '%s' created at %s\n", featureName, treesDir)
 	return nil
 }
 

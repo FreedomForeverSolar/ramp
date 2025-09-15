@@ -36,44 +36,51 @@ func (p *ProgressUI) Start(message string) {
 
 func (p *ProgressUI) Success(message string) {
 	if Verbose {
+		fmt.Printf("✓ %s\n", message)
 		return
 	}
 	p.spinner.Stop()
-	fmt.Printf("✅ %s\n", message)
+	fmt.Printf("✓ %s\n", message)
 }
 
 func (p *ProgressUI) Warning(message string) {
 	if Verbose {
-		fmt.Printf("⚠️  %s\n", message)
+		fmt.Printf("Warning: %s\n", message)
 		return
 	}
 	p.spinner.Stop()
-	fmt.Printf("⚠️  %s\n", message)
+	fmt.Printf("Warning: %s\n", message)
 }
 
 func (p *ProgressUI) Error(message string) {
 	if Verbose {
-		fmt.Printf("❌ %s\n", message)
+		fmt.Printf("Error: %s\n", message)
 		return
 	}
 	p.spinner.Stop()
-	fmt.Printf("❌ %s\n", message)
+	fmt.Printf("Error: %s\n", message)
 }
 
 func (p *ProgressUI) Info(message string) {
 	if Verbose {
 		fmt.Printf("  %s\n", message)
-		return
 	}
-	p.spinner.Stop()
-	fmt.Printf("  %s\n", message)
-	p.spinner.Start()
+	// In non-verbose mode, don't print info messages to avoid clutter
 }
 
 func (p *ProgressUI) Stop() {
 	if !Verbose {
 		p.spinner.Stop()
 	}
+}
+
+// Update changes the spinner message without stopping it
+func (p *ProgressUI) Update(message string) {
+	if Verbose {
+		fmt.Printf("%s\n", message)
+		return
+	}
+	p.spinner.Suffix = " " + message
 }
 
 func WithProgress(message string, fn func() error) error {
