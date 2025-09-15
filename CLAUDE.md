@@ -188,11 +188,9 @@ name: project-name                    # Display name for the project
 repos:                               # Array of repository configurations
   - path: source                     # Local directory path (relative to project root)
     git: git@github.com:owner/repo.git  # Git clone URL
-    default_branch: main             # Default branch for new worktrees
     auto_refresh: true               # Optional: auto-refresh before 'ramp up' (default: true)
   - path: source
     git: https://github.com/owner/other-repo.git
-    default_branch: develop
     auto_refresh: false              # Optional: disable auto-refresh for this repo
 
 setup: scripts/setup.sh              # Optional: script to run after 'ramp up'

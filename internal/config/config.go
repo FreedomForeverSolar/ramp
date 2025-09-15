@@ -11,10 +11,9 @@ import (
 )
 
 type Repo struct {
-	Path          string `yaml:"path"`
-	Git           string `yaml:"git"`
-	DefaultBranch string `yaml:"default_branch"`
-	AutoRefresh   *bool  `yaml:"auto_refresh,omitempty"`
+	Path        string `yaml:"path"`
+	Git         string `yaml:"git"`
+	AutoRefresh *bool  `yaml:"auto_refresh,omitempty"`
 }
 
 type Command struct {
