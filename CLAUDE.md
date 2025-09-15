@@ -29,6 +29,7 @@ Ramp is a sophisticated CLI tool for managing multi-repository development workf
 **Purpose**: Create a new feature branch with git worktrees for all configured repositories.
 **How it works**:
 - Auto-initializes the project if repositories aren't cloned yet (calls `ramp init` internally)
+- Auto-refreshes repositories that have `auto_refresh` enabled (defaults to true if not specified)
 - Creates a `trees/<feature-name>/` directory structure for isolated feature development
 - For each configured repository:
   - Detects if branch already exists locally or remotely 
@@ -188,9 +189,11 @@ repos:                               # Array of repository configurations
   - path: source                     # Local directory path (relative to project root)
     git: git@github.com:owner/repo.git  # Git clone URL
     default_branch: main             # Default branch for new worktrees
+    auto_refresh: true               # Optional: auto-refresh before 'ramp up' (default: true)
   - path: source
     git: https://github.com/owner/other-repo.git
     default_branch: develop
+    auto_refresh: false              # Optional: disable auto-refresh for this repo
 
 setup: scripts/setup.sh              # Optional: script to run after 'ramp up'
 cleanup: scripts/cleanup.sh          # Optional: script to run during 'ramp down'

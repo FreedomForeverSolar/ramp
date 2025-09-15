@@ -14,6 +14,7 @@ type Repo struct {
 	Path          string `yaml:"path"`
 	Git           string `yaml:"git"`
 	DefaultBranch string `yaml:"default_branch"`
+	AutoRefresh   *bool  `yaml:"auto_refresh,omitempty"`
 }
 
 type Command struct {
@@ -141,19 +142,28 @@ func (r *Repo) GetGitURL() string {
 	return r.Git
 }
 
+// ShouldAutoRefresh returns true if this repository should be auto-refreshed.
+// Defaults to true if not explicitly set to false.
+func (r *Repo) ShouldAutoRefresh() bool {
+	if r.AutoRefresh == nil {
+		return true // Default to true
+	}
+	return *r.AutoRefresh
+}
+
 // GenerateEnvVarName generates an environment variable name from a repo name
 func GenerateEnvVarName(repoName string) string {
 	// Convert to uppercase and replace hyphens with underscores
 	re := regexp.MustCompile(`[^A-Za-z0-9_]`)
 	cleaned := re.ReplaceAllString(repoName, "_")
 	cleaned = strings.ToUpper(cleaned)
-	
+
 	// Remove multiple consecutive underscores
 	re = regexp.MustCompile(`_{2,}`)
 	cleaned = re.ReplaceAllString(cleaned, "_")
-	
+
 	// Trim leading/trailing underscores
 	cleaned = strings.Trim(cleaned, "_")
-	
+
 	return "RAMP_REPO_PATH_" + cleaned
 }
