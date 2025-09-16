@@ -32,8 +32,10 @@ Ramp is a sophisticated CLI tool for managing multi-repository development workf
 - Auto-refreshes repositories that have `auto_refresh` enabled (defaults to true if not specified)
 - Creates a `trees/<feature-name>/` directory structure for isolated feature development
 - For each configured repository:
-  - Detects if branch already exists locally or remotely 
+  - When using `--target`: attempts to resolve target branch/feature, falls back to default behavior if target not found in specific repo
+  - Detects if branch already exists locally or remotely
   - Creates git worktree using `git worktree add` with appropriate branch strategy:
+    - If `--target` specified and found: creates new branch from target source
     - If local branch exists: uses existing local branch
     - If only remote branch exists: creates local tracking branch
     - If neither exists: creates new branch from default branch
@@ -45,6 +47,7 @@ Ramp is a sophisticated CLI tool for managing multi-repository development workf
   - `RAMP_PORT`: allocated port number for this feature
   - `RAMP_REPO_PATH_<REPO>`: path variables for each repository
 - Supports `--prefix` flag to override branch naming prefix
+- Supports `--target` flag to create feature from existing feature name, local branch, or remote branch
 
 #### `ramp down <feature-name>`
 **Purpose**: Clean up a feature branch by removing worktrees, branches, and allocated resources.

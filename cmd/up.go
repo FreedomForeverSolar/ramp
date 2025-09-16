@@ -128,11 +128,14 @@ func runUp(featureName, prefix, target string) error {
 			repoDir := repo.GetRepoPath(projectDir)
 			sourceBranch, err := git.ResolveSourceBranch(repoDir, target, effectivePrefix)
 			if err != nil {
-				progress.Error(fmt.Sprintf("Failed to resolve target '%s' for repository %s: %v", target, name, err))
-				return fmt.Errorf("failed to resolve target '%s' for repository %s: %w", target, name, err)
+				// If target doesn't exist in this repo, we'll use default branch (no source specified)
+				progress.Warning(fmt.Sprintf("%s: target '%s' not found, will use default branch", name, target))
+				// Empty string indicates to use default behavior
+				sourceBranches[name] = ""
+			} else {
+				sourceBranches[name] = sourceBranch
+				progress.Info(fmt.Sprintf("%s: resolved target '%s' to source branch '%s'", name, target, sourceBranch))
 			}
-			sourceBranches[name] = sourceBranch
-			progress.Info(fmt.Sprintf("%s: resolved target '%s' to source branch '%s'", name, target, sourceBranch))
 		}
 		progress.Success("Target branch resolution completed")
 	}
@@ -171,13 +174,22 @@ func runUp(featureName, prefix, target string) error {
 		}
 
 		// When using a target, we create new branches, so existing branches are conflicts
-		if target != "" {
+		if target != "" && sourceBranches[name] != "" {
 			if localExists {
 				progress.Error(fmt.Sprintf("Branch %s already exists locally in %s", branchName, name))
 				return fmt.Errorf("branch %s already exists locally in repository %s", branchName, name)
 			}
 			sourceBranch := sourceBranches[name]
 			progress.Info(fmt.Sprintf("%s: will create worktree with new branch %s from %s", name, branchName, sourceBranch))
+		} else if target != "" && sourceBranches[name] == "" {
+			// Target was specified but not found in this repo, use default behavior
+			if localExists {
+				progress.Info(fmt.Sprintf("%s: will create worktree with existing local branch %s", name, branchName))
+			} else if remoteExists {
+				progress.Info(fmt.Sprintf("%s: will create worktree with existing remote branch %s", name, branchName))
+			} else {
+				progress.Info(fmt.Sprintf("%s: will create worktree with new branch %s from default branch", name, branchName))
+			}
 		} else {
 			// Original behavior: use existing branches or create new ones
 			if localExists {
@@ -230,12 +242,12 @@ func runUp(featureName, prefix, target string) error {
 		repoDir := repo.GetRepoPath(projectDir)
 
 		var err error
-		if target != "" {
+		if target != "" && sourceBranches[name] != "" {
 			// Use target source branch
 			sourceBranch := sourceBranches[name]
 			err = git.CreateWorktreeFromSource(repoDir, state.WorktreeDir, state.BranchName, sourceBranch, name)
 		} else {
-			// Use default behavior
+			// Use default behavior (either no target, or target not found in this repo)
 			err = git.CreateWorktree(repoDir, state.WorktreeDir, state.BranchName, name)
 		}
 
