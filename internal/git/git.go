@@ -25,6 +25,43 @@ func Clone(repoURL, destDir string) error {
 	return nil
 }
 
+func CreateWorktreeFromSource(repoDir, worktreeDir, branchName, sourceBranch, repoName string) error {
+	if err := os.MkdirAll(filepath.Dir(worktreeDir), 0755); err != nil {
+		return fmt.Errorf("failed to create directory %s: %w", filepath.Dir(worktreeDir), err)
+	}
+
+	// Check if worktree already exists
+	if _, err := os.Stat(worktreeDir); err == nil {
+		return fmt.Errorf("worktree directory already exists: %s", worktreeDir)
+	}
+
+	// Check if target branch already exists locally
+	localExists, err := LocalBranchExists(repoDir, branchName)
+	if err != nil {
+		return fmt.Errorf("failed to check if local branch exists: %w", err)
+	}
+
+	if localExists {
+		return fmt.Errorf("branch %s already exists locally", branchName)
+	}
+
+	// Verify source branch exists
+	if err := validateSourceBranch(repoDir, sourceBranch); err != nil {
+		return fmt.Errorf("source branch validation failed: %w", err)
+	}
+
+	// Create new branch from source
+	cmd := exec.Command("git", "worktree", "add", "-b", branchName, worktreeDir, sourceBranch)
+	cmd.Dir = repoDir
+	message := fmt.Sprintf("%s: creating worktree with new branch %s from %s", repoName, branchName, sourceBranch)
+
+	if err := ui.RunCommandWithProgress(cmd, message); err != nil {
+		return fmt.Errorf("failed to create worktree %s with branch %s from %s: %w", worktreeDir, branchName, sourceBranch, err)
+	}
+
+	return nil
+}
+
 func CreateWorktree(repoDir, worktreeDir, branchName, repoName string) error {
 	if err := os.MkdirAll(filepath.Dir(worktreeDir), 0755); err != nil {
 		return fmt.Errorf("failed to create directory %s: %w", filepath.Dir(worktreeDir), err)
@@ -338,6 +375,93 @@ func CheckoutRemoteBranch(repoDir, branchName string) error {
 	}
 
 	return nil
+}
+
+func validateSourceBranch(repoDir, sourceBranch string) error {
+	// Check if it's a local branch
+	localExists, err := LocalBranchExists(repoDir, sourceBranch)
+	if err != nil {
+		return fmt.Errorf("failed to check local branch: %w", err)
+	}
+
+	if localExists {
+		return nil
+	}
+
+	// Check if it's a remote branch (like origin/branch-name)
+	if strings.Contains(sourceBranch, "/") {
+		if err := validateRemoteBranch(repoDir, sourceBranch); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	// Check if it exists as a remote branch with origin/ prefix
+	remoteExists, err := RemoteBranchExists(repoDir, sourceBranch)
+	if err != nil {
+		return fmt.Errorf("failed to check remote branch: %w", err)
+	}
+
+	if remoteExists {
+		return nil
+	}
+
+	return fmt.Errorf("source branch '%s' not found locally or on remote", sourceBranch)
+}
+
+func validateRemoteBranch(repoDir, remoteBranch string) error {
+	cmd := exec.Command("git", "show-ref", "--verify", "refs/remotes/"+remoteBranch)
+	cmd.Dir = repoDir
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("remote branch '%s' not found", remoteBranch)
+	}
+
+	return nil
+}
+
+func ResolveSourceBranch(repoDir, target, effectivePrefix string) (string, error) {
+	// If target contains a slash, treat it as a branch name (local or remote)
+	if strings.Contains(target, "/") {
+		return target, nil
+	}
+
+	// Check if target is a direct branch name (without prefix)
+	localExists, err := LocalBranchExists(repoDir, target)
+	if err != nil {
+		return "", fmt.Errorf("failed to check local branch: %w", err)
+	}
+	if localExists {
+		return target, nil
+	}
+
+	remoteExists, err := RemoteBranchExists(repoDir, target)
+	if err != nil {
+		return "", fmt.Errorf("failed to check remote branch: %w", err)
+	}
+	if remoteExists {
+		return "origin/" + target, nil
+	}
+
+	// Try as a feature name (with prefix)
+	featureBranchName := effectivePrefix + target
+	localExists, err = LocalBranchExists(repoDir, featureBranchName)
+	if err != nil {
+		return "", fmt.Errorf("failed to check local feature branch: %w", err)
+	}
+	if localExists {
+		return featureBranchName, nil
+	}
+
+	remoteExists, err = RemoteBranchExists(repoDir, featureBranchName)
+	if err != nil {
+		return "", fmt.Errorf("failed to check remote feature branch: %w", err)
+	}
+	if remoteExists {
+		return "origin/" + featureBranchName, nil
+	}
+
+	return "", fmt.Errorf("target '%s' not found as feature name, branch name, or remote branch", target)
 }
 
 func GetRemoteTrackingStatus(repoDir string) (string, error) {
