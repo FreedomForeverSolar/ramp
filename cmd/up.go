@@ -36,9 +36,9 @@ in the trees/<feature-name>/ directory.
 
 By default, new feature branches are created from the default branch. Use the --target
 flag to create the feature from a different source:
-  - Existing feature name: --target my-existing-feature
-  - Local branch name: --target feature/my-branch
-  - Remote branch name: --target origin/feature/my-branch
+  - Existing feature name: ramp up new-feature --target my-existing-feature
+  - Local branch name: ramp up new-feature --target feature/my-branch
+  - Remote branch name: ramp up new-feature --target origin/feature/my-branch
 
 The operation is atomic - if any step fails, all successful operations will be
 rolled back to ensure no partial feature state remains.

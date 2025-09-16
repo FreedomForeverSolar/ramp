@@ -147,11 +147,11 @@ ramp init -v    # Verbose output showing clone operations
 Create feature branch with worktrees across all repositories. Automatically refreshes repositories that have `auto_refresh` enabled (defaults to true).
 ```bash
 ramp up user-auth-feature
-ramp up --prefix hotfix/ urgent-fix           # Custom branch prefix
-ramp up --target existing-feature new-feature # Create from existing feature
-ramp up --target feature/my-branch new-feature # Create from specific branch
-ramp up --target origin/main new-feature      # Create from remote branch
-ramp up -v my-feature                         # Verbose output showing all commands
+ramp up urgent-fix --prefix hotfix/           # Custom branch prefix
+ramp up new-feature --target existing-feature # Create from existing feature
+ramp up new-feature --target feature/my-branch # Create from specific branch
+ramp up new-feature --target origin/main      # Create from remote branch
+ramp up my-feature -v                         # Verbose output showing all commands
 ```
 
 **Flags:**
