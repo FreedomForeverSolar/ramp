@@ -53,7 +53,7 @@ brews:
       owner: FreedomForeverSolar
       name: homebrew-tools
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-    folder: Formula
+    directory: Formula
     homepage: https://github.com/FreedomForeverSolar/ramp
     description: "CLI tool for managing multi-repository development workflows using git worktrees"
     license: MIT
