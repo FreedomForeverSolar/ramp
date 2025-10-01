@@ -152,17 +152,26 @@ The application uses the Cobra CLI framework with commands organized in `cmd/`:
 **Key Functions**:
 - `Clone(repoURL, destDir)` - Clones repositories with progress feedback
 - `CreateWorktree(repoDir, worktreeDir, branchName)` - Intelligent worktree creation with branch detection
-- `LocalBranchExists()` / `RemoteBranchExists()` - Branch existence checking with exact name matching
+- `CreateWorktreeFromSource(repoDir, worktreeDir, branchName, sourceBranch, repoName)` - Creates worktree with new branch from specified source branch
+- `LocalBranchExists()` / `RemoteBranchExists()` / `BranchExists()` - Branch existence checking with exact name matching
 - `RemoveWorktree()` / `DeleteBranch()` - Cleanup operations with force flags
 - `HasUncommittedChanges()` - Safety check using `git status --porcelain`
 - `GetWorktreeBranch()` - Extracts actual branch name from worktree
+- `GetCurrentBranch(repoDir)` - Gets current branch name in a repository
 - `FetchAll()` / `Pull()` - Repository synchronization operations
 - `HasRemoteTrackingBranch()` - Detects if current branch tracks a remote
 - `Checkout(repoDir, branchName)` - Switches to existing local branch
 - `CheckoutRemoteBranch(repoDir, branchName)` - Creates and switches to remote tracking branch
 - `StashChanges(repoDir)` / `PopStash(repoDir)` - Stash management for uncommitted changes
 - `FetchBranch(repoDir, branchName)` - Fetches specific branch from remote
+- `ResolveSourceBranch(repoDir, target, effectivePrefix)` - Resolves target to actual source branch (feature name, local branch, or remote branch)
 - `GetRemoteTrackingStatus(repoDir)` - Gets ahead/behind commit status relative to remote tracking branch
+- `IsGitRepo(dir)` - Checks if directory is a git repository
+
+**Internal Helper Functions** (not typically called directly):
+- `getRemoteBranchName()` - Internal helper to find matching remote branch name
+- `validateSourceBranch()` - Internal validation for source branch existence
+- `validateRemoteBranch()` - Internal validation for remote branch references
 
 #### `internal/ports/`
 **Purpose**: Port allocation management for features.

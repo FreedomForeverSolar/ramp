@@ -34,11 +34,39 @@ A sophisticated CLI tool for managing multi-repository development workflows usi
 - **Git** 2.25+ (for worktree support)
 - **Node.js** (optional, for demo project)
 
+### Homebrew (macOS/Linux)
+
+Install Ramp using Homebrew:
+
+```bash
+brew install freedomforeversolar/tools/ramp
+```
+
+Verify installation:
+```bash
+ramp --help
+```
+
+**Upgrading:**
+```bash
+brew update                                  # Update Homebrew and all taps
+brew upgrade freedomforeversolar/tools/ramp  # Upgrade ramp to latest version
+```
+
+### Download Pre-built Binaries
+
+Download the latest release for your platform from [GitHub Releases](https://github.com/FreedomForeverSolar/ramp/releases):
+
+1. Download the appropriate archive for your OS and architecture
+2. Extract the binary
+3. Move it to a directory in your PATH (e.g., `/usr/local/bin`)
+4. Make it executable: `chmod +x ramp`
+
 ### Build from Source
 
 1. **Clone the repository:**
    ```bash
-   git clone [repository-url]
+   git clone https://github.com/FreedomForeverSolar/ramp.git
    cd ramp
    ```
 
