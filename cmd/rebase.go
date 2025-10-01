@@ -62,9 +62,9 @@ func runRebase(branchName string) error {
 		return err
 	}
 
-	// Auto-initialize if needed
-	if err := autoInitializeIfNeeded(projectDir, cfg); err != nil {
-		return fmt.Errorf("auto-initialization failed: %w", err)
+	// Auto-install if needed
+	if err := AutoInstallIfNeeded(projectDir, cfg); err != nil {
+		return fmt.Errorf("auto-installation failed: %w", err)
 	}
 
 	progress := ui.NewProgress()

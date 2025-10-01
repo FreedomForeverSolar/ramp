@@ -14,8 +14,13 @@ var rootCmd = &cobra.Command{
 	Long: `Ramp is a CLI tool that helps developers manage multi-repository projects
 with git worktrees and automated setup scripts.
 
+Getting started:
+  ramp init     - Create new ramp project with interactive setup
+  ramp install  - Clone configured repositories
+  ramp up       - Create feature branch (auto-installs if needed)
+
 Find a project directory with a .ramp/ramp.yaml configuration file and run
-commands to initialize repositories and create feature branches.`,
+commands to manage repositories and create feature branches.`,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		verbose, _ := cmd.Flags().GetBool("verbose")
 		ui.Verbose = verbose
