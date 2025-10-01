@@ -17,18 +17,41 @@ Ramp is a sophisticated CLI tool for managing multi-repository development workf
 ### CLI Usage
 
 #### `ramp init`
-**Purpose**: Initialize a ramp project by cloning all configured repositories from their remote origins.
-**How it works**: 
+**Purpose**: Initialize a new ramp project with interactive setup (similar to `npm init`).
+**How it works**:
+- Checks if `.ramp/ramp.yaml` already exists (errors if found with helpful message)
+- Runs interactive prompts using huh forms library:
+  - Project name (defaults to current directory name)
+  - Branch prefix (defaults to "feature/")
+  - Repositories (iterative: asks for Git URL, then "add another?" until done)
+  - All repos automatically use `path: repos`
+  - Setup script (defaults to Yes)
+  - Cleanup script (defaults to Yes)
+  - Port management (defaults to No, prompts for base port if Yes)
+  - Doctor command for environment checks (defaults to Yes)
+  - Clone repositories now (defaults to Yes)
+- Creates directory structure: `.ramp/scripts/`, `repos/`, `trees/`
+- Generates `ramp.yaml` with proper formatting and `auto_refresh: true` for all repos
+- Generates sample scripts with actual repository environment variable names
+- Optionally calls `ramp install` to clone repos immediately
+
+#### `ramp install`
+**Purpose**: Clone all configured repositories from ramp.yaml into their configured locations.
+**How it works**:
 - Searches upward from current directory to find `.ramp/ramp.yaml` configuration file
-- Reads repository configurations and creates the local directory structure
-- Clones each repository using `git clone` into the configured paths under the project directory
-- Creates parent directories as needed and validates git repository structure
+- Reads repository configurations
+- Creates parent directories if needed (default: `repos/`)
+- For each repository:
+  - Checks if already cloned (skips if repository exists)
+  - Clones using `git clone` into `repos/<repo-name>/`
+  - Validates git repository structure
 - Provides detailed progress feedback with success/error states
+- Used automatically by other commands via `AutoInstallIfNeeded()` function
 
 #### `ramp up <feature-name>`
 **Purpose**: Create a new feature branch with git worktrees for all configured repositories.
 **How it works**:
-- Auto-initializes the project if repositories aren't cloned yet (calls `ramp init` internally)
+- Auto-installs the project if repositories aren't cloned yet (calls `ramp install` internally)
 - Auto-refreshes repositories that have `auto_refresh` enabled (defaults to true if not specified)
 - Creates a `trees/<feature-name>/` directory structure for isolated feature development
 - For each configured repository:
@@ -144,8 +167,24 @@ The application uses the Cobra CLI framework with commands organized in `cmd/`:
 **Key Functions**:
 - `FindRampProject(startDir)` - Recursively searches up directory tree for `.ramp/ramp.yaml`
 - `LoadConfig(projectDir)` - Parses YAML configuration file and validates structure
+- `SaveConfig(cfg, projectDir)` - Writes Config to ramp.yaml with custom formatting and spacing
 - `GetRepos()` - Returns map of repository name to configuration
 - `GenerateEnvVarName(repoName)` - Converts repo names to valid environment variable names
+
+#### `internal/scaffold/`
+**Purpose**: Project scaffolding and template generation for ramp init.
+**Key Types**:
+- `ProjectData` - Holds collected information from interactive init (name, repos, options, commands)
+- `RepoData` - Repository URL and path information
+
+**Key Functions**:
+- `CreateProject(projectDir, data)` - Orchestrates complete project creation
+- `CreateDirectoryStructure(projectDir)` - Creates `.ramp/scripts/`, `repos/`, `trees/` directories
+- `GenerateConfigFile(projectDir, data)` - Creates formatted ramp.yaml with auto_refresh enabled
+- `GenerateSetupScript(projectDir, repos)` - Creates setup.sh with actual repository env var names
+- `GenerateCleanupScript(projectDir, repos)` - Creates cleanup.sh with repo env vars
+- `GenerateSampleCommand(projectDir, name, repos)` - Creates custom command scripts (e.g., doctor.sh)
+- `extractRepoName(gitURL)` - Extracts repository name from git URL for naming
 
 #### `internal/git/`
 **Purpose**: Git operations and worktree management.
@@ -198,12 +237,12 @@ Projects require a `.ramp/ramp.yaml` file with complete configuration:
 ```yaml
 name: project-name                    # Display name for the project
 repos:                               # Array of repository configurations
-  - path: source                     # Local directory path (relative to project root)
+  - path: repos                      # Local directory path (relative to project root)
     git: git@github.com:owner/repo.git  # Git clone URL
     auto_refresh: true               # Optional: auto-refresh before 'ramp up' (default: true)
-  - path: source
+  - path: repos
     git: https://github.com/owner/other-repo.git
-    auto_refresh: false              # Optional: disable auto-refresh for this repo
+    auto_refresh: true               # Optional: auto-refresh before 'ramp up' (default: true)
 
 setup: scripts/setup.sh              # Optional: script to run after 'ramp up'
 cleanup: scripts/cleanup.sh          # Optional: script to run during 'ramp down'
@@ -230,7 +269,7 @@ project-root/
 │       ├── setup.sh
 │       ├── cleanup.sh
 │       └── custom-command.sh
-├── source/                          # Source repository clones
+├── repos/                           # Source repository clones
 │   ├── repo-name/                   # Cloned repositories
 │   └── other-repo/
 └── trees/                           # Feature worktrees
@@ -257,8 +296,8 @@ Repository names are converted to valid environment variable names by:
 
 ### Key Behavioral Features
 
-#### Auto-Initialization
-Most commands automatically run `ramp init` if they detect uninitialized repositories, ensuring seamless workflow even when starting from a clean state.
+#### Auto-Installation
+Most commands automatically run `ramp install` if they detect uninstalled repositories, ensuring seamless workflow even when starting from a clean state.
 
 #### Smart Branch Handling
 The `up` command intelligently handles various branch scenarios:

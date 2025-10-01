@@ -31,11 +31,11 @@ Before running this demo, ensure you have:
    cd demo/demo-microservices-app
    ```
 
-2. **Initialize the project:**
+2. **Install repositories:**
    ```bash
-   ramp init
+   ramp install
    ```
-   This clones all three repositories into the `source/` directory.
+   This clones all three repositories into the `repos/` directory.
 
 3. **Create a feature branch:**
    ```bash
@@ -128,15 +128,15 @@ demo-microservices-app/
 ├── .ramp/
 │   ├── ramp.yaml              # Project configuration
 │   └── scripts/               # Setup, cleanup, and custom commands
-├── source/                    # Source repositories (after ramp init)
-│   ├── frontend/              # JSON Server repo clone
-│   ├── api-gateway/           # Node TypeScript boilerplate clone
-│   └── auth-service/          # Hello-World repo clone
+├── repos/                     # Source repositories (after ramp install)
+│   ├── json-server/           # JSON Server repo clone
+│   ├── node-typescript-boilerplate/  # Node TypeScript boilerplate clone
+│   └── Hello-World/           # Hello-World repo clone
 └── trees/                     # Feature worktrees (after ramp up)
     └── my-feature/
-        ├── frontend/          # JSON Server worktree
-        ├── api-gateway/       # Node TypeScript worktree
-        └── auth-service/      # Hello-World worktree
+        ├── json-server/       # JSON Server worktree
+        ├── node-typescript-boilerplate/  # Node TypeScript worktree
+        └── Hello-World/       # Hello-World worktree
 ```
 
 ## Environment Variables
@@ -147,9 +147,9 @@ When scripts run, they receive these environment variables:
 - `RAMP_TREES_DIR`: Path to current feature's trees directory
 - `RAMP_WORKTREE_NAME`: Feature name (e.g., "my-feature")
 - `RAMP_PORT`: Base port number (e.g., 3000)
-- `RAMP_REPO_PATH_FRONTEND`: Path to frontend source repository
-- `RAMP_REPO_PATH_API_GATEWAY`: Path to api-gateway source repository
-- `RAMP_REPO_PATH_AUTH_SERVICE`: Path to auth-service source repository
+- `RAMP_REPO_PATH_JSON_SERVER`: Path to json-server repository
+- `RAMP_REPO_PATH_NODE_TYPESCRIPT_BOILERPLATE`: Path to node-typescript-boilerplate repository
+- `RAMP_REPO_PATH_HELLO_WORLD`: Path to Hello-World repository
 
 ## Custom Commands
 

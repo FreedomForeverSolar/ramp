@@ -68,9 +68,9 @@ func runCustomCommand(commandName, featureName string) error {
 		return fmt.Errorf("command '%s' not found in configuration", commandName)
 	}
 
-	// Auto-initialize if needed
-	if err := autoInitializeIfNeeded(projectDir, cfg); err != nil {
-		return fmt.Errorf("auto-initialization failed: %w", err)
+	// Auto-install if needed
+	if err := AutoInstallIfNeeded(projectDir, cfg); err != nil {
+		return fmt.Errorf("auto-installation failed: %w", err)
 	}
 
 	// If no feature name provided, run against source directory

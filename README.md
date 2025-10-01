@@ -103,7 +103,7 @@ The easiest way to understand Ramp is to run the included demo:
 
 ```bash
 cd demo/demo-microservices-app
-ramp init                    # Clone demo repositories
+ramp install                # Clone demo repositories (config already exists)
 ramp up my-feature          # Create feature branch across all repos
 ramp run dev                # Start simulated development environment
 ramp status                 # View project status
@@ -114,46 +114,36 @@ See [demo/demo-microservices-app/README.md](demo/demo-microservices-app/README.m
 
 ### Create Your Own Project
 
-1. **Create project structure:**
+1. **Initialize a new Ramp project:**
    ```bash
    mkdir my-project && cd my-project
-   mkdir -p .ramp/scripts
+   ramp init
    ```
 
-2. **Create configuration (`.ramp/ramp.yaml`):**
-   ```yaml
-   name: my-project                          # Display name for the project
-   repos:
-     - path: frontend                        # Local directory name
-       git: git@github.com:yourorg/frontend.git  # Git clone URL
-       auto_refresh: true                    # Optional: auto-refresh before 'ramp up' (default: true)
-     - path: backend                         # Local directory name
-       git: git@github.com:yourorg/backend.git   # Git clone URL
-       auto_refresh: false                   # Optional: disable auto-refresh for this repo
+   This interactive setup will guide you through:
+   - Project name (defaults to directory name)
+   - Branch prefix (defaults to "feature/")
+   - Repository URLs (add as many as needed)
+   - Setup/cleanup scripts (optional, defaults to Yes)
+   - Port management (optional)
+   - Custom commands like 'doctor' for environment checks
 
-   setup: scripts/setup.sh                  # Optional: script to run after 'ramp up'
-   cleanup: scripts/cleanup.sh              # Optional: script to run before 'ramp down'
-   default-branch-prefix: feature/          # Optional: prefix for new branch names
-   base_port: 3000                          # Optional: starting port for allocation (default: 3000)
-   max_ports: 50                            # Optional: maximum ports to allocate (default: 100)
+2. **Customize your scripts:**
+   Edit the generated files in `.ramp/scripts/` to match your workflow:
+   - `setup.sh` - Runs after creating feature branches
+   - `cleanup.sh` - Runs before tearing down features
+   - `doctor.sh` - Environment validation (if added)
 
-   commands:                                # Optional: custom commands for 'ramp run'
-     - name: dev                            # Command name for 'ramp run dev'
-       command: scripts/dev.sh              # Script path (relative to .ramp/)
-   ```
-
-3. **Create setup script (`.ramp/scripts/setup.sh`):**
+3. **Install repositories:**
    ```bash
-   #!/bin/bash
-   echo "Setting up $RAMP_WORKTREE_NAME on port $RAMP_PORT"
-   # Install dependencies, create config files, etc.
+   ramp install  # Clone all configured repositories
    ```
+   (This happens automatically if you chose "Yes" during init)
 
-4. **Use your project:**
+4. **Start working on features:**
    ```bash
-   ramp init                # Clone all repositories
    ramp up new-feature     # Create feature branches
-   ramp run dev            # Run custom development command
+   ramp run dev            # Run custom development command (if configured)
    ramp down new-feature   # Clean up when done
    ```
 
@@ -162,10 +152,23 @@ See [demo/demo-microservices-app/README.md](demo/demo-microservices-app/README.m
 ### Core Commands
 
 #### `ramp init`
-Initialize project by cloning all configured repositories.
+Initialize a new ramp project with interactive setup (similar to `npm init`).
 ```bash
-ramp init
-ramp init -v    # Verbose output showing clone operations
+ramp init       # Interactive project scaffolding
+ramp init -v    # Verbose output
+```
+
+Creates `.ramp/ramp.yaml`, directory structure (`repos/`, `trees/`), and optional setup scripts.
+After initialization, run `ramp install` to clone repositories.
+
+**Flags:**
+- `-v, --verbose`: Show detailed output
+
+#### `ramp install`
+Clone all configured repositories from ramp.yaml.
+```bash
+ramp install
+ramp install -v    # Verbose output showing clone operations
 ```
 
 **Flags:**
@@ -259,13 +262,13 @@ name: my-project
 
 # Repository configurations
 repos:
-  - path: frontend              # Local directory name
+  - path: repos                 # Local directory name
     git: git@github.com:org/frontend.git  # Git clone URL
     auto_refresh: true          # Optional: auto-refresh before 'ramp up' (default: true)
 
-  - path: api
+  - path: repos
     git: https://github.com/org/api.git
-    auto_refresh: false         # Optional: disable auto-refresh for this repo
+    auto_refresh: true          # Optional: auto-refresh before 'ramp up' (default: true)
 
 # Optional: Scripts to run during lifecycle events
 setup: scripts/setup.sh       # After 'ramp up'
@@ -311,7 +314,7 @@ my-project/
 │       ├── setup.sh
 │       ├── cleanup.sh
 │       └── dev.sh
-├── source/                          # Source repository clones
+├── repos/                           # Source repository clones
 │   ├── frontend/                    # Cloned repositories
 │   └── api/
 └── trees/                           # Feature worktrees

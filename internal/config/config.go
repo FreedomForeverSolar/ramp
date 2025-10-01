@@ -166,3 +166,67 @@ func GenerateEnvVarName(repoName string) string {
 
 	return "RAMP_REPO_PATH_" + cleaned
 }
+
+// SaveConfig writes a Config structure to ramp.yaml with nice formatting
+func SaveConfig(cfg *Config, projectDir string) error {
+	configPath := filepath.Join(projectDir, ".ramp", "ramp.yaml")
+
+	// Ensure .ramp directory exists
+	rampDir := filepath.Join(projectDir, ".ramp")
+	if err := os.MkdirAll(rampDir, 0755); err != nil {
+		return fmt.Errorf("failed to create .ramp directory: %w", err)
+	}
+
+	// Build YAML manually for better formatting
+	var yamlBuilder strings.Builder
+
+	// Project name
+	yamlBuilder.WriteString(fmt.Sprintf("name: %s\n", cfg.Name))
+
+	// Repos section
+	if len(cfg.Repos) > 0 {
+		yamlBuilder.WriteString("repos:\n")
+		for _, repo := range cfg.Repos {
+			yamlBuilder.WriteString(fmt.Sprintf("  - path: %s\n", repo.Path))
+			yamlBuilder.WriteString(fmt.Sprintf("    git: %s\n", repo.Git))
+			if repo.AutoRefresh != nil {
+				yamlBuilder.WriteString(fmt.Sprintf("    auto_refresh: %t\n", *repo.AutoRefresh))
+			}
+		}
+		yamlBuilder.WriteString("\n")
+	}
+
+	// Branch prefix
+	if cfg.DefaultBranchPrefix != "" {
+		yamlBuilder.WriteString(fmt.Sprintf("default-branch-prefix: %s\n", cfg.DefaultBranchPrefix))
+	}
+
+	// Port configuration
+	if cfg.BasePort > 0 {
+		yamlBuilder.WriteString(fmt.Sprintf("base_port: %d\n", cfg.BasePort))
+	}
+
+	// Setup and cleanup scripts
+	if cfg.Setup != "" {
+		yamlBuilder.WriteString(fmt.Sprintf("setup: %s\n", cfg.Setup))
+	}
+	if cfg.Cleanup != "" {
+		yamlBuilder.WriteString(fmt.Sprintf("cleanup: %s\n", cfg.Cleanup))
+	}
+
+	// Commands section
+	if len(cfg.Commands) > 0 {
+		yamlBuilder.WriteString("\ncommands:\n")
+		for _, cmd := range cfg.Commands {
+			yamlBuilder.WriteString(fmt.Sprintf("  - name: %s\n", cmd.Name))
+			yamlBuilder.WriteString(fmt.Sprintf("    command: %s\n", cmd.Command))
+		}
+	}
+
+	// Write to file
+	if err := os.WriteFile(configPath, []byte(yamlBuilder.String()), 0644); err != nil {
+		return fmt.Errorf("failed to write config file: %w", err)
+	}
+
+	return nil
+}
