@@ -4,9 +4,11 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	
+
 	"ramp/internal/ui"
 )
+
+var version = "dev"
 
 var rootCmd = &cobra.Command{
 	Use:   "ramp",

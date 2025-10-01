@@ -26,6 +26,8 @@ type UpState struct {
 
 var prefixFlag string
 var targetFlag string
+var refreshFlag bool
+var noRefreshFlag bool
 
 var upCmd = &cobra.Command{
 	Use:   "up <feature-name>",
@@ -58,6 +60,8 @@ func init() {
 	rootCmd.AddCommand(upCmd)
 	upCmd.Flags().StringVar(&prefixFlag, "prefix", "", "Override the branch prefix (defaults to config default_branch_prefix)")
 	upCmd.Flags().StringVar(&targetFlag, "target", "", "Create feature from existing feature name, local branch, or remote branch")
+	upCmd.Flags().BoolVar(&refreshFlag, "refresh", false, "Force refresh all repositories before creating feature (overrides auto_refresh config)")
+	upCmd.Flags().BoolVar(&noRefreshFlag, "no-refresh", false, "Skip refresh for all repositories (overrides auto_refresh config)")
 }
 
 func runUp(featureName, prefix, target string) error {
@@ -76,27 +80,53 @@ func runUp(featureName, prefix, target string) error {
 		return err
 	}
 
+	// Validate that --refresh and --no-refresh are not both specified
+	if refreshFlag && noRefreshFlag {
+		return fmt.Errorf("cannot specify both --refresh and --no-refresh flags")
+	}
+
 	// Auto-install if needed
 	if err := AutoInstallIfNeeded(projectDir, cfg); err != nil {
 		return fmt.Errorf("auto-installation failed: %w", err)
 	}
 
-	// Auto-refresh repositories that have auto_refresh enabled (or not explicitly disabled)
+	// Auto-refresh repositories based on flags and config
 	repos := cfg.GetRepos()
-	hasAutoRefreshRepos := false
-	for _, repo := range repos {
-		if repo.ShouldAutoRefresh() {
-			hasAutoRefreshRepos = true
-			break
+
+	// Determine if we should refresh based on flags and config
+	shouldRefreshRepos := false
+	if noRefreshFlag {
+		// --no-refresh: skip all refresh operations
+		shouldRefreshRepos = false
+	} else if refreshFlag {
+		// --refresh: force refresh for all repos
+		shouldRefreshRepos = true
+	} else {
+		// No flags: check if any repo has auto_refresh enabled
+		for _, repo := range repos {
+			if repo.ShouldAutoRefresh() {
+				shouldRefreshRepos = true
+				break
+			}
 		}
 	}
 
-	if hasAutoRefreshRepos {
+	if shouldRefreshRepos {
 		progress := ui.NewProgress()
 		progress.Start("Auto-refreshing repositories before creating feature")
 
 		for name, repo := range repos {
-			if repo.ShouldAutoRefresh() {
+			// Determine if this specific repo should be refreshed
+			shouldRefreshThisRepo := false
+			if refreshFlag {
+				// --refresh: force refresh all repos
+				shouldRefreshThisRepo = true
+			} else {
+				// No --refresh flag: respect repo config
+				shouldRefreshThisRepo = repo.ShouldAutoRefresh()
+			}
+
+			if shouldRefreshThisRepo {
 				repoDir := repo.GetRepoPath(projectDir)
 				RefreshRepository(repoDir, name, progress)
 			} else {
