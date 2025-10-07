@@ -279,17 +279,16 @@ func getFeatureWorktreeStatus(projectDir, featureName, repoName string, repo *co
 	return status
 }
 
-func formatWorktreeStatus(status featureWorktreeStatus) string {
+func formatCompactStatus(status featureWorktreeStatus) string {
 	if status.error != "" {
-		return fmt.Sprintf("❌ %s", status.error)
+		return fmt.Sprintf("error: %s", status.error)
 	}
 
 	var parts []string
 
-	// Always show uncommitted changes first if present
+	// Show uncommitted changes
 	if status.hasUncommitted {
-		if status.diffStats != nil {
-			// Format like: +2 +15 -3 (files changed, insertions, deletions)
+		if status.diffStats != nil && (status.diffStats.FilesChanged > 0 || status.diffStats.Insertions > 0 || status.diffStats.Deletions > 0) {
 			diffParts := []string{}
 			if status.diffStats.FilesChanged > 0 {
 				diffParts = append(diffParts, fmt.Sprintf("+%d", status.diffStats.FilesChanged))
@@ -300,43 +299,54 @@ func formatWorktreeStatus(status featureWorktreeStatus) string {
 			if status.diffStats.Deletions > 0 {
 				diffParts = append(diffParts, fmt.Sprintf("-%d", status.diffStats.Deletions))
 			}
-			if len(diffParts) > 0 {
-				parts = append(parts, "🟡 "+strings.Join(diffParts, " "))
-			} else {
-				parts = append(parts, "🟡 uncommitted")
-			}
+			parts = append(parts, strings.Join(diffParts, " "))
 		} else {
-			parts = append(parts, "🟡 uncommitted")
+			parts = append(parts, "uncommitted")
 		}
 	}
 
 	// Check if the branch has diverged from main
 	hasDiverged := status.aheadCount > 0 || status.behindCount > 0
 
-	// Only show "merged" if the branch had changes AND is now merged
+	// Show merge status
 	if status.isMerged && hasDiverged {
-		parts = append(parts, "✔️ merged")
-		// If behind after merge, also show that
+		parts = append(parts, "merged")
 		if status.behindCount > 0 {
-			parts = append(parts, fmt.Sprintf("🔽 %d behind", status.behindCount))
+			parts = append(parts, fmt.Sprintf("%d behind", status.behindCount))
 		}
-	} else if !hasDiverged {
-		// Branch is at the same point as main (no changes yet)
-		if len(parts) == 0 {
-			parts = append(parts, "✅ no changes")
-		}
-	} else {
-		// Show ahead/behind status for unmerged branches
-		if status.aheadCount > 0 && status.behindCount > 0 {
-			parts = append(parts, fmt.Sprintf("🔼 %d ahead, 🔽 %d behind", status.aheadCount, status.behindCount))
-		} else if status.aheadCount > 0 {
-			parts = append(parts, fmt.Sprintf("🔼 %d ahead", status.aheadCount))
-		} else if status.behindCount > 0 {
-			parts = append(parts, fmt.Sprintf("🔽 %d behind", status.behindCount))
-		}
+	} else if status.aheadCount > 0 {
+		parts = append(parts, fmt.Sprintf("%d ahead", status.aheadCount))
+	}
+
+	if len(parts) == 0 {
+		return ""
 	}
 
 	return strings.Join(parts, ", ")
+}
+
+func needsAttention(statuses []featureWorktreeStatus) bool {
+	for _, status := range statuses {
+		// Has uncommitted changes
+		if status.hasUncommitted {
+			return true
+		}
+		// Has commits ahead (not merged yet)
+		if status.aheadCount > 0 && !status.isMerged {
+			return true
+		}
+	}
+	return false
+}
+
+func isMergedClean(statuses []featureWorktreeStatus) bool {
+	for _, status := range statuses {
+		hasDiverged := status.aheadCount > 0 || status.behindCount > 0
+		if !status.isMerged || !hasDiverged || status.hasUncommitted {
+			return false
+		}
+	}
+	return true
 }
 
 func displayActiveFeatures(projectDir string, cfg *config.Config) error {
@@ -344,8 +354,7 @@ func displayActiveFeatures(projectDir string, cfg *config.Config) error {
 
 	// Check if trees directory exists
 	if _, err := os.Stat(treesDir); os.IsNotExist(err) {
-		fmt.Println("🌿 Active Features:")
-		fmt.Println("   (no features found)")
+		fmt.Println("🌿 No active features")
 		return nil
 	}
 
@@ -362,7 +371,7 @@ func displayActiveFeatures(projectDir string, cfg *config.Config) error {
 			featurePath := filepath.Join(treesDir, entry.Name())
 			stat, err := os.Stat(featurePath)
 			if err != nil {
-				continue // Skip entries we can't stat
+				continue
 			}
 			features = append(features, featureInfo{
 				name:    entry.Name(),
@@ -372,8 +381,7 @@ func displayActiveFeatures(projectDir string, cfg *config.Config) error {
 	}
 
 	if len(features) == 0 {
-		fmt.Println("🌿 Active Features:")
-		fmt.Println("   (no features found)")
+		fmt.Println("🌿 No active features")
 		return nil
 	}
 
@@ -382,19 +390,21 @@ func displayActiveFeatures(projectDir string, cfg *config.Config) error {
 		return features[i].modTime.Before(features[j].modTime)
 	})
 
-	fmt.Println("🌿 Active Features:")
-
+	// Categorize features
 	repos := cfg.GetRepos()
+	var needsAttentionFeatures []struct {
+		name     string
+		statuses []featureWorktreeStatus
+	}
+	var mergedCleanFeatures []string
+
 	for _, feature := range features {
 		featureDir := filepath.Join(treesDir, feature.name)
 		featureEntries, err := os.ReadDir(featureDir)
 		if err != nil {
-			fmt.Printf("   📁 %s\n", feature.name)
-			fmt.Printf("      ⚠️  Error reading feature directory: %v\n", err)
 			continue
 		}
 
-		// Check which repos have worktrees in this feature and get their statuses
 		var worktreeStatuses []featureWorktreeStatus
 		for _, entry := range featureEntries {
 			if entry.IsDir() {
@@ -407,32 +417,94 @@ func displayActiveFeatures(projectDir string, cfg *config.Config) error {
 		}
 
 		if len(worktreeStatuses) == 0 {
-			fmt.Printf("   📁 %s\n", feature.name)
-			fmt.Println("      (no repository worktrees found)")
 			continue
 		}
 
-		// Check if all worktrees are merged (had changes AND merged) with no uncommitted changes
-		allMerged := true
-		for _, status := range worktreeStatuses {
-			hasDiverged := status.aheadCount > 0 || status.behindCount > 0
-			if !status.isMerged || !hasDiverged || status.hasUncommitted {
-				allMerged = false
-				break
+		if isMergedClean(worktreeStatuses) {
+			mergedCleanFeatures = append(mergedCleanFeatures, feature.name)
+		} else if needsAttention(worktreeStatuses) {
+			needsAttentionFeatures = append(needsAttentionFeatures, struct {
+				name     string
+				statuses []featureWorktreeStatus
+			}{feature.name, worktreeStatuses})
+		}
+	}
+
+	// Print summary
+	totalFeatures := len(features)
+	attentionCount := len(needsAttentionFeatures)
+	mergedCount := len(mergedCleanFeatures)
+	otherCount := totalFeatures - attentionCount - mergedCount
+
+	summaryParts := []string{fmt.Sprintf("%d active", totalFeatures)}
+	if attentionCount > 0 {
+		summaryParts = append(summaryParts, fmt.Sprintf("%d need attention", attentionCount))
+	}
+	if mergedCount > 0 {
+		summaryParts = append(summaryParts, fmt.Sprintf("%d merged", mergedCount))
+	}
+	fmt.Printf("🌿 Features: %s\n\n", strings.Join(summaryParts, "  •  "))
+
+	// Display features needing attention
+	if len(needsAttentionFeatures) > 0 {
+		fmt.Println("━━━ NEEDS ATTENTION ━━━\n")
+		for _, feature := range needsAttentionFeatures {
+			fmt.Printf("%s\n", feature.name)
+			for _, status := range feature.statuses {
+				statusStr := formatCompactStatus(status)
+				if statusStr != "" {
+					fmt.Printf("  %s: %s\n", status.repoName, statusStr)
+				}
+			}
+			fmt.Println()
+		}
+	}
+
+	// Display merged & clean features
+	if len(mergedCleanFeatures) > 0 {
+		fmt.Printf("━━━ MERGED & CLEAN (%d) ━━━\n", len(mergedCleanFeatures))
+		// Display in a wrapped list format
+		const maxWidth = 70
+		line := ""
+		for i, name := range mergedCleanFeatures {
+			if i > 0 {
+				line += ", "
+			}
+			if len(line)+len(name) > maxWidth && line != "" {
+				fmt.Println(line)
+				line = name
+			} else {
+				line += name
 			}
 		}
-
-		// Display feature name with merged indicator if applicable
-		if allMerged {
-			fmt.Printf("   📁 %s [✔️ MERGED]\n", feature.name)
-		} else {
-			fmt.Printf("   📁 %s\n", feature.name)
+		if line != "" {
+			fmt.Println(line)
 		}
+		fmt.Println()
+	}
 
-		// Display each worktree with its status
-		for _, status := range worktreeStatuses {
-			statusStr := formatWorktreeStatus(status)
-			fmt.Printf("      └── %s (%s) - %s\n", status.repoName, status.branchName, statusStr)
+	// Display other features (if any)
+	if otherCount > 0 {
+		fmt.Printf("━━━ OTHER (%d) ━━━\n", otherCount)
+		for _, feature := range features {
+			// Find features that aren't in the other two categories
+			inAttention := false
+			for _, f := range needsAttentionFeatures {
+				if f.name == feature.name {
+					inAttention = true
+					break
+				}
+			}
+			inMerged := false
+			for _, name := range mergedCleanFeatures {
+				if name == feature.name {
+					inMerged = true
+					break
+				}
+			}
+			if !inAttention && !inMerged {
+				fmt.Printf("%s\n", feature.name)
+			}
 		}
 	}
 
