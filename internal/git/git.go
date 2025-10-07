@@ -589,3 +589,49 @@ func IsMergedInto(worktreeDir, targetBranch string) (bool, error) {
 	// Exit code 0 means HEAD is an ancestor of targetBranch (merged)
 	return true, nil
 }
+
+type DiffStats struct {
+	FilesChanged int
+	Insertions   int
+	Deletions    int
+}
+
+func GetDiffStats(repoDir string) (*DiffStats, error) {
+	cmd := exec.Command("git", "diff", "--shortstat")
+	cmd.Dir = repoDir
+
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get diff stats: %w", err)
+	}
+
+	stats := &DiffStats{}
+	outputStr := strings.TrimSpace(string(output))
+
+	if outputStr == "" {
+		return stats, nil
+	}
+
+	// Parse output like: " 2 files changed, 15 insertions(+), 3 deletions(-)"
+	fmt.Sscanf(outputStr, "%d file", &stats.FilesChanged)
+
+	if strings.Contains(outputStr, "insertion") {
+		insertionIdx := strings.Index(outputStr, "insertion")
+		// Find the number before "insertion"
+		parts := strings.Fields(outputStr[:insertionIdx])
+		if len(parts) > 0 {
+			fmt.Sscanf(parts[len(parts)-1], "%d", &stats.Insertions)
+		}
+	}
+
+	if strings.Contains(outputStr, "deletion") {
+		deletionIdx := strings.Index(outputStr, "deletion")
+		// Find the number before "deletion"
+		parts := strings.Fields(outputStr[:deletionIdx])
+		if len(parts) > 0 {
+			fmt.Sscanf(parts[len(parts)-1], "%d", &stats.Deletions)
+		}
+	}
+
+	return stats, nil
+}

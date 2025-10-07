@@ -52,6 +52,7 @@ type featureWorktreeStatus struct {
 	repoName           string
 	branchName         string
 	hasUncommitted     bool
+	diffStats          *git.DiffStats
 	aheadCount         int
 	behindCount        int
 	isMerged           bool
@@ -244,6 +245,17 @@ func getFeatureWorktreeStatus(projectDir, featureName, repoName string, repo *co
 	}
 	status.hasUncommitted = hasUncommitted
 
+	// Get diff stats if there are uncommitted changes
+	if hasUncommitted {
+		diffStats, err := git.GetDiffStats(worktreePath)
+		if err != nil {
+			// Not fatal, just skip the stats
+			status.diffStats = nil
+		} else {
+			status.diffStats = diffStats
+		}
+	}
+
 	// Get ahead/behind count compared to default branch
 	ahead, behind, err := git.GetAheadBehindCount(worktreePath, defaultBranch)
 	if err != nil {
@@ -276,7 +288,26 @@ func formatWorktreeStatus(status featureWorktreeStatus) string {
 
 	// Always show uncommitted changes first if present
 	if status.hasUncommitted {
-		parts = append(parts, "🟡 uncommitted")
+		if status.diffStats != nil {
+			// Format like: +2 +15 -3 (files changed, insertions, deletions)
+			diffParts := []string{}
+			if status.diffStats.FilesChanged > 0 {
+				diffParts = append(diffParts, fmt.Sprintf("+%d", status.diffStats.FilesChanged))
+			}
+			if status.diffStats.Insertions > 0 {
+				diffParts = append(diffParts, fmt.Sprintf("+%d", status.diffStats.Insertions))
+			}
+			if status.diffStats.Deletions > 0 {
+				diffParts = append(diffParts, fmt.Sprintf("-%d", status.diffStats.Deletions))
+			}
+			if len(diffParts) > 0 {
+				parts = append(parts, "🟡 "+strings.Join(diffParts, " "))
+			} else {
+				parts = append(parts, "🟡 uncommitted")
+			}
+		} else {
+			parts = append(parts, "🟡 uncommitted")
+		}
 	}
 
 	// Check if the branch has diverged from main
