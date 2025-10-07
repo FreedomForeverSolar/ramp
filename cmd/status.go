@@ -315,15 +315,13 @@ func formatCompactStatus(status featureWorktreeStatus, showAll bool) string {
 		}
 	}
 
-	// Only show merge status if the branch actually had commits (was ahead at some point)
-	// Being only behind (0 ahead) means no work was done on this branch
+	// Show ahead status - this indicates work that needs attention
 	if status.aheadCount > 0 {
 		parts = append(parts, fmt.Sprintf("%d ahead", status.aheadCount))
-	} else if status.isMerged && status.behindCount > 0 {
-		// Branch had commits and was merged, now behind
-		parts = append(parts, "merged")
-		parts = append(parts, fmt.Sprintf("%d behind", status.behindCount))
 	}
+
+	// Don't show "merged" or "behind" status in needs attention section
+	// It's confusing and not actionable - you only care about uncommitted/ahead
 
 	// If no interesting status and not showing all, return empty
 	if len(parts) == 0 && !showAll {
@@ -464,7 +462,12 @@ func displayActiveFeatures(projectDir string, cfg *config.Config) error {
 		for _, feature := range needsAttentionFeatures {
 			fmt.Printf("%s\n", feature.name)
 			for _, status := range feature.statuses {
-				statusStr := formatCompactStatus(status, true)
+				// Only show repos with local work (uncommitted or ahead)
+				hasLocalWork := status.hasUncommitted || status.aheadCount > 0
+				if !hasLocalWork {
+					continue
+				}
+				statusStr := formatCompactStatus(status, false)
 				if statusStr != "" {
 					fmt.Printf("  %s: %s\n", status.repoName, statusStr)
 				}
@@ -521,10 +524,6 @@ func displayActiveFeatures(projectDir string, cfg *config.Config) error {
 		}
 	}
 
-	// Show legend if there are features needing attention
-	if len(needsAttentionFeatures) > 0 {
-		fmt.Printf("\nLegend: ◉ has changes  ○ no changes\n")
-	}
 
 	return nil
 }
