@@ -77,27 +77,21 @@ func runStatus() error {
 		return err
 	}
 
-	fmt.Printf("📦 Project: %s\n\n", cfg.Name)
-
-	// Display source repositories status
-	fmt.Println("📂 Source Repositories:")
+	// Collect repo statuses
 	repos := cfg.GetRepos()
-	if len(repos) == 0 {
-		fmt.Println("   (no repositories configured)")
-	} else {
-		for name, repo := range repos {
-			status := getRepoStatus(projectDir, name, repo)
-			displayRepoStatus(status)
-		}
+	var repoStatuses []repoStatus
+	for name, repo := range repos {
+		status := getRepoStatus(projectDir, name, repo)
+		repoStatuses = append(repoStatuses, status)
 	}
+
+	// Display project header with summary
+	displayProjectHeader(projectDir, cfg, repoStatuses)
 
 	fmt.Println()
 
-	// Display project information
-	err = displayProjectInfo(projectDir, cfg)
-	if err != nil {
-		return err
-	}
+	// Display source repositories grouped by status
+	displaySourceRepos(repoStatuses)
 
 	fmt.Println()
 
@@ -152,35 +146,7 @@ func getRepoStatus(projectDir, name string, repo *config.Repo) repoStatus {
 	return status
 }
 
-func displayRepoStatus(status repoStatus) {
-	if status.error != "" {
-		fmt.Printf("   ❌ %s (%s) - %s\n", status.name, status.path, status.error)
-		return
-	}
-
-	statusIcon := "✅"
-	if status.hasUncommitted {
-		statusIcon = "⚠️"
-	}
-
-	fmt.Printf("   %s %s (%s)\n", statusIcon, status.name, status.path)
-	fmt.Printf("       Branch: %s", status.currentBranch)
-
-	if status.remoteTrackingInfo != "" {
-		fmt.Printf(" %s", status.remoteTrackingInfo)
-	}
-	fmt.Println()
-
-	if status.hasUncommitted {
-		fmt.Println("       Status: uncommitted changes")
-	} else {
-		fmt.Println("       Status: clean")
-	}
-}
-
-func displayProjectInfo(projectDir string, cfg *config.Config) error {
-	fmt.Println("ℹ️  Project Info:")
-
+func displayProjectHeader(projectDir string, cfg *config.Config, repoStatuses []repoStatus) {
 	// Count active features
 	treesDir := filepath.Join(projectDir, "trees")
 	featureCount := 0
@@ -192,20 +158,88 @@ func displayProjectInfo(projectDir string, cfg *config.Config) error {
 		}
 	}
 
-	fmt.Printf("   Active features: %d\n", featureCount)
-
-	// Show port allocations only if explicitly configured in ramp.yaml
-	if cfg.BasePort > 0 {
-		portAlloc, err := ports.NewPortAllocations(projectDir, cfg.GetBasePort(), cfg.GetMaxPorts())
-		if err != nil {
-			fmt.Printf("   Port allocations: error loading (%v)\n", err)
-		} else {
-			allocations := portAlloc.ListAllocations()
-			fmt.Printf("   Port allocations: %d in use (base: %d)\n", len(allocations), cfg.GetBasePort())
+	// Count repos needing update
+	needsUpdate := 0
+	for _, status := range repoStatuses {
+		if status.hasUncommitted || strings.Contains(status.remoteTrackingInfo, "behind") {
+			needsUpdate++
 		}
 	}
 
-	return nil
+	// Build summary line
+	summaryParts := []string{
+		fmt.Sprintf("%d repos", len(repoStatuses)),
+		fmt.Sprintf("%d features", featureCount),
+	}
+
+	if needsUpdate > 0 {
+		summaryParts = append(summaryParts, fmt.Sprintf("%d need update", needsUpdate))
+	}
+
+	// Add port info if configured
+	if cfg.BasePort > 0 {
+		portAlloc, err := ports.NewPortAllocations(projectDir, cfg.GetBasePort(), cfg.GetMaxPorts())
+		if err == nil {
+			allocations := portAlloc.ListAllocations()
+			summaryParts = append(summaryParts, fmt.Sprintf("%d ports", len(allocations)))
+		}
+	}
+
+	fmt.Printf("📦 %s  •  %s\n", cfg.Name, strings.Join(summaryParts, "  •  "))
+}
+
+func displaySourceRepos(repoStatuses []repoStatus) {
+	if len(repoStatuses) == 0 {
+		return
+	}
+
+	// Group by status
+	var needsUpdate []repoStatus
+	var upToDate []repoStatus
+	var errors []repoStatus
+
+	for _, status := range repoStatuses {
+		if status.error != "" {
+			errors = append(errors, status)
+		} else if status.hasUncommitted || strings.Contains(status.remoteTrackingInfo, "behind") {
+			needsUpdate = append(needsUpdate, status)
+		} else {
+			upToDate = append(upToDate, status)
+		}
+	}
+
+	// Display header
+	if len(needsUpdate) > 0 {
+		fmt.Printf("📂 Source Repositories (%d need update):\n", len(needsUpdate))
+	} else {
+		fmt.Println("📂 Source Repositories:")
+	}
+
+	// Display repos needing update
+	for _, status := range needsUpdate {
+		icon := "⚠️"
+		parts := []string{status.currentBranch}
+
+		if status.hasUncommitted {
+			parts = append(parts, "uncommitted changes")
+		}
+		if strings.Contains(status.remoteTrackingInfo, "behind") {
+			// Extract "behind N" from the tracking info
+			parts = append(parts, strings.TrimPrefix(strings.TrimSuffix(status.remoteTrackingInfo, ")"), "("))
+		}
+
+		fmt.Printf("   %s %s (%s)\n", icon, status.name, strings.Join(parts, ", "))
+	}
+
+	// Display up-to-date repos
+	for _, status := range upToDate {
+		fmt.Printf("   ✓ %s (%s, up to date)\n", status.name, status.currentBranch)
+	}
+
+	// Display errors
+	for _, status := range errors {
+		fmt.Printf("   ❌ %s - %s\n", status.name, status.error)
+	}
 }
 
 func getFeatureWorktreeStatus(projectDir, featureName, repoName string, repo *config.Repo) featureWorktreeStatus {
