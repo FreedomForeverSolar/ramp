@@ -53,6 +53,7 @@ type featureWorktreeStatus struct {
 	branchName         string
 	hasUncommitted     bool
 	diffStats          *git.DiffStats
+	statusStats        *git.StatusStats
 	aheadCount         int
 	behindCount        int
 	isMerged           bool
@@ -245,14 +246,20 @@ func getFeatureWorktreeStatus(projectDir, featureName, repoName string, repo *co
 	}
 	status.hasUncommitted = hasUncommitted
 
-	// Get diff stats if there are uncommitted changes
+	// Get diff stats and status stats if there are uncommitted changes
 	if hasUncommitted {
 		diffStats, err := git.GetDiffStats(worktreePath)
 		if err != nil {
-			// Not fatal, just skip the stats
 			status.diffStats = nil
 		} else {
 			status.diffStats = diffStats
+		}
+
+		statusStats, err := git.GetStatusStats(worktreePath)
+		if err != nil {
+			status.statusStats = nil
+		} else {
+			status.statusStats = statusStats
 		}
 	}
 
@@ -298,6 +305,7 @@ func formatCompactStatus(status featureWorktreeStatus, showAll bool) string {
 
 	// Show uncommitted changes
 	if status.hasUncommitted {
+		// First try to show diff stats (changes to tracked files)
 		if status.diffStats != nil && (status.diffStats.FilesChanged > 0 || status.diffStats.Insertions > 0 || status.diffStats.Deletions > 0) {
 			diffParts := []string{}
 			if status.diffStats.FilesChanged > 0 {
@@ -310,6 +318,23 @@ func formatCompactStatus(status featureWorktreeStatus, showAll bool) string {
 				diffParts = append(diffParts, fmt.Sprintf("-%d", status.diffStats.Deletions))
 			}
 			parts = append(parts, strings.Join(diffParts, " "))
+		} else if status.statusStats != nil {
+			// Show status stats (untracked, staged, modified files)
+			statusParts := []string{}
+			if status.statusStats.UntrackedFiles > 0 {
+				statusParts = append(statusParts, fmt.Sprintf("%d untracked", status.statusStats.UntrackedFiles))
+			}
+			if status.statusStats.StagedFiles > 0 {
+				statusParts = append(statusParts, fmt.Sprintf("%d staged", status.statusStats.StagedFiles))
+			}
+			if status.statusStats.ModifiedFiles > 0 {
+				statusParts = append(statusParts, fmt.Sprintf("%d modified", status.statusStats.ModifiedFiles))
+			}
+			if len(statusParts) > 0 {
+				parts = append(parts, strings.Join(statusParts, ", "))
+			} else {
+				parts = append(parts, "uncommitted")
+			}
 		} else {
 			parts = append(parts, "uncommitted")
 		}

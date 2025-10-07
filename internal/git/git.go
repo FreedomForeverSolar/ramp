@@ -596,6 +596,12 @@ type DiffStats struct {
 	Deletions    int
 }
 
+type StatusStats struct {
+	UntrackedFiles int
+	ModifiedFiles  int
+	StagedFiles    int
+}
+
 func GetDiffStats(repoDir string) (*DiffStats, error) {
 	cmd := exec.Command("git", "diff", "--shortstat")
 	cmd.Dir = repoDir
@@ -630,6 +636,41 @@ func GetDiffStats(repoDir string) (*DiffStats, error) {
 		parts := strings.Fields(outputStr[:deletionIdx])
 		if len(parts) > 0 {
 			fmt.Sscanf(parts[len(parts)-1], "%d", &stats.Deletions)
+		}
+	}
+
+	return stats, nil
+}
+
+func GetStatusStats(repoDir string) (*StatusStats, error) {
+	cmd := exec.Command("git", "status", "--porcelain")
+	cmd.Dir = repoDir
+
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get status: %w", err)
+	}
+
+	stats := &StatusStats{}
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+
+	for _, line := range lines {
+		if len(line) < 2 {
+			continue
+		}
+
+		// Format: XY filename
+		// X = index status, Y = working tree status
+		// ?? = untracked
+		x := line[0]
+		y := line[1]
+
+		if x == '?' && y == '?' {
+			stats.UntrackedFiles++
+		} else if x != ' ' && x != '?' {
+			stats.StagedFiles++
+		} else if y != ' ' && y != '?' {
+			stats.ModifiedFiles++
 		}
 	}
 
