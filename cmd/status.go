@@ -350,10 +350,22 @@ func needsAttention(statuses []featureWorktreeStatus) bool {
 	return false
 }
 
-func isMergedClean(statuses []featureWorktreeStatus) bool {
+func isMerged(statuses []featureWorktreeStatus) bool {
 	for _, status := range statuses {
-		hasDiverged := status.aheadCount > 0 || status.behindCount > 0
-		if !status.isMerged || !hasDiverged || status.hasUncommitted {
+		// Must have had commits (was ahead) and now merged
+		if status.aheadCount == 0 && status.isMerged && status.behindCount > 0 && !status.hasUncommitted {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func isClean(statuses []featureWorktreeStatus) bool {
+	for _, status := range statuses {
+		// Never had any commits (0 ahead, 0 behind or just behind)
+		// No uncommitted changes
+		if status.hasUncommitted || status.aheadCount > 0 {
 			return false
 		}
 	}
@@ -403,11 +415,12 @@ func displayActiveFeatures(projectDir string, cfg *config.Config) error {
 
 	// Categorize features
 	repos := cfg.GetRepos()
-	var needsAttentionFeatures []struct {
+	var inFlightFeatures []struct {
 		name     string
 		statuses []featureWorktreeStatus
 	}
-	var mergedCleanFeatures []string
+	var mergedFeatures []string
+	var cleanFeatures []string
 
 	for _, feature := range features {
 		featureDir := filepath.Join(treesDir, feature.name)
@@ -431,35 +444,40 @@ func displayActiveFeatures(projectDir string, cfg *config.Config) error {
 			continue
 		}
 
-		if isMergedClean(worktreeStatuses) {
-			mergedCleanFeatures = append(mergedCleanFeatures, feature.name)
-		} else if needsAttention(worktreeStatuses) {
-			needsAttentionFeatures = append(needsAttentionFeatures, struct {
+		if needsAttention(worktreeStatuses) {
+			inFlightFeatures = append(inFlightFeatures, struct {
 				name     string
 				statuses []featureWorktreeStatus
 			}{feature.name, worktreeStatuses})
+		} else if isMerged(worktreeStatuses) {
+			mergedFeatures = append(mergedFeatures, feature.name)
+		} else if isClean(worktreeStatuses) {
+			cleanFeatures = append(cleanFeatures, feature.name)
 		}
 	}
 
 	// Print summary
 	totalFeatures := len(features)
-	attentionCount := len(needsAttentionFeatures)
-	mergedCount := len(mergedCleanFeatures)
-	otherCount := totalFeatures - attentionCount - mergedCount
+	inFlightCount := len(inFlightFeatures)
+	mergedCount := len(mergedFeatures)
+	cleanCount := len(cleanFeatures)
 
 	summaryParts := []string{fmt.Sprintf("%d active", totalFeatures)}
-	if attentionCount > 0 {
-		summaryParts = append(summaryParts, fmt.Sprintf("%d need attention", attentionCount))
+	if inFlightCount > 0 {
+		summaryParts = append(summaryParts, fmt.Sprintf("%d in flight", inFlightCount))
 	}
 	if mergedCount > 0 {
 		summaryParts = append(summaryParts, fmt.Sprintf("%d merged", mergedCount))
 	}
+	if cleanCount > 0 {
+		summaryParts = append(summaryParts, fmt.Sprintf("%d clean", cleanCount))
+	}
 	fmt.Printf("🌿 Features: %s\n\n", strings.Join(summaryParts, "  •  "))
 
-	// Display features needing attention
-	if len(needsAttentionFeatures) > 0 {
-		fmt.Println("━━━ NEEDS ATTENTION ━━━\n")
-		for _, feature := range needsAttentionFeatures {
+	// Display in-flight features
+	if len(inFlightFeatures) > 0 {
+		fmt.Println("━━━ IN FLIGHT ━━━\n")
+		for _, feature := range inFlightFeatures {
 			fmt.Printf("%s\n", feature.name)
 			for _, status := range feature.statuses {
 				// Only show repos with local work (uncommitted or ahead)
@@ -476,13 +494,12 @@ func displayActiveFeatures(projectDir string, cfg *config.Config) error {
 		}
 	}
 
-	// Display merged & clean features
-	if len(mergedCleanFeatures) > 0 {
-		fmt.Printf("━━━ MERGED & CLEAN (%d) ━━━\n", len(mergedCleanFeatures))
-		// Display in a wrapped list format
+	// Display merged features
+	if len(mergedFeatures) > 0 {
+		fmt.Printf("━━━ MERGED (%d) ━━━\n", len(mergedFeatures))
 		const maxWidth = 70
 		line := ""
-		for i, name := range mergedCleanFeatures {
+		for i, name := range mergedFeatures {
 			if i > 0 {
 				line += ", "
 			}
@@ -499,29 +516,26 @@ func displayActiveFeatures(projectDir string, cfg *config.Config) error {
 		fmt.Println()
 	}
 
-	// Display other features (if any)
-	if otherCount > 0 {
-		fmt.Printf("━━━ OTHER (%d) ━━━\n", otherCount)
-		for _, feature := range features {
-			// Find features that aren't in the other two categories
-			inAttention := false
-			for _, f := range needsAttentionFeatures {
-				if f.name == feature.name {
-					inAttention = true
-					break
-				}
+	// Display clean features
+	if len(cleanFeatures) > 0 {
+		fmt.Printf("━━━ CLEAN (%d) ━━━\n", len(cleanFeatures))
+		const maxWidth = 70
+		line := ""
+		for i, name := range cleanFeatures {
+			if i > 0 {
+				line += ", "
 			}
-			inMerged := false
-			for _, name := range mergedCleanFeatures {
-				if name == feature.name {
-					inMerged = true
-					break
-				}
-			}
-			if !inAttention && !inMerged {
-				fmt.Printf("%s\n", feature.name)
+			if len(line)+len(name) > maxWidth && line != "" {
+				fmt.Println(line)
+				line = name
+			} else {
+				line += name
 			}
 		}
+		if line != "" {
+			fmt.Println(line)
+		}
+		fmt.Println()
 	}
 
 
