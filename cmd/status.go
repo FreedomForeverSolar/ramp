@@ -279,9 +279,21 @@ func formatWorktreeStatus(status featureWorktreeStatus) string {
 		parts = append(parts, "🟡 uncommitted")
 	}
 
-	// Check if merged
-	if status.isMerged {
+	// Check if the branch has diverged from main
+	hasDiverged := status.aheadCount > 0 || status.behindCount > 0
+
+	// Only show "merged" if the branch had changes AND is now merged
+	if status.isMerged && hasDiverged {
 		parts = append(parts, "✔️ merged")
+		// If behind after merge, also show that
+		if status.behindCount > 0 {
+			parts = append(parts, fmt.Sprintf("🔽 %d behind", status.behindCount))
+		}
+	} else if !hasDiverged {
+		// Branch is at the same point as main (no changes yet)
+		if len(parts) == 0 {
+			parts = append(parts, "✅ no changes")
+		}
 	} else {
 		// Show ahead/behind status for unmerged branches
 		if status.aheadCount > 0 && status.behindCount > 0 {
@@ -291,11 +303,6 @@ func formatWorktreeStatus(status featureWorktreeStatus) string {
 		} else if status.behindCount > 0 {
 			parts = append(parts, fmt.Sprintf("🔽 %d behind", status.behindCount))
 		}
-	}
-
-	// If nothing to report, it's clean and up to date
-	if len(parts) == 0 {
-		parts = append(parts, "✅ clean")
 	}
 
 	return strings.Join(parts, ", ")
@@ -374,10 +381,11 @@ func displayActiveFeatures(projectDir string, cfg *config.Config) error {
 			continue
 		}
 
-		// Check if all worktrees are merged and have no uncommitted changes
+		// Check if all worktrees are merged (had changes AND merged) with no uncommitted changes
 		allMerged := true
 		for _, status := range worktreeStatuses {
-			if !status.isMerged || status.hasUncommitted {
+			hasDiverged := status.aheadCount > 0 || status.behindCount > 0
+			if !status.isMerged || !hasDiverged || status.hasUncommitted {
 				allMerged = false
 				break
 			}
