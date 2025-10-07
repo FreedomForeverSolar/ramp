@@ -535,7 +535,8 @@ func displayActiveFeatures(projectDir string, cfg *config.Config) error {
 
 	// Display in-flight features
 	if len(inFlightFeatures) > 0 {
-		fmt.Println("━━━ IN FLIGHT ━━━\n")
+		fmt.Println("━━━ IN FLIGHT ━━━")
+		fmt.Println()
 		for _, feature := range inFlightFeatures {
 			fmt.Printf("%s\n", feature.name)
 			for _, status := range feature.statuses {
