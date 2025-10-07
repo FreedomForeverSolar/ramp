@@ -279,12 +279,22 @@ func getFeatureWorktreeStatus(projectDir, featureName, repoName string, repo *co
 	return status
 }
 
-func formatCompactStatus(status featureWorktreeStatus) string {
+func formatCompactStatus(status featureWorktreeStatus, showAll bool) string {
 	if status.error != "" {
-		return fmt.Sprintf("error: %s", status.error)
+		return fmt.Sprintf("◉ error: %s", status.error)
 	}
 
+	var symbol string
 	var parts []string
+
+	// Determine symbol based on state
+	hasLocalWork := status.hasUncommitted || status.aheadCount > 0
+
+	if hasLocalWork {
+		symbol = "◉"
+	} else {
+		symbol = "○"
+	}
 
 	// Show uncommitted changes
 	if status.hasUncommitted {
@@ -305,24 +315,27 @@ func formatCompactStatus(status featureWorktreeStatus) string {
 		}
 	}
 
-	// Check if the branch has diverged from main
-	hasDiverged := status.aheadCount > 0 || status.behindCount > 0
-
-	// Show merge status
-	if status.isMerged && hasDiverged {
-		parts = append(parts, "merged")
-		if status.behindCount > 0 {
-			parts = append(parts, fmt.Sprintf("%d behind", status.behindCount))
-		}
-	} else if status.aheadCount > 0 {
+	// Only show merge status if the branch actually had commits (was ahead at some point)
+	// Being only behind (0 ahead) means no work was done on this branch
+	if status.aheadCount > 0 {
 		parts = append(parts, fmt.Sprintf("%d ahead", status.aheadCount))
+	} else if status.isMerged && status.behindCount > 0 {
+		// Branch had commits and was merged, now behind
+		parts = append(parts, "merged")
+		parts = append(parts, fmt.Sprintf("%d behind", status.behindCount))
 	}
 
-	if len(parts) == 0 {
+	// If no interesting status and not showing all, return empty
+	if len(parts) == 0 && !showAll {
 		return ""
 	}
 
-	return strings.Join(parts, ", ")
+	// If showing all and no status, just show symbol
+	if len(parts) == 0 {
+		return symbol
+	}
+
+	return fmt.Sprintf("%s %s", symbol, strings.Join(parts, ", "))
 }
 
 func needsAttention(statuses []featureWorktreeStatus) bool {
@@ -451,7 +464,7 @@ func displayActiveFeatures(projectDir string, cfg *config.Config) error {
 		for _, feature := range needsAttentionFeatures {
 			fmt.Printf("%s\n", feature.name)
 			for _, status := range feature.statuses {
-				statusStr := formatCompactStatus(status)
+				statusStr := formatCompactStatus(status, true)
 				if statusStr != "" {
 					fmt.Printf("  %s: %s\n", status.repoName, statusStr)
 				}
@@ -506,6 +519,11 @@ func displayActiveFeatures(projectDir string, cfg *config.Config) error {
 				fmt.Printf("%s\n", feature.name)
 			}
 		}
+	}
+
+	// Show legend if there are features needing attention
+	if len(needsAttentionFeatures) > 0 {
+		fmt.Printf("\nLegend: ◉ has changes  ○ no changes\n")
 	}
 
 	return nil
