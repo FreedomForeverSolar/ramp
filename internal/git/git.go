@@ -509,3 +509,83 @@ func GetRemoteTrackingStatus(repoDir string) (string, error) {
 
 	return fmt.Sprintf("(%s)", strings.Join(statusParts, ", ")), nil
 }
+
+func GetDefaultBranch(repoDir string) (string, error) {
+	// Try to get the default branch from remote's HEAD
+	cmd := exec.Command("git", "symbolic-ref", "refs/remotes/origin/HEAD")
+	cmd.Dir = repoDir
+
+	output, err := cmd.Output()
+	if err == nil {
+		// Parse "refs/remotes/origin/main" to "main"
+		ref := strings.TrimSpace(string(output))
+		if strings.HasPrefix(ref, "refs/remotes/origin/") {
+			return strings.TrimPrefix(ref, "refs/remotes/origin/"), nil
+		}
+	}
+
+	// Fallback: check if 'main' exists
+	mainExists, err := LocalBranchExists(repoDir, "main")
+	if err == nil && mainExists {
+		return "main", nil
+	}
+
+	// Fallback: check if 'master' exists
+	masterExists, err := LocalBranchExists(repoDir, "master")
+	if err == nil && masterExists {
+		return "master", nil
+	}
+
+	// Ultimate fallback
+	return "main", nil
+}
+
+func GetAheadBehindCount(worktreeDir, baseBranch string) (ahead int, behind int, err error) {
+	// Get ahead/behind status compared to base branch
+	cmd := exec.Command("git", "rev-list", "--count", "--left-right", fmt.Sprintf("HEAD...%s", baseBranch))
+	cmd.Dir = worktreeDir
+
+	output, err := cmd.Output()
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to get ahead/behind count: %w", err)
+	}
+
+	status := strings.TrimSpace(string(output))
+	parts := strings.Fields(status)
+
+	if len(parts) != 2 {
+		return 0, 0, fmt.Errorf("unexpected output format: %s", status)
+	}
+
+	ahead = 0
+	behind = 0
+
+	if parts[0] != "0" {
+		fmt.Sscanf(parts[0], "%d", &ahead)
+	}
+	if parts[1] != "0" {
+		fmt.Sscanf(parts[1], "%d", &behind)
+	}
+
+	return ahead, behind, nil
+}
+
+func IsMergedInto(worktreeDir, targetBranch string) (bool, error) {
+	// Use git merge-base to check if HEAD is an ancestor of targetBranch
+	// This means all commits from current branch are in targetBranch
+	cmd := exec.Command("git", "merge-base", "--is-ancestor", "HEAD", targetBranch)
+	cmd.Dir = worktreeDir
+
+	err := cmd.Run()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
+			// Exit code 1 means not an ancestor (not merged)
+			return false, nil
+		}
+		// Other errors (e.g., invalid branch name)
+		return false, fmt.Errorf("failed to check merge status: %w", err)
+	}
+
+	// Exit code 0 means HEAD is an ancestor of targetBranch (merged)
+	return true, nil
+}

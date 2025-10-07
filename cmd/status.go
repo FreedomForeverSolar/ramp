@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -45,6 +46,17 @@ type repoStatus struct {
 type featureInfo struct {
 	name    string
 	modTime time.Time
+}
+
+type featureWorktreeStatus struct {
+	repoName           string
+	branchName         string
+	hasUncommitted     bool
+	aheadCount         int
+	behindCount        int
+	isMerged           bool
+	defaultBranch      string
+	error              string
 }
 
 func runStatus() error {
@@ -194,6 +206,101 @@ func displayProjectInfo(projectDir string, cfg *config.Config) error {
 	return nil
 }
 
+func getFeatureWorktreeStatus(projectDir, featureName, repoName string, repo *config.Repo) featureWorktreeStatus {
+	worktreePath := filepath.Join(projectDir, "trees", featureName, repoName)
+	sourceRepoPath := repo.GetRepoPath(projectDir)
+
+	status := featureWorktreeStatus{
+		repoName: repoName,
+	}
+
+	// Check if worktree exists
+	if _, err := os.Stat(worktreePath); os.IsNotExist(err) {
+		status.error = "worktree not found"
+		return status
+	}
+
+	// Get branch name
+	branchName, err := git.GetWorktreeBranch(worktreePath)
+	if err != nil {
+		status.error = fmt.Sprintf("failed to get branch: %v", err)
+		return status
+	}
+	status.branchName = branchName
+
+	// Get default branch from source repo
+	defaultBranch, err := git.GetDefaultBranch(sourceRepoPath)
+	if err != nil {
+		status.error = fmt.Sprintf("failed to get default branch: %v", err)
+		return status
+	}
+	status.defaultBranch = defaultBranch
+
+	// Check for uncommitted changes
+	hasUncommitted, err := git.HasUncommittedChanges(worktreePath)
+	if err != nil {
+		status.error = fmt.Sprintf("failed to check uncommitted changes: %v", err)
+		return status
+	}
+	status.hasUncommitted = hasUncommitted
+
+	// Get ahead/behind count compared to default branch
+	ahead, behind, err := git.GetAheadBehindCount(worktreePath, defaultBranch)
+	if err != nil {
+		// Not a fatal error, just means we can't compare
+		status.aheadCount = 0
+		status.behindCount = 0
+	} else {
+		status.aheadCount = ahead
+		status.behindCount = behind
+	}
+
+	// Check if merged into default branch
+	isMerged, err := git.IsMergedInto(worktreePath, defaultBranch)
+	if err != nil {
+		// Not a fatal error
+		status.isMerged = false
+	} else {
+		status.isMerged = isMerged
+	}
+
+	return status
+}
+
+func formatWorktreeStatus(status featureWorktreeStatus) string {
+	if status.error != "" {
+		return fmt.Sprintf("❌ %s", status.error)
+	}
+
+	var parts []string
+
+	// Always show uncommitted changes first if present
+	if status.hasUncommitted {
+		parts = append(parts, "🟡 uncommitted")
+	}
+
+	// Check if merged
+	if status.isMerged {
+		parts = append(parts, "✔️ merged")
+	} else {
+		// Show ahead/behind status for unmerged branches
+		if status.aheadCount > 0 && status.behindCount > 0 {
+			parts = append(parts, fmt.Sprintf("🔼 %d ahead, 🔽 %d behind", status.aheadCount, status.behindCount))
+		} else if status.aheadCount > 0 {
+			parts = append(parts, fmt.Sprintf("🔼 %d ahead", status.aheadCount))
+		} else if status.behindCount > 0 {
+			parts = append(parts, fmt.Sprintf("🔽 %d behind", status.behindCount))
+		}
+	}
+
+	// If nothing to report, it's clean and up to date
+	if len(parts) == 0 {
+		parts = append(parts, "✅ clean")
+	}
+
+	return strings.Join(parts, ", ")
+}
+
 func displayActiveFeatures(projectDir string, cfg *config.Config) error {
 	treesDir := filepath.Join(projectDir, "trees")
 
@@ -241,32 +348,52 @@ func displayActiveFeatures(projectDir string, cfg *config.Config) error {
 
 	repos := cfg.GetRepos()
 	for _, feature := range features {
-		fmt.Printf("   📁 %s\n", feature.name)
-
 		featureDir := filepath.Join(treesDir, feature.name)
 		featureEntries, err := os.ReadDir(featureDir)
 		if err != nil {
+			fmt.Printf("   📁 %s\n", feature.name)
 			fmt.Printf("      ⚠️  Error reading feature directory: %v\n", err)
 			continue
 		}
 
-		// Check which repos have worktrees in this feature
-		var repoWorktrees []string
+		// Check which repos have worktrees in this feature and get their statuses
+		var worktreeStatuses []featureWorktreeStatus
 		for _, entry := range featureEntries {
 			if entry.IsDir() {
 				repoName := entry.Name()
-				if _, exists := repos[repoName]; exists {
-					repoWorktrees = append(repoWorktrees, repoName)
+				if repo, exists := repos[repoName]; exists {
+					status := getFeatureWorktreeStatus(projectDir, feature.name, repoName, repo)
+					worktreeStatuses = append(worktreeStatuses, status)
 				}
 			}
 		}
 
-		if len(repoWorktrees) == 0 {
+		if len(worktreeStatuses) == 0 {
+			fmt.Printf("   📁 %s\n", feature.name)
 			fmt.Println("      (no repository worktrees found)")
-		} else {
-			for _, repoName := range repoWorktrees {
-				fmt.Printf("      └── %s\n", repoName)
+			continue
+		}
+
+		// Check if all worktrees are merged and have no uncommitted changes
+		allMerged := true
+		for _, status := range worktreeStatuses {
+			if !status.isMerged || status.hasUncommitted {
+				allMerged = false
+				break
 			}
+		}
+
+		// Display feature name with merged indicator if applicable
+		if allMerged {
+			fmt.Printf("   📁 %s [✔️ MERGED]\n", feature.name)
+		} else {
+			fmt.Printf("   📁 %s\n", feature.name)
+		}
+
+		// Display each worktree with its status
+		for _, status := range worktreeStatuses {
+			statusStr := formatWorktreeStatus(status)
+			fmt.Printf("      └── %s (%s) - %s\n", status.repoName, status.branchName, statusStr)
 		}
 	}
 
