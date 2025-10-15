@@ -259,11 +259,22 @@ func FetchAll(repoDir string) error {
 	cmd := exec.Command("git", "fetch", "--all")
 	cmd.Dir = repoDir
 	message := "fetching from all remotes"
-	
+
 	if err := ui.RunCommandWithProgress(cmd, message); err != nil {
 		return fmt.Errorf("failed to fetch: %w", err)
 	}
-	
+
+	return nil
+}
+
+func FetchAllQuiet(repoDir string) error {
+	cmd := exec.Command("git", "fetch", "--all", "--quiet")
+	cmd.Dir = repoDir
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to fetch: %w", err)
+	}
+
 	return nil
 }
 

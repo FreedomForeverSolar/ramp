@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -13,6 +14,7 @@ import (
 	"ramp/internal/config"
 	"ramp/internal/git"
 	"ramp/internal/ports"
+	"ramp/internal/ui"
 )
 
 var statusCmd = &cobra.Command{
@@ -77,8 +79,31 @@ func runStatus() error {
 		return err
 	}
 
-	// Collect repo statuses
+	// Fetch all repos in parallel to get accurate remote tracking info
 	repos := cfg.GetRepos()
+
+	progress := ui.NewProgress()
+	progress.Start("Fetching remote information...")
+
+	var wg sync.WaitGroup
+	for _, repo := range repos {
+		wg.Add(1)
+		go func(r *config.Repo) {
+			defer wg.Done()
+			repoPath := r.GetRepoPath(projectDir)
+			// Check if repo exists and is a git repo before fetching
+			if _, err := os.Stat(repoPath); err == nil && git.IsGitRepo(repoPath) {
+				// Silently fetch, ignore errors (network issues, etc.)
+				_ = git.FetchAllQuiet(repoPath)
+			}
+		}(repo)
+	}
+	wg.Wait()
+
+	progress.Success("Fetching remote information...")
+	fmt.Println()
+
+	// Collect repo statuses
 	var repoStatuses []repoStatus
 	for name, repo := range repos {
 		status := getRepoStatus(projectDir, name, repo)
@@ -96,7 +121,9 @@ func runStatus() error {
 	fmt.Println()
 
 	// Display active features
-	err = displayActiveFeatures(projectDir, cfg)
+	featureProgress := ui.NewProgress()
+	featureProgress.Start("Analyzing features...")
+	err = displayActiveFeatures(projectDir, cfg, featureProgress)
 	if err != nil {
 		return err
 	}
@@ -431,11 +458,12 @@ func isClean(statuses []featureWorktreeStatus) bool {
 	return true
 }
 
-func displayActiveFeatures(projectDir string, cfg *config.Config) error {
+func displayActiveFeatures(projectDir string, cfg *config.Config, progress *ui.ProgressUI) error {
 	treesDir := filepath.Join(projectDir, "trees")
 
 	// Check if trees directory exists
 	if _, err := os.Stat(treesDir); os.IsNotExist(err) {
+		progress.Success("Analyzing features...")
 		fmt.Println("🌿 No active features")
 		return nil
 	}
@@ -463,6 +491,7 @@ func displayActiveFeatures(projectDir string, cfg *config.Config) error {
 	}
 
 	if len(features) == 0 {
+		progress.Success("Analyzing features...")
 		fmt.Println("🌿 No active features")
 		return nil
 	}
@@ -514,6 +543,9 @@ func displayActiveFeatures(projectDir string, cfg *config.Config) error {
 			cleanFeatures = append(cleanFeatures, feature.name)
 		}
 	}
+
+	// Stop spinner before printing
+	progress.Success("Analyzing features...")
 
 	// Print summary
 	totalFeatures := len(features)
