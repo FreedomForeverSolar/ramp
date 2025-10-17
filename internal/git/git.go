@@ -6,7 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	
+
 	"ramp/internal/ui"
 )
 
@@ -17,7 +17,7 @@ func Clone(repoURL, destDir string) error {
 
 	cmd := exec.Command("git", "clone", repoURL, destDir)
 	message := fmt.Sprintf("cloning %s", repoURL)
-	
+
 	if err := ui.RunCommandWithProgress(cmd, message); err != nil {
 		return fmt.Errorf("failed to clone %s to %s: %w", repoURL, destDir, err)
 	}
@@ -85,7 +85,7 @@ func CreateWorktree(repoDir, worktreeDir, branchName, repoName string) error {
 
 	var cmd *exec.Cmd
 	var message string
-	
+
 	if localExists {
 		// Use existing local branch
 		cmd = exec.Command("git", "worktree", "add", worktreeDir, branchName)
@@ -117,12 +117,12 @@ func getRemoteBranchName(repoDir, branchName string) (string, error) {
 	// Get all remote branches and check for exact matches
 	cmd := exec.Command("git", "branch", "-r")
 	cmd.Dir = repoDir
-	
+
 	output, err := cmd.Output()
 	if err != nil {
 		return "", err
 	}
-	
+
 	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
@@ -135,7 +135,7 @@ func getRemoteBranchName(repoDir, branchName string) (string, error) {
 			return line, nil
 		}
 	}
-	
+
 	return "", fmt.Errorf("no remote branch found for %s", branchName)
 }
 
@@ -147,19 +147,19 @@ func BranchExists(repoDir, branchName string) (bool, error) {
 	if local {
 		return true, nil
 	}
-	
+
 	return RemoteBranchExists(repoDir, branchName)
 }
 
 func LocalBranchExists(repoDir, branchName string) (bool, error) {
 	cmd := exec.Command("git", "branch", "--list", branchName)
 	cmd.Dir = repoDir
-	
+
 	output, err := cmd.Output()
 	if err != nil {
 		return false, err
 	}
-	
+
 	return strings.TrimSpace(string(output)) != "", nil
 }
 
@@ -167,12 +167,12 @@ func RemoteBranchExists(repoDir, branchName string) (bool, error) {
 	// Get all remote branches and check for exact matches
 	cmd := exec.Command("git", "branch", "-r")
 	cmd.Dir = repoDir
-	
+
 	output, err := cmd.Output()
 	if err != nil {
 		return false, err
 	}
-	
+
 	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
@@ -185,19 +185,19 @@ func RemoteBranchExists(repoDir, branchName string) (bool, error) {
 			return true, nil
 		}
 	}
-	
+
 	return false, nil
 }
 
 func HasUncommittedChanges(repoDir string) (bool, error) {
 	cmd := exec.Command("git", "status", "--porcelain")
 	cmd.Dir = repoDir
-	
+
 	output, err := cmd.Output()
 	if err != nil {
 		return false, err
 	}
-	
+
 	return strings.TrimSpace(string(output)) != "", nil
 }
 
@@ -228,30 +228,30 @@ func DeleteBranch(repoDir, branchName string) error {
 func GetWorktreeBranch(worktreeDir string) (string, error) {
 	cmd := exec.Command("git", "symbolic-ref", "HEAD")
 	cmd.Dir = worktreeDir
-	
+
 	output, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("failed to get branch name from worktree: %w", err)
 	}
-	
+
 	branchRef := strings.TrimSpace(string(output))
 	// Remove "refs/heads/" prefix to get just the branch name
 	if strings.HasPrefix(branchRef, "refs/heads/") {
 		return strings.TrimPrefix(branchRef, "refs/heads/"), nil
 	}
-	
+
 	return branchRef, nil
 }
 
 func GetCurrentBranch(repoDir string) (string, error) {
 	cmd := exec.Command("git", "symbolic-ref", "--short", "HEAD")
 	cmd.Dir = repoDir
-	
+
 	output, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("failed to get current branch: %w", err)
 	}
-	
+
 	return strings.TrimSpace(string(output)), nil
 }
 
@@ -282,18 +282,18 @@ func Pull(repoDir string) error {
 	cmd := exec.Command("git", "pull")
 	cmd.Dir = repoDir
 	message := "pulling changes"
-	
+
 	if err := ui.RunCommandWithProgress(cmd, message); err != nil {
 		return fmt.Errorf("failed to pull: %w", err)
 	}
-	
+
 	return nil
 }
 
 func HasRemoteTrackingBranch(repoDir string) (bool, error) {
 	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
 	cmd.Dir = repoDir
-	
+
 	_, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 128 {
@@ -301,7 +301,7 @@ func HasRemoteTrackingBranch(repoDir string) (bool, error) {
 		}
 		return false, fmt.Errorf("failed to check remote tracking branch: %w", err)
 	}
-	
+
 	return true, nil
 }
 
@@ -335,13 +335,25 @@ func FetchBranch(repoDir, branchName string) error {
 	return nil
 }
 
+func FetchPrune(repoDir string) error {
+	cmd := exec.Command("git", "fetch", "--prune")
+	cmd.Dir = repoDir
+	message := "pruning stale remote tracking branches"
+
+	if err := ui.RunCommandWithProgress(cmd, message); err != nil {
+		return fmt.Errorf("failed to prune remote tracking branches: %w", err)
+	}
+
+	return nil
+}
+
 func StashChanges(repoDir string) (bool, error) {
 	// First check if there are changes to stash
 	hasChanges, err := HasUncommittedChanges(repoDir)
 	if err != nil {
 		return false, err
 	}
-	
+
 	if !hasChanges {
 		return false, nil
 	}
