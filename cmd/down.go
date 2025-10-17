@@ -101,7 +101,7 @@ func runDown(featureName string) error {
 
 		if git.IsGitRepo(repoDir) {
 			var branchName string
-			
+
 			// Try to detect the actual branch name from the worktree
 			if _, err := os.Stat(worktreeDir); err == nil {
 				if detectedBranch, err := git.GetWorktreeBranch(worktreeDir); err == nil {
@@ -112,7 +112,7 @@ func runDown(featureName string) error {
 					branchName = configPrefix + featureName
 					progress.Info(fmt.Sprintf("%s: could not detect branch, using fallback %s", name, branchName))
 				}
-				
+
 				// Remove worktree
 				progress.Info(fmt.Sprintf("%s: removing worktree", name))
 				if err := git.RemoveWorktree(repoDir, worktreeDir); err != nil {
@@ -128,6 +128,11 @@ func runDown(featureName string) error {
 			progress.Info(fmt.Sprintf("%s: deleting branch %s", name, branchName))
 			if err := git.DeleteBranch(repoDir, branchName); err != nil {
 				progress.Warning(fmt.Sprintf("Failed to delete branch for %s: %v", name, err))
+			}
+
+			// Prune stale remote tracking branches
+			if err := git.FetchPrune(repoDir); err != nil {
+				progress.Warning(fmt.Sprintf("Failed to prune remote tracking branches for %s: %v", name, err))
 			}
 		}
 	}
@@ -181,17 +186,17 @@ func checkForUncommittedChanges(cfg *config.Config, treesDir string) (bool, erro
 func confirmDeletion(featureName string) bool {
 	fmt.Printf("\nThere are uncommitted changes in one or more repositories.\n")
 	fmt.Printf("Are you sure you want to delete feature '%s'? This will permanently lose uncommitted changes. (y/N): ", featureName)
-	
+
 	reader := bufio.NewReader(os.Stdin)
 	input, _ := reader.ReadString('\n')
 	input = strings.TrimSpace(strings.ToLower(input))
-	
+
 	return input == "y" || input == "yes"
 }
 
 func runCleanupScript(projectDir, treesDir, cleanupScript string) error {
 	scriptPath := filepath.Join(projectDir, ".ramp", cleanupScript)
-	
+
 	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
 		return fmt.Errorf("cleanup script not found: %s", scriptPath)
 	}
@@ -203,7 +208,7 @@ func runCleanupScript(projectDir, treesDir, cleanupScript string) error {
 	cmd.Dir = treesDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	
+
 	// Set up environment variables that the cleanup script expects
 	cmd.Env = append(os.Environ(), fmt.Sprintf("RAMP_PROJECT_DIR=%s", projectDir))
 	cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_TREES_DIR=%s", treesDir))
@@ -223,7 +228,7 @@ func runCleanupScript(projectDir, treesDir, cleanupScript string) error {
 	if port, exists := portAllocations.GetPort(featureName); exists {
 		cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_PORT=%d", port))
 	}
-	
+
 	repos := cfg.GetRepos()
 	for name, repo := range repos {
 		envVarName := config.GenerateEnvVarName(name)
@@ -236,7 +241,7 @@ func runCleanupScript(projectDir, treesDir, cleanupScript string) error {
 
 func runCleanupScriptWithProgress(projectDir, treesDir, cleanupScript string, progress *ui.ProgressUI) error {
 	scriptPath := filepath.Join(projectDir, ".ramp", cleanupScript)
-	
+
 	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
 		return fmt.Errorf("cleanup script not found: %s", scriptPath)
 	}
@@ -246,7 +251,7 @@ func runCleanupScriptWithProgress(projectDir, treesDir, cleanupScript string, pr
 
 	cmd := exec.Command("/bin/bash", scriptPath)
 	cmd.Dir = treesDir
-	
+
 	// Set up environment variables that the cleanup script expects
 	cmd.Env = append(os.Environ(), fmt.Sprintf("RAMP_PROJECT_DIR=%s", projectDir))
 	cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_TREES_DIR=%s", treesDir))
@@ -266,7 +271,7 @@ func runCleanupScriptWithProgress(projectDir, treesDir, cleanupScript string, pr
 	if port, exists := portAllocations.GetPort(featureName); exists {
 		cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_PORT=%d", port))
 	}
-	
+
 	repos := cfg.GetRepos()
 	for name, repo := range repos {
 		envVarName := config.GenerateEnvVarName(name)
