@@ -81,10 +81,28 @@ Ramp is a sophisticated CLI tool for managing multi-repository development workf
   - Detects actual branch name from worktree (handles prefix variations)
   - Removes git worktree using `git worktree remove --force`
   - Deletes local branch using `git branch -D`
+  - Runs `git fetch --prune` to clean up stale remote tracking branches
 - Releases allocated port number and updates port allocations file
 - Removes entire `trees/<feature-name>/` directory structure
 - Provides detailed progress feedback with warnings for any failures
 
+#### `ramp prune`
+**Purpose**: Automatically clean up all merged feature branches in one command.
+**How it works**:
+- Scans all features in `trees/` directory and categorizes them using git merge-base
+- Identifies features that have been merged into their default branch (excludes "CLEAN" features that never had commits)
+- Displays summary of all merged features that will be removed
+- Asks for single confirmation: "Remove all N merged features? (y/N)"
+- If confirmed, iterates through each merged feature and performs cleanup:
+  - Runs optional cleanup script (if configured)
+  - Removes git worktrees using `git worktree remove --force`
+  - Deletes local branches using `git branch -D`
+  - Runs `git fetch --prune` to clean up stale remote tracking branches
+  - Releases allocated port numbers
+  - Removes feature directories from `trees/`
+- Continues with remaining features if individual cleanups fail (non-blocking errors)
+- Displays final summary showing success count and any failures
+- Useful for batch cleanup after merging multiple feature branches
 
 #### `ramp refresh`
 **Purpose**: Update all source repositories by pulling changes from their remotes.
@@ -122,6 +140,7 @@ Ramp is a sophisticated CLI tool for managing multi-repository development workf
 #### `ramp status`
 **Purpose**: Display comprehensive project and repository status information, including all active feature worktrees.
 **How it works**:
+- Automatically fetches remote information from all repositories in parallel before displaying status
 - Shows project name from configuration
 - For each configured source repository:
   - Displays repository name and absolute path
@@ -150,6 +169,7 @@ The application uses the Cobra CLI framework with commands organized in `cmd/`:
 - `cmd/init.go` - Repository initialization logic with auto-initialization support
 - `cmd/up.go` - Feature branch and worktree creation with smart branch handling
 - `cmd/down.go` - Feature cleanup with safety checks and confirmation prompts
+- `cmd/prune.go` - Batch cleanup of merged features with single confirmation prompt
 - `cmd/refresh.go` - Source repository synchronization
 - `cmd/rebase.go` - Repository branch switching with atomic operations and rollback
 - `cmd/run.go` - Custom command execution with environment context
@@ -197,7 +217,8 @@ The application uses the Cobra CLI framework with commands organized in `cmd/`:
 - `HasUncommittedChanges()` - Safety check using `git status --porcelain`
 - `GetWorktreeBranch()` - Extracts actual branch name from worktree
 - `GetCurrentBranch(repoDir)` - Gets current branch name in a repository
-- `FetchAll()` / `Pull()` - Repository synchronization operations
+- `FetchAll()` / `FetchAllQuiet()` / `Pull()` - Repository synchronization operations
+- `FetchPrune(repoDir)` - Prunes stale remote tracking branches using `git fetch --prune`
 - `HasRemoteTrackingBranch()` - Detects if current branch tracks a remote
 - `Checkout(repoDir, branchName)` - Switches to existing local branch
 - `CheckoutRemoteBranch(repoDir, branchName)` - Creates and switches to remote tracking branch

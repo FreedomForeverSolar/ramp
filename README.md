@@ -23,7 +23,7 @@ A sophisticated CLI tool for managing multi-repository development workflows usi
 - 🔄 **Git worktrees**: Work on multiple features simultaneously without branch switching
 - 🎯 **Port management**: Automatic port allocation (one per feature) prevents conflicts
 - 📦 **Environment automation**: Custom scripts handle dependencies, databases, and service startup
-- 🧹 **Automatic cleanup**: `ramp down` removes all traces of feature branches and environments
+- 🧹 **Automatic cleanup**: `ramp down` removes individual features, `ramp prune` batch-removes all merged features
 - 💾 **State persistence**: Projects remember configuration and active features across sessions
 
 ## Installation
@@ -107,7 +107,8 @@ ramp install                # Clone demo repositories (config already exists)
 ramp up my-feature          # Create feature branch across all repos
 ramp run dev                # Start simulated development environment
 ramp status                 # View project status
-ramp down my-feature        # Clean up everything
+ramp down my-feature        # Clean up single feature
+ramp prune                  # Or batch-remove all merged features
 ```
 
 See [demo/demo-microservices-app/README.md](demo/demo-microservices-app/README.md) for detailed walkthrough.
@@ -144,7 +145,9 @@ See [demo/demo-microservices-app/README.md](demo/demo-microservices-app/README.m
    ```bash
    ramp up new-feature     # Create feature branches
    ramp run dev            # Run custom development command (if configured)
-   ramp down new-feature   # Clean up when done
+   ramp status             # View all active features and their merge status
+   ramp down new-feature   # Clean up individual feature when done
+   ramp prune              # Or batch-remove all merged features
    ```
 
 ## Commands Reference
@@ -196,6 +199,30 @@ Clean up feature branch, worktrees, and allocated resources.
 ramp down user-auth-feature  # Prompts for confirmation if uncommitted changes
 ramp down -v my-feature      # Verbose output showing cleanup steps
 ```
+
+**Flags:**
+- `-v, --verbose`: Show detailed command output instead of progress spinners
+
+#### `ramp prune`
+Automatically clean up all merged feature branches in one command.
+```bash
+ramp prune        # Shows summary, asks for confirmation, then removes all merged features
+ramp prune -v     # Verbose output showing detailed cleanup operations
+```
+
+Scans all features in the `trees/` directory, identifies features that have been merged into their default branch (using `git merge-base`), and removes them after confirmation. Features categorized as "CLEAN" (never had any commits) are excluded from pruning.
+
+**What gets removed:**
+- Git worktrees for each repository
+- Local feature branches
+- Allocated port numbers
+- Feature directories in `trees/`
+
+**Behavior:**
+- Shows summary of all merged features before proceeding
+- Asks for single confirmation to remove all
+- Continues with remaining features if one fails (non-blocking errors)
+- Displays final summary with success count and any failures
 
 **Flags:**
 - `-v, --verbose`: Show detailed command output instead of progress spinners
@@ -403,6 +430,14 @@ Run with verbose flag to see detailed output:
 ```bash
 ramp -v up my-feature
 ramp -v status
+```
+
+### Batch Cleanup
+
+To clean up multiple merged features at once:
+```bash
+ramp prune        # Removes all merged features after confirmation
+ramp status       # Verify cleanup completed successfully
 ```
 
 ### Manual Cleanup
