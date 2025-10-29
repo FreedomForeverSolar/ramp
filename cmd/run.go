@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -32,9 +33,9 @@ Example:
 		commandName := args[0]
 		var featureName string
 		if len(args) > 1 {
-			featureName = args[1]
+			featureName = strings.TrimRight(args[1], "/")
 		}
-		
+
 		if err := runCustomCommand(commandName, featureName); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
