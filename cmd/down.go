@@ -26,7 +26,7 @@ var downCmd = &cobra.Command{
 4. Prompting for confirmation if there are uncommitted changes`,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		featureName := args[0]
+		featureName := strings.TrimRight(args[0], "/")
 		if err := runDown(featureName); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)

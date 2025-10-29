@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -48,7 +49,7 @@ rolled back to ensure no partial feature state remains.
 After creating worktrees, runs any setup script specified in the configuration.`,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		featureName := args[0]
+		featureName := strings.TrimRight(args[0], "/")
 		if err := runUp(featureName, prefixFlag, targetFlag); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
