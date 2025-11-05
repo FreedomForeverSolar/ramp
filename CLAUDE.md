@@ -65,12 +65,14 @@ Ramp is a sophisticated CLI tool for managing multi-repository development workf
 - Allocates a unique port number for the feature (stored in `.ramp/port_allocations.json`)
 - Runs optional setup script with environment variables:
   - `RAMP_PROJECT_DIR`: absolute path to project root
-  - `RAMP_TREES_DIR`: absolute path to feature's trees directory  
+  - `RAMP_TREES_DIR`: absolute path to feature's trees directory
   - `RAMP_WORKTREE_NAME`: the feature name
   - `RAMP_PORT`: allocated port number for this feature
   - `RAMP_REPO_PATH_<REPO>`: path variables for each repository
 - Supports `--prefix` flag to override branch naming prefix
 - Supports `--target` flag to create feature from existing feature name, local branch, or remote branch
+- Supports `--refresh` flag to force refresh all repositories before creating feature (overrides auto_refresh config)
+- Supports `--no-refresh` flag to skip refresh for all repositories (overrides auto_refresh config)
 
 #### `ramp down <feature-name>`
 **Purpose**: Clean up a feature branch by removing worktrees, branches, and allocated resources.
@@ -158,6 +160,12 @@ Ramp is a sophisticated CLI tool for managing multi-repository development workf
   - Handles cases where features exist but may have incomplete worktree setups
 - Provides comprehensive overview of entire project state and all active development branches
 
+#### `ramp version`
+**Purpose**: Display the current version of the ramp CLI tool.
+**How it works**:
+- Shows the version number of the installed ramp binary
+- Simple informational command with no side effects
+
 ### Global Flags
 - `-v, --verbose` - Shows detailed output during all operations, disabling progress spinners for full command visibility
 
@@ -174,6 +182,7 @@ The application uses the Cobra CLI framework with commands organized in `cmd/`:
 - `cmd/rebase.go` - Repository branch switching with atomic operations and rollback
 - `cmd/run.go` - Custom command execution with environment context
 - `cmd/status.go` - Project and repository status display with comprehensive information and feature worktree listing
+- `cmd/version.go` - Version display command
 
 ### Core Internal Packages
 

@@ -444,9 +444,25 @@ func validateRemoteBranch(repoDir, remoteBranch string) error {
 }
 
 func ResolveSourceBranch(repoDir, target, effectivePrefix string) (string, error) {
-	// If target contains a slash, treat it as a branch name (local or remote)
-	if strings.Contains(target, "/") {
+	// If target starts with a remote prefix, validate as remote branch
+	if strings.HasPrefix(target, "origin/") {
+		// Validate that the remote branch actually exists
+		if err := validateRemoteBranch(repoDir, target); err != nil {
+			return "", err
+		}
 		return target, nil
+	}
+
+	// If target contains a slash (but isn't remote), check if it's a local branch
+	if strings.Contains(target, "/") {
+		localExists, err := LocalBranchExists(repoDir, target)
+		if err != nil {
+			return "", fmt.Errorf("failed to check local branch: %w", err)
+		}
+		if localExists {
+			return target, nil
+		}
+		return "", fmt.Errorf("local branch '%s' not found", target)
 	}
 
 	// Check if target is a direct branch name (without prefix)
