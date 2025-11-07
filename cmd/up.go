@@ -26,6 +26,7 @@ type UpState struct {
 }
 
 var prefixFlag string
+var noPrefixFlag bool
 var targetFlag string
 var refreshFlag bool
 var noRefreshFlag bool
@@ -60,6 +61,7 @@ After creating worktrees, runs any setup script specified in the configuration.`
 func init() {
 	rootCmd.AddCommand(upCmd)
 	upCmd.Flags().StringVar(&prefixFlag, "prefix", "", "Override the branch prefix (defaults to config default_branch_prefix)")
+	upCmd.Flags().BoolVar(&noPrefixFlag, "no-prefix", false, "Disable branch prefix for this feature (mutually exclusive with --prefix)")
 	upCmd.Flags().StringVar(&targetFlag, "target", "", "Create feature from existing feature name, local branch, or remote branch")
 	upCmd.Flags().BoolVar(&refreshFlag, "refresh", false, "Force refresh all repositories before creating feature (overrides auto_refresh config)")
 	upCmd.Flags().BoolVar(&noRefreshFlag, "no-refresh", false, "Skip refresh for all repositories (overrides auto_refresh config)")
@@ -84,6 +86,11 @@ func runUp(featureName, prefix, target string) error {
 	// Validate that --refresh and --no-refresh are not both specified
 	if refreshFlag && noRefreshFlag {
 		return fmt.Errorf("cannot specify both --refresh and --no-refresh flags")
+	}
+
+	// Validate that --prefix and --no-prefix are not both specified
+	if prefixFlag != "" && noPrefixFlag {
+		return fmt.Errorf("cannot specify both --prefix and --no-prefix flags")
 	}
 
 	// Auto-install if needed
@@ -142,9 +149,17 @@ func runUp(featureName, prefix, target string) error {
 	progress.Start(fmt.Sprintf("Creating feature '%s' for project '%s'", featureName, cfg.Name))
 	progress.Success(fmt.Sprintf("Creating feature '%s' for project '%s'", featureName, cfg.Name))
 
-	// Determine effective prefix - flag takes precedence, then config, then empty
-	effectivePrefix := prefix
-	if effectivePrefix == "" {
+	// Determine effective prefix
+	// Priority: --no-prefix flag (empty) > --prefix flag (custom) > config default
+	var effectivePrefix string
+	if noPrefixFlag {
+		// Explicitly no prefix
+		effectivePrefix = ""
+	} else if prefix != "" {
+		// Custom prefix from flag
+		effectivePrefix = prefix
+	} else {
+		// Default from config
 		effectivePrefix = cfg.GetBranchPrefix()
 	}
 
