@@ -48,7 +48,7 @@ Ramp is a sophisticated CLI tool for managing multi-repository development workf
 - Provides detailed progress feedback with success/error states
 - Used automatically by other commands via `AutoInstallIfNeeded()` function
 
-#### `ramp up <feature-name>`
+#### `ramp up [feature-name]`
 **Purpose**: Create a new feature branch with git worktrees for all configured repositories.
 **How it works**:
 - Auto-installs the project if repositories aren't cloned yet (calls `ramp install` internally)
@@ -70,7 +70,13 @@ Ramp is a sophisticated CLI tool for managing multi-repository development workf
   - `RAMP_PORT`: allocated port number for this feature
   - `RAMP_REPO_PATH_<REPO>`: path variables for each repository
 - Supports `--prefix` flag to override branch naming prefix
+- Supports `--no-prefix` flag to disable branch prefix entirely (mutually exclusive with --prefix)
 - Supports `--target` flag to create feature from existing feature name, local branch, or remote branch
+- Supports `--from` flag to create from remote branch with automatic naming (mutually exclusive with --target, --prefix, --no-prefix):
+  - `ramp up --from claude/feature-123` creates `trees/feature-123/` with branch `claude/feature-123` tracking `origin/claude/feature-123`
+  - `ramp up my-name --from claude/feature-123` creates `trees/my-name/` with branch `claude/feature-123` tracking `origin/claude/feature-123`
+  - Automatically derives prefix from path before last "/" and feature name from last segment
+  - Always prepends `origin/` to remote branch reference
 - Supports `--refresh` flag to force refresh all repositories before creating feature (overrides auto_refresh config)
 - Supports `--no-refresh` flag to skip refresh for all repositories (overrides auto_refresh config)
 
