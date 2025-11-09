@@ -291,16 +291,8 @@ func runCleanupScriptWithProgress(projectDir, treesDir, cleanupScript string, pr
 	// Extract feature name from treesDir path
 	featureName := filepath.Base(treesDir)
 
-	// Stop spinner before running script to avoid output conflicts
-	progress.Stop()
-	fmt.Printf("Running cleanup script: %s\n", cleanupScript)
-
 	cmd := exec.Command("/bin/bash", scriptPath)
 	cmd.Dir = treesDir
-
-	// Stream output directly to terminal for real-time feedback
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
 
 	// Set up environment variables that the cleanup script expects
 	cmd.Env = append(os.Environ(), fmt.Sprintf("RAMP_PROJECT_DIR=%s", projectDir))
@@ -329,11 +321,6 @@ func runCleanupScriptWithProgress(projectDir, treesDir, cleanupScript string, pr
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", envVarName, repoPath))
 	}
 
-	if err := cmd.Run(); err != nil {
-		return err
-	}
-
-	// Restart spinner after script completes
-	progress.Start("Cleaning up worktrees and branches")
-	return nil
+	message := fmt.Sprintf("Running cleanup script: %s", cleanupScript)
+	return ui.RunCommandWithProgressQuiet(cmd, message)
 }

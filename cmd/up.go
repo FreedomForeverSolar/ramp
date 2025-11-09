@@ -523,16 +523,8 @@ func runSetupScriptWithProgress(projectDir, treesDir, setupScript string, progre
 	// Extract feature name from treesDir path
 	featureName := filepath.Base(treesDir)
 
-	// Stop spinner before running script to avoid output conflicts
-	progress.Stop()
-	fmt.Printf("Running setup script: %s\n", setupScript)
-
 	cmd := exec.Command("/bin/bash", scriptPath)
 	cmd.Dir = treesDir
-
-	// Stream output directly to terminal for real-time feedback
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
 
 	// Set up environment variables that the setup script expects
 	cmd.Env = append(os.Environ(), fmt.Sprintf("RAMP_PROJECT_DIR=%s", projectDir))
@@ -563,5 +555,6 @@ func runSetupScriptWithProgress(projectDir, treesDir, setupScript string, progre
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", envVarName, repoPath))
 	}
 
-	return cmd.Run()
+	message := fmt.Sprintf("Running setup script: %s", setupScript)
+	return ui.RunCommandWithProgressQuiet(cmd, message)
 }
