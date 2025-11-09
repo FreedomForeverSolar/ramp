@@ -100,17 +100,23 @@ func runPrune() error {
 
 	fmt.Println()
 
+	// Create a single progress spinner for all cleanup operations
+	cleanupProgress := ui.NewProgress()
+	cleanupProgress.Start("Cleaning up merged features")
+
 	// Clean up each merged feature
 	successCount := 0
 	failedFeatures := []string{}
 
 	for _, feature := range mergedFeatures {
-		if err := cleanupFeature(projectDir, cfg, feature.name); err != nil {
+		if err := cleanupFeatureWithProgress(projectDir, cfg, feature.name, cleanupProgress); err != nil {
 			failedFeatures = append(failedFeatures, fmt.Sprintf("%s: %v", feature.name, err))
 		} else {
 			successCount++
 		}
 	}
+
+	cleanupProgress.Success("Cleanup completed")
 
 	// Display final summary
 	fmt.Println()
@@ -214,6 +220,18 @@ func confirmPrune(count int) bool {
 func cleanupFeature(projectDir string, cfg *config.Config, featureName string) error {
 	progress := ui.NewProgress()
 	progress.Start(fmt.Sprintf("Cleaning up %s", featureName))
+	err := cleanupFeatureWithProgress(projectDir, cfg, featureName, progress)
+	if err != nil {
+		progress.Error(fmt.Sprintf("Cleaning up %s", featureName))
+	} else {
+		progress.Success(fmt.Sprintf("Cleaned up %s", featureName))
+	}
+	return err
+}
+
+func cleanupFeatureWithProgress(projectDir string, cfg *config.Config, featureName string, progress *ui.ProgressUI) error {
+	// Use Update() instead of Start() since the spinner is already running from the caller
+	progress.Update(fmt.Sprintf("Cleaning up %s", featureName))
 
 	// Get config prefix for fallback when branch detection fails
 	configPrefix := cfg.GetBranchPrefix()
@@ -221,16 +239,45 @@ func cleanupFeature(projectDir string, cfg *config.Config, featureName string) e
 	treesDir := filepath.Join(projectDir, "trees", featureName)
 
 	// Check if trees directory exists
+	treesDirExists := true
 	if _, err := os.Stat(treesDir); os.IsNotExist(err) {
-		progress.Error(fmt.Sprintf("Cleaning up %s", featureName))
-		return fmt.Errorf("trees directory does not exist")
+		treesDirExists = false
+
+		// Check if any worktrees or branches exist for this feature
+		// This distinguishes between orphaned worktrees and non-existent features
+		repos := cfg.GetRepos()
+		featureExists := false
+		for name, repo := range repos {
+			repoDir := repo.GetRepoPath(projectDir)
+			worktreeDir := filepath.Join(treesDir, name)
+
+			if git.IsGitRepo(repoDir) {
+				// Check if worktree is registered or branch exists
+				if git.WorktreeRegistered(repoDir, worktreeDir) {
+					featureExists = true
+					break
+				}
+
+				// Check if branch exists
+				branchName := configPrefix + featureName
+				if exists, _ := git.LocalBranchExists(repoDir, branchName); exists {
+					featureExists = true
+					break
+				}
+			}
+		}
+
+		if !featureExists {
+			// Don't call Error() - let caller handle it
+			return fmt.Errorf("trees directory does not exist")
+		}
 	}
 
 	// Note: We don't check for uncommitted changes here because merged features
 	// shouldn't have meaningful uncommitted changes, and we already confirmed the prune
 
-	// Run cleanup script if configured
-	if cfg.Cleanup != "" {
+	// Run cleanup script if configured and directory exists
+	if cfg.Cleanup != "" && treesDirExists {
 		if err := runCleanupScriptQuiet(projectDir, treesDir, cfg.Cleanup); err != nil {
 			progress.Warning(fmt.Sprintf("%s: cleanup script failed", featureName))
 			// Continue anyway
@@ -254,15 +301,18 @@ func cleanupFeature(projectDir string, cfg *config.Config, featureName string) e
 					// Fallback to constructed branch name
 					branchName = configPrefix + featureName
 				}
-
-				// Remove worktree
-				if err := git.RemoveWorktree(repoDir, worktreeDir); err != nil {
-					progress.Warning(fmt.Sprintf("%s/%s: failed to remove worktree", featureName, name))
-					// Continue anyway
-				}
 			} else {
-				// No worktree exists, use fallback branch name
+				// No worktree directory exists, use fallback branch name
 				branchName = configPrefix + featureName
+			}
+
+			// Always try to remove worktree (even if directory is missing)
+			// git worktree remove --force works for orphaned worktrees
+			if err := git.RemoveWorktree(repoDir, worktreeDir); err != nil {
+				progress.Warning(fmt.Sprintf("%s/%s: failed to remove worktree", featureName, name))
+				// If worktree removal failed, prune orphaned worktrees before deleting branch
+				// This handles cases where the worktree directory was manually deleted
+				_ = git.PruneWorktrees(repoDir)
 			}
 
 			// Delete branch
@@ -271,8 +321,8 @@ func cleanupFeature(projectDir string, cfg *config.Config, featureName string) e
 				// Continue anyway
 			}
 
-			// Prune stale remote tracking branches
-			if err := git.FetchPrune(repoDir); err != nil {
+			// Prune stale remote tracking branches (use quiet version to avoid creating another spinner)
+			if err := git.FetchPruneQuiet(repoDir); err != nil {
 				// Ignore prune errors - not critical
 			}
 		}
@@ -284,13 +334,17 @@ func cleanupFeature(projectDir string, cfg *config.Config, featureName string) e
 		_ = portAllocations.ReleasePort(featureName)
 	}
 
-	// Remove trees directory
-	if err := os.RemoveAll(treesDir); err != nil {
-		progress.Error(fmt.Sprintf("Cleaning up %s", featureName))
-		return fmt.Errorf("failed to remove trees directory: %w", err)
+	// Remove trees directory if it exists
+	if treesDirExists {
+		if err := os.RemoveAll(treesDir); err != nil {
+			// Don't call Error() here - let the caller handle it
+			// This allows batch operations to continue without stopping the spinner
+			return fmt.Errorf("failed to remove trees directory: %w", err)
+		}
 	}
 
-	progress.Success(fmt.Sprintf("Cleaned up %s", featureName))
+	// Don't call Success() here - let the caller handle it
+	// This allows batch operations to keep the spinner running for multiple features
 	return nil
 }
 

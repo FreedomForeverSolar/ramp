@@ -130,6 +130,11 @@ func runUp(featureName, prefix, target string) error {
 		return err
 	}
 
+	// Validate that feature name doesn't contain slashes
+	if strings.Contains(featureName, "/") {
+		return fmt.Errorf("feature name cannot contain slashes - use --prefix flag to create nested branch names (e.g., 'ramp up my-feature --prefix epic/' creates branch 'epic/my-feature')")
+	}
+
 	// Validate that --refresh and --no-refresh are not both specified
 	if refreshFlag && noRefreshFlag {
 		return fmt.Errorf("cannot specify both --refresh and --no-refresh flags")
@@ -179,8 +184,10 @@ func runUp(featureName, prefix, target string) error {
 		}
 	}
 
+	// Create a single progress instance for the entire operation
+	progress := ui.NewProgress()
+
 	if shouldRefreshRepos {
-		progress := ui.NewProgress()
 		progress.Start("Auto-refreshing repositories before creating feature")
 
 		for name, repo := range repos {
@@ -203,11 +210,13 @@ func runUp(featureName, prefix, target string) error {
 		}
 
 		progress.Success("Auto-refresh completed")
-	}
 
-	progress := ui.NewProgress()
-	progress.Start(fmt.Sprintf("Creating feature '%s' for project '%s'", featureName, cfg.Name))
-	progress.Success(fmt.Sprintf("Creating feature '%s' for project '%s'", featureName, cfg.Name))
+		// Restart progress for the main feature creation
+		progress.Start(fmt.Sprintf("Creating feature '%s' for project '%s'", featureName, cfg.Name))
+	} else {
+		// No refresh needed, start progress for feature creation
+		progress.Start(fmt.Sprintf("Creating feature '%s' for project '%s'", featureName, cfg.Name))
+	}
 
 	// Determine effective prefix
 	// Priority: --no-prefix flag (empty) > --prefix flag (custom) > config default
@@ -576,7 +585,7 @@ func runSetupScriptWithProgress(projectDir, treesDir, setupScript string, progre
 
 	cmd := exec.Command("/bin/bash", scriptPath)
 	cmd.Dir = treesDir
-	
+
 	// Set up environment variables that the setup script expects
 	cmd.Env = append(os.Environ(), fmt.Sprintf("RAMP_PROJECT_DIR=%s", projectDir))
 	cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_TREES_DIR=%s", treesDir))
@@ -598,7 +607,7 @@ func runSetupScriptWithProgress(projectDir, treesDir, setupScript string, progre
 			cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_PORT=%d", port))
 		}
 	}
-	
+
 	repos := cfg.GetRepos()
 	for name, repo := range repos {
 		envVarName := config.GenerateEnvVarName(name)
@@ -607,5 +616,5 @@ func runSetupScriptWithProgress(projectDir, treesDir, setupScript string, progre
 	}
 
 	message := fmt.Sprintf("Running setup script: %s", setupScript)
-	return ui.RunCommandWithProgress(cmd, message)
+	return ui.RunCommandWithProgressQuiet(cmd, message)
 }
