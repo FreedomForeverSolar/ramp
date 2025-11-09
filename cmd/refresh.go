@@ -58,7 +58,6 @@ func runRefresh() error {
 
 	progress := ui.NewProgress()
 	progress.Start(fmt.Sprintf("Refreshing repositories for project '%s'", cfg.Name))
-	progress.Success(fmt.Sprintf("Refreshing repositories for project '%s'", cfg.Name))
 
 	repos := cfg.GetRepos()
 	for name, repo := range repos {
