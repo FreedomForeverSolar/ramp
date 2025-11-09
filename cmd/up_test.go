@@ -1,10 +1,13 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"ramp/internal/config"
 )
 
 // TestUpBasic tests creating a basic feature
@@ -403,5 +406,121 @@ func TestUpWithNestedBranchViaPrefix(t *testing.T) {
 	repo1 := tp.Repos["repo1"]
 	if !repo1.BranchExists(t, "epic/sub-feature") {
 		t.Error("branch 'epic/sub-feature' should exist via prefix")
+	}
+}
+
+func TestUpWithSetupScript(t *testing.T) {
+	tp := NewTestProject(t)
+	_ = tp.InitRepo("repo1")
+
+	cleanup := tp.ChangeToProjectDir()
+	defer cleanup()
+
+	// Create a setup script that writes to a marker file
+	scriptPath := filepath.Join(tp.Dir, ".ramp", "scripts", "setup.sh")
+	os.MkdirAll(filepath.Dir(scriptPath), 0755)
+	scriptContent := `#!/bin/bash
+echo "setup executed" > "$RAMP_TREES_DIR/setup-marker.txt"
+echo "project_dir=$RAMP_PROJECT_DIR" >> "$RAMP_TREES_DIR/setup-marker.txt"
+echo "worktree_name=$RAMP_WORKTREE_NAME" >> "$RAMP_TREES_DIR/setup-marker.txt"
+`
+	os.WriteFile(scriptPath, []byte(scriptContent), 0755)
+
+	// Update config to include setup script
+	cfg, _ := config.LoadConfig(tp.Dir)
+	cfg.Setup = "scripts/setup.sh"
+	config.SaveConfig(cfg, tp.Dir)
+
+	err := runUp("test-feature", "", "")
+	if err != nil {
+		t.Fatalf("runUp() error = %v", err)
+	}
+
+	// Verify setup script was executed
+	markerFile := filepath.Join(tp.Dir, "trees", "test-feature", "setup-marker.txt")
+	if _, err := os.Stat(markerFile); os.IsNotExist(err) {
+		t.Fatal("setup script was not executed - marker file not found")
+	}
+
+	// Verify environment variables were set correctly
+	content, _ := os.ReadFile(markerFile)
+	contentStr := string(content)
+
+	if !strings.Contains(contentStr, "setup executed") {
+		t.Error("setup script did not write expected content")
+	}
+	if !strings.Contains(contentStr, "worktree_name=test-feature") {
+		t.Error("RAMP_WORKTREE_NAME environment variable not set correctly")
+	}
+	if !strings.Contains(contentStr, fmt.Sprintf("project_dir=%s", tp.Dir)) {
+		t.Error("RAMP_PROJECT_DIR environment variable not set correctly")
+	}
+}
+
+func TestUpSetupScriptFailure(t *testing.T) {
+	tp := NewTestProject(t)
+	_ = tp.InitRepo("repo1")
+
+	cleanup := tp.ChangeToProjectDir()
+	defer cleanup()
+
+	// Create a setup script that fails
+	scriptPath := filepath.Join(tp.Dir, ".ramp", "scripts", "setup.sh")
+	os.MkdirAll(filepath.Dir(scriptPath), 0755)
+	scriptContent := `#!/bin/bash
+exit 1
+`
+	os.WriteFile(scriptPath, []byte(scriptContent), 0755)
+
+	// Update config to include setup script
+	cfg, _ := config.LoadConfig(tp.Dir)
+	cfg.Setup = "scripts/setup.sh"
+	config.SaveConfig(cfg, tp.Dir)
+
+	err := runUp("test-feature", "", "")
+	if err == nil {
+		t.Error("runUp() should fail when setup script fails")
+	}
+
+	// Verify error message mentions setup script
+	if !strings.Contains(err.Error(), "setup script") {
+		t.Errorf("error should mention setup script, got: %v", err)
+	}
+}
+
+func TestUpSetupScriptWithPort(t *testing.T) {
+	tp := NewTestProject(t)
+	_ = tp.InitRepo("repo1")
+
+	cleanup := tp.ChangeToProjectDir()
+	defer cleanup()
+
+	// Create a setup script that captures the port
+	scriptPath := filepath.Join(tp.Dir, ".ramp", "scripts", "setup.sh")
+	os.MkdirAll(filepath.Dir(scriptPath), 0755)
+	scriptContent := `#!/bin/bash
+echo "port=$RAMP_PORT" > "$RAMP_TREES_DIR/port-marker.txt"
+`
+	os.WriteFile(scriptPath, []byte(scriptContent), 0755)
+
+	// Update config to include setup script and port allocation
+	cfg, _ := config.LoadConfig(tp.Dir)
+	cfg.Setup = "scripts/setup.sh"
+	cfg.BasePort = 3000
+	cfg.MaxPorts = 100
+	config.SaveConfig(cfg, tp.Dir)
+
+	err := runUp("test-feature", "", "")
+	if err != nil {
+		t.Fatalf("runUp() error = %v", err)
+	}
+
+	// Verify port environment variable was set
+	markerFile := filepath.Join(tp.Dir, "trees", "test-feature", "port-marker.txt")
+	content, _ := os.ReadFile(markerFile)
+	contentStr := string(content)
+
+	if !strings.Contains(contentStr, "port=3000") {
+		t.Errorf("RAMP_PORT not set correctly, got: %s", contentStr)
 	}
 }
