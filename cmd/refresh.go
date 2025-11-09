@@ -84,9 +84,9 @@ func RefreshRepository(repoDir, name string, progress *ui.ProgressUI) error {
 		return nil
 	}
 
-	// Fetch all remotes first
-	progress.Info(fmt.Sprintf("%s: fetching from remotes", name))
-	if err := git.FetchAll(repoDir); err != nil {
+	// Fetch all remotes first (use quiet version to avoid creating another spinner)
+	progress.Update(fmt.Sprintf("Refreshing %s: fetching from remotes", name))
+	if err := git.FetchAllQuiet(repoDir); err != nil {
 		progress.Warning(fmt.Sprintf("%s: fetch failed: %v", name, err))
 		return nil
 	}
@@ -99,8 +99,8 @@ func RefreshRepository(repoDir, name string, progress *ui.ProgressUI) error {
 	}
 
 	if hasRemote {
-		progress.Info(fmt.Sprintf("%s: pulling changes for branch %s", name, currentBranch))
-		if err := git.Pull(repoDir); err != nil {
+		progress.Update(fmt.Sprintf("Refreshing %s: pulling changes", name))
+		if err := git.PullQuiet(repoDir); err != nil {
 			progress.Warning(fmt.Sprintf("%s: pull failed: %v", name, err))
 			return nil
 		}
