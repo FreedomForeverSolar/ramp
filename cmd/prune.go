@@ -292,7 +292,9 @@ func cleanupFeature(projectDir string, cfg *config.Config, featureName string) e
 			// git worktree remove --force works for orphaned worktrees
 			if err := git.RemoveWorktree(repoDir, worktreeDir); err != nil {
 				progress.Warning(fmt.Sprintf("%s/%s: failed to remove worktree", featureName, name))
-				// Continue anyway
+				// If worktree removal failed, prune orphaned worktrees before deleting branch
+				// This handles cases where the worktree directory was manually deleted
+				_ = git.PruneWorktrees(repoDir)
 			}
 
 			// Delete branch

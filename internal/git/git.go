@@ -213,6 +213,17 @@ func RemoveWorktree(repoDir, worktreeDir string) error {
 	return nil
 }
 
+func PruneWorktrees(repoDir string) error {
+	cmd := exec.Command("git", "worktree", "prune")
+	cmd.Dir = repoDir
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to prune worktrees: %w", err)
+	}
+
+	return nil
+}
+
 func DeleteBranch(repoDir, branchName string) error {
 	cmd := exec.Command("git", "branch", "-D", branchName)
 	cmd.Dir = repoDir
