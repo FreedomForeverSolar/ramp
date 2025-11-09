@@ -111,22 +111,29 @@ func LoadConfig(projectDir string) (*Config, error) {
 
 func FindRampProject(startDir string) (string, error) {
 	dir := startDir
-	
+
 	for {
 		rampDir := filepath.Join(dir, ".ramp")
 		configFile := filepath.Join(rampDir, "ramp.yaml")
-		
+
 		if _, err := os.Stat(configFile); err == nil {
-			return dir, nil
+			// Resolve symlinks to ensure canonical path
+			// This is important on macOS where /var is a symlink to /private/var
+			canonicalDir, err := filepath.EvalSymlinks(dir)
+			if err != nil {
+				// If we can't resolve symlinks, return the original path
+				return dir, nil
+			}
+			return canonicalDir, nil
 		}
-		
+
 		parent := filepath.Dir(dir)
 		if parent == dir {
 			break
 		}
 		dir = parent
 	}
-	
+
 	return "", fmt.Errorf("no ramp project found (looking for .ramp/ramp.yaml)")
 }
 
