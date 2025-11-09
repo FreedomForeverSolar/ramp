@@ -369,6 +369,17 @@ func FetchPrune(repoDir string) error {
 	return nil
 }
 
+func FetchPruneQuiet(repoDir string) error {
+	cmd := exec.Command("git", "fetch", "--prune", "--quiet")
+	cmd.Dir = repoDir
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to prune remote tracking branches: %w", err)
+	}
+
+	return nil
+}
+
 func StashChanges(repoDir string) (bool, error) {
 	// First check if there are changes to stash
 	hasChanges, err := HasUncommittedChanges(repoDir)
