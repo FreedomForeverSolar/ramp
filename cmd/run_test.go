@@ -416,3 +416,69 @@ exit 0
 	// Note: The issue is that in non-verbose mode, the output is currently
 	// captured but not displayed to the user
 }
+
+// TestRunCommandOutputWithErrorExitCode tests that the workaround pattern
+// (tracking EXIT_CODE and exiting with error) still works correctly
+func TestRunCommandOutputWithErrorExitCode(t *testing.T) {
+	tp := NewTestProject(t)
+	tp.InitRepo("repo1")
+
+	// Create a doctor command that tracks EXIT_CODE like the user's workaround
+	scriptPath := filepath.Join(tp.RampDir, "scripts", "doctor-with-errors.sh")
+	scriptContent := `#!/bin/bash
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+# Exit code tracking (user's workaround pattern)
+EXIT_CODE=0
+
+# Check for bash (should pass)
+if command -v bash >/dev/null 2>&1; then
+    echo -e "${GREEN}✓ bash is installed${NC}"
+else
+    echo -e "${RED}✗ bash is not installed${NC}"
+    echo -e "  ${YELLOW}Run: apt-get install bash${NC}"
+    EXIT_CODE=1
+fi
+
+# Check for a tool that doesn't exist (should fail)
+if command -v fake-nonexistent-tool >/dev/null 2>&1; then
+    echo -e "${GREEN}✓ fake-nonexistent-tool is installed${NC}"
+else
+    echo -e "${RED}✗ fake-nonexistent-tool is not installed${NC}"
+    echo -e "  ${YELLOW}Run: brew install fake-nonexistent-tool${NC}"
+    EXIT_CODE=1
+fi
+
+echo "Doctor check complete (with failures)"
+
+exit $EXIT_CODE
+`
+	os.WriteFile(scriptPath, []byte(scriptContent), 0755)
+
+	tp.Config.Commands = []*config.Command{
+		{Name: "doctor-errors", Command: "scripts/doctor-with-errors.sh"},
+	}
+	if err := config.SaveConfig(tp.Config, tp.Dir); err != nil {
+		t.Fatalf("failed to save config: %v", err)
+	}
+
+	cleanup := tp.ChangeToProjectDir()
+	defer cleanup()
+
+	// Run the command - it should fail but show all output
+	err := runCustomCommand("doctor-errors", "")
+	if err == nil {
+		t.Fatal("runCustomCommand() should fail when script exits with non-zero")
+	}
+
+	// Verify the error message is what we expect
+	if !strings.Contains(err.Error(), "command 'doctor-errors' failed") {
+		t.Errorf("error should mention command failure, got %q", err.Error())
+	}
+
+	// The output should have been displayed (both success and error messages)
+	// This test ensures the workaround pattern still works as expected
+}
