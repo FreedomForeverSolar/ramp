@@ -65,29 +65,63 @@ func runDown(featureName string) error {
 	treesDir := filepath.Join(projectDir, "trees", featureName)
 
 	// Check if trees directory exists
+	treesDirExists := true
 	if _, err := os.Stat(treesDir); os.IsNotExist(err) {
-		return fmt.Errorf("feature '%s' not found (trees directory does not exist)", featureName)
+		treesDirExists = false
+
+		// Check if any worktrees or branches exist for this feature
+		// This distinguishes between orphaned worktrees and non-existent features
+		repos := cfg.GetRepos()
+		featureExists := false
+		for name, repo := range repos {
+			repoDir := repo.GetRepoPath(projectDir)
+			worktreeDir := filepath.Join(treesDir, name)
+
+			if git.IsGitRepo(repoDir) {
+				// Check if worktree is registered or branch exists
+				if git.WorktreeRegistered(repoDir, worktreeDir) {
+					featureExists = true
+					break
+				}
+
+				// Check if branch exists
+				branchName := configPrefix + featureName
+				if exists, _ := git.LocalBranchExists(repoDir, branchName); exists {
+					featureExists = true
+					break
+				}
+			}
+		}
+
+		if !featureExists {
+			return fmt.Errorf("feature '%s' not found (trees directory does not exist)", featureName)
+		}
+
+		progress := ui.NewProgress()
+		progress.Warning(fmt.Sprintf("Trees directory for feature '%s' not found - cleaning up orphaned worktrees", featureName))
 	}
 
 	progress := ui.NewProgress()
 	progress.Start(fmt.Sprintf("Cleaning up feature '%s' for project '%s'", featureName, cfg.Name))
 	progress.Success(fmt.Sprintf("Cleaning up feature '%s' for project '%s'", featureName, cfg.Name))
 
-	// Check for uncommitted changes first
-	hasUncommitted, err := checkForUncommittedChanges(cfg, treesDir)
-	if err != nil {
-		return fmt.Errorf("failed to check for uncommitted changes: %w", err)
-	}
+	// Check for uncommitted changes only if directory exists
+	if treesDirExists {
+		hasUncommitted, err := checkForUncommittedChanges(cfg, treesDir)
+		if err != nil {
+			return fmt.Errorf("failed to check for uncommitted changes: %w", err)
+		}
 
-	if hasUncommitted {
-		if !confirmDeletion(featureName) {
-			fmt.Println("Cleanup cancelled.")
-			return nil
+		if hasUncommitted {
+			if !confirmDeletion(featureName) {
+				fmt.Println("Cleanup cancelled.")
+				return nil
+			}
 		}
 	}
 
-	// Run cleanup script if configured
-	if cfg.Cleanup != "" {
+	// Run cleanup script if configured and directory exists
+	if cfg.Cleanup != "" && treesDirExists {
 		if err := runCleanupScriptWithProgress(projectDir, treesDir, cfg.Cleanup, progress); err != nil {
 			progress.Warning(fmt.Sprintf("Cleanup script failed: %v", err))
 		}
@@ -112,16 +146,17 @@ func runDown(featureName string) error {
 					branchName = configPrefix + featureName
 					progress.Info(fmt.Sprintf("%s: could not detect branch, using fallback %s", name, branchName))
 				}
-
-				// Remove worktree
-				progress.Info(fmt.Sprintf("%s: removing worktree", name))
-				if err := git.RemoveWorktree(repoDir, worktreeDir); err != nil {
-					progress.Warning(fmt.Sprintf("Failed to remove worktree for %s: %v", name, err))
-				}
 			} else {
-				// No worktree exists, use fallback branch name
+				// No worktree directory exists, use fallback branch name
 				branchName = configPrefix + featureName
-				progress.Info(fmt.Sprintf("%s: no worktree found, using fallback branch %s", name, branchName))
+				progress.Info(fmt.Sprintf("%s: worktree directory not found, using fallback branch %s", name, branchName))
+			}
+
+			// Always try to remove worktree (even if directory is missing)
+			// git worktree remove --force works for orphaned worktrees
+			progress.Info(fmt.Sprintf("%s: removing worktree registration", name))
+			if err := git.RemoveWorktree(repoDir, worktreeDir); err != nil {
+				progress.Warning(fmt.Sprintf("Failed to remove worktree for %s: %v", name, err))
 			}
 
 			// Delete branch
@@ -150,11 +185,15 @@ func runDown(featureName string) error {
 		}
 	}
 
-	// Remove trees directory
-	progress.Info(fmt.Sprintf("Removing trees directory: %s", treesDir))
-	if err := os.RemoveAll(treesDir); err != nil {
-		progress.Error(fmt.Sprintf("Failed to remove trees directory: %s", treesDir))
-		return fmt.Errorf("failed to remove trees directory: %w", err)
+	// Remove trees directory if it exists
+	if treesDirExists {
+		progress.Info(fmt.Sprintf("Removing trees directory: %s", treesDir))
+		if err := os.RemoveAll(treesDir); err != nil {
+			progress.Error(fmt.Sprintf("Failed to remove trees directory: %s", treesDir))
+			return fmt.Errorf("failed to remove trees directory: %w", err)
+		}
+	} else {
+		progress.Info("Trees directory already removed (orphaned worktree)")
 	}
 
 	progress.Success(fmt.Sprintf("Feature '%s' cleaned up successfully!", featureName))
