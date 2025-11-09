@@ -134,13 +134,15 @@ func RunCommandWithProgress(cmd *exec.Cmd, message string) error {
 
 	progress := NewProgress()
 	progress.Start(message)
-	
+
 	capture := &OutputCapture{}
 	cmd.Stdout = capture.GetStdout()
 	cmd.Stderr = capture.GetStderr()
-	
+
 	err := cmd.Run()
-	
+
+	progress.Stop()
+
 	if err != nil {
 		progress.Error(fmt.Sprintf("%s failed", message))
 		if capture.HasOutput() {
@@ -148,8 +150,12 @@ func RunCommandWithProgress(cmd *exec.Cmd, message string) error {
 			capture.PrintOutput()
 		}
 	} else {
+		// Print the output first (if any), then show success message
+		if capture.HasOutput() {
+			capture.PrintOutput()
+		}
 		progress.Success(message)
 	}
-	
+
 	return err
 }
