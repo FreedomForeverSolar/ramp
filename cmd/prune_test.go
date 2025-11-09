@@ -213,33 +213,36 @@ func TestPruneCleanFeature(t *testing.T) {
 	t.Logf("Found %d merged features (clean feature behavior)", len(merged))
 }
 
-// TestPruneWithNestedFeatureName tests nested feature paths
-// Note: Currently findMergedFeatures() has a limitation with nested paths
-// It only scans the first level of trees/, so "epic/task" appears as "epic"
-// This test verifies that the feature can be created and merged, even though
-// findMergedFeatures won't detect it correctly (known limitation)
-func TestPruneWithNestedFeatureName(t *testing.T) {
+// TestPruneWithNestedBranchViaPrefix tests that prune works with features created using custom prefix
+// The feature name is simple (e.g., "task") but the branch name is nested via prefix (e.g., "epic/task")
+func TestPruneWithNestedBranchViaPrefix(t *testing.T) {
 	tp := NewTestProject(t)
 	repo1 := tp.InitRepo("repo1")
 
 	cleanup := tp.ChangeToProjectDir()
 	defer cleanup()
 
-	// Create nested feature
-	err := runUp("epic/task", "", "")
+	// Create feature using prefix to create nested branch name
+	// Feature name is simple "task", prefix creates the nested branch "epic/task"
+	err := runUp("task", "epic/", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}
 
+	// Verify feature directory uses simple name
+	if !tp.FeatureExists("task") {
+		t.Fatal("feature 'task' was not created")
+	}
+
 	// Add work and merge
-	worktreeDir := filepath.Join(tp.TreesDir, "epic/task", "repo1")
+	worktreeDir := filepath.Join(tp.TreesDir, "task", "repo1")
 	testFile := filepath.Join(worktreeDir, "work.txt")
 	os.WriteFile(testFile, []byte("work"), 0644)
 	runGitCmd(t, worktreeDir, "add", ".")
 	runGitCmd(t, worktreeDir, "commit", "-m", "work")
 
 	runGitCmd(t, repo1.SourceDir, "checkout", "main")
-	runGitCmd(t, repo1.SourceDir, "merge", "feature/epic/task", "--no-ff", "-m", "merge")
+	runGitCmd(t, repo1.SourceDir, "merge", "epic/task", "--no-ff", "-m", "merge")
 
 	// Find merged features
 	cfg, err := config.LoadConfig(tp.Dir)
@@ -252,16 +255,18 @@ func TestPruneWithNestedFeatureName(t *testing.T) {
 		t.Fatalf("findMergedFeatures() error = %v", err)
 	}
 
-	// KNOWN LIMITATION: findMergedFeatures() only scans first-level directories in trees/
-	// For nested path "epic/task", it only sees "epic" and can't find worktrees inside it
-	// This is a limitation of the current implementation
-	if len(merged) != 0 {
-		t.Logf("Note: findMergedFeatures() found %d features (expected 0 due to nested path limitation)", len(merged))
+	// Should detect "task" as merged (simple feature name, nested branch via prefix)
+	if len(merged) != 1 {
+		t.Errorf("expected 1 merged feature, got %d", len(merged))
 	}
 
-	// Verify the feature directory exists (even though prune can't detect it)
-	if !tp.FeatureExists("epic/task") {
-		t.Error("nested feature directory should exist")
+	if len(merged) > 0 && merged[0].name != "task" {
+		t.Errorf("expected merged feature 'task', got '%s'", merged[0].name)
+	}
+
+	// Verify the feature directory exists
+	if !tp.FeatureExists("task") {
+		t.Error("feature directory should exist")
 	}
 }
 

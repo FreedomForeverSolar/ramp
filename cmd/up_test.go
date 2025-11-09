@@ -345,28 +345,63 @@ func TestUpWithExistingRemoteBranch(t *testing.T) {
 	}
 }
 
-// TestUpPreservesSlashInFeatureName tests feature names with slashes
-func TestUpPreservesSlashInFeatureName(t *testing.T) {
+// TestUpRejectsSlashInFeatureName tests that slashes in feature names are rejected
+func TestUpRejectsSlashInFeatureName(t *testing.T) {
 	tp := NewTestProject(t)
 	tp.InitRepo("repo1")
 
 	cleanup := tp.ChangeToProjectDir()
 	defer cleanup()
 
-	// Create feature with slash in name
+	// Try to create feature with slash in name - should fail
 	err := runUp("epic/sub-feature", "", "")
+	if err == nil {
+		t.Fatal("runUp() should return error for feature name with slash")
+	}
+
+	if !strings.Contains(err.Error(), "slash") {
+		t.Errorf("error should mention 'slash', got: %v", err)
+	}
+
+	// Verify feature directory was NOT created
+	if tp.FeatureExists("epic/sub-feature") {
+		t.Error("feature directory should not have been created")
+	}
+
+	// Verify nested directory was NOT created
+	if tp.FeatureExists("epic") {
+		t.Error("nested feature directory should not have been created")
+	}
+}
+
+// TestUpWithNestedBranchViaPrefix tests that prefix can create nested branch names
+func TestUpWithNestedBranchViaPrefix(t *testing.T) {
+	tp := NewTestProject(t)
+	tp.InitRepo("repo1")
+
+	cleanup := tp.ChangeToProjectDir()
+	defer cleanup()
+
+	// Create feature using prefix to achieve nested branch name
+	// Feature name is just "sub-feature", prefix creates the nesting
+	err := runUp("sub-feature", "epic/", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}
 
-	// Verify directory uses the full name
-	if !tp.FeatureExists("epic/sub-feature") {
-		t.Error("feature directory with slash was not created")
+	// Verify feature directory uses simple name (no slash)
+	if !tp.FeatureExists("sub-feature") {
+		t.Error("feature directory should be 'sub-feature'")
 	}
 
-	// Verify branch includes prefix + full name
+	// Verify nested feature directory was NOT created
+	if tp.FeatureExists("epic/sub-feature") {
+		t.Error("nested feature directory should not exist")
+	}
+
+	// Verify branch has nested path via prefix
 	repo1 := tp.Repos["repo1"]
-	if !repo1.BranchExists(t, "feature/epic/sub-feature") {
-		t.Error("branch with nested path was not created")
+	if !repo1.BranchExists(t, "epic/sub-feature") {
+		t.Error("branch 'epic/sub-feature' should exist via prefix")
 	}
 }

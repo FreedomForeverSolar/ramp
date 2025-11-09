@@ -382,39 +382,45 @@ func TestDownPreservesSourceRepos(t *testing.T) {
 	}
 }
 
-// TestDownWithNestedFeatureName tests features with slashes
-func TestDownWithNestedFeatureName(t *testing.T) {
+// TestDownWithNestedBranchViaPrefix tests cleaning up features created with custom prefix
+func TestDownWithNestedBranchViaPrefix(t *testing.T) {
 	tp := NewTestProject(t)
 	tp.InitRepo("repo1")
 
 	cleanup := tp.ChangeToProjectDir()
 	defer cleanup()
 
-	// Create feature with nested name
-	err := runUp("epic/task/subtask", "", "")
+	// Create feature using prefix to create nested branch name
+	// Feature name is simple, but branch name will be nested via prefix
+	err := runUp("subtask", "epic/task/", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}
 
-	// Verify it was created
-	if !tp.FeatureExists("epic/task/subtask") {
-		t.Fatal("nested feature was not created")
+	// Verify feature directory uses simple name (no slash)
+	if !tp.FeatureExists("subtask") {
+		t.Fatal("feature 'subtask' was not created")
 	}
 
-	// Delete it
-	err = runDown("epic/task/subtask")
+	// Verify nested branch was created via prefix
+	repo1 := tp.Repos["repo1"]
+	if !repo1.BranchExists(t, "epic/task/subtask") {
+		t.Fatal("nested branch 'epic/task/subtask' was not created")
+	}
+
+	// Delete it using simple feature name
+	err = runDown("subtask")
 	if err != nil {
 		t.Fatalf("runDown() error = %v", err)
 	}
 
 	// Verify it's gone
-	if tp.FeatureExists("epic/task/subtask") {
-		t.Error("nested feature should be removed")
+	if tp.FeatureExists("subtask") {
+		t.Error("feature should be removed")
 	}
 
 	// Verify branch is gone
-	repo1 := tp.Repos["repo1"]
-	if repo1.BranchExists(t, "feature/epic/task/subtask") {
+	if repo1.BranchExists(t, "epic/task/subtask") {
 		t.Error("nested branch should be deleted")
 	}
 }
