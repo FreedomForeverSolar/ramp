@@ -205,6 +205,9 @@ func SaveConfig(cfg *Config, projectDir string) error {
 	if cfg.BasePort > 0 {
 		yamlBuilder.WriteString(fmt.Sprintf("base_port: %d\n", cfg.BasePort))
 	}
+	if cfg.MaxPorts > 0 {
+		yamlBuilder.WriteString(fmt.Sprintf("max_ports: %d\n", cfg.MaxPorts))
+	}
 
 	// Setup and cleanup scripts
 	if cfg.Setup != "" {

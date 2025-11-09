@@ -355,4 +355,162 @@ Comprehensive progress reporting with two modes:
 - **Normal mode**: Animated spinners with status updates and emoji indicators
 - **Verbose mode**: Direct command output for debugging and CI environments
 
+## Testing Infrastructure
+
+Ramp has a comprehensive test suite designed to protect backwards compatibility and enable test-driven development. The test suite uses real git operations for realistic integration testing.
+
+### Running Tests
+
+```bash
+# Run all tests
+go test ./...
+
+# Run tests with coverage
+go test ./... -cover
+
+# Run tests for specific package
+go test ./cmd -v
+
+# Run specific test
+go test ./cmd -run TestUpBasic -v
+
+# Run tests with verbose output (disables progress spinners)
+go test ./... -v
+```
+
+### Test Coverage
+
+Current test coverage (as of latest update):
+- **cmd package**: 52.6% (55 tests covering main commands)
+- **internal/config**: 96.7% (54 tests for configuration management)
+- **internal/git**: 46.1% (58 tests for git operations)
+- **internal/scaffold**: 88.9% (23 tests for project scaffolding)
+- **internal/ports**: 74.2% (3 tests for port allocation)
+- **Total**: 256 tests across all packages
+
+### Test Organization
+
+Tests are colocated with source code following Go conventions:
+- `cmd/*_test.go` - Command integration tests
+- `internal/*/*.go` - Package unit tests
+- `cmd/test_helpers.go` - Shared test infrastructure
+
+### Test Infrastructure Helpers
+
+**TestProject** - Manages complete test project setup:
+```go
+tp := NewTestProject(t)          // Creates isolated test project
+repo1 := tp.InitRepo("repo1")    // Creates repo with bare remote
+cleanup := tp.ChangeToProjectDir() // Changes to project directory
+defer cleanup()                   // Restores original directory
+```
+
+**TestRepo** - Represents a test repository:
+- `SourceDir` - Path to cloned source repository
+- `RemoteDir` - Path to bare remote repository
+- `Name` - Repository name
+
+**Helper Functions**:
+- `runGitCmd(t, dir, args...)` - Executes git commands with automatic error handling
+- `tp.WorktreeExists(feature, repo)` - Checks if worktree exists
+- `tp.FeatureExists(feature)` - Checks if feature directory exists
+
+### Testing Patterns
+
+1. **Table-Driven Tests with Subtests**
+```go
+tests := []struct {
+    name string
+    input string
+    want string
+}{
+    {"basic", "input1", "output1"},
+    {"edge case", "input2", "output2"},
+}
+for _, tt := range tests {
+    t.Run(tt.name, func(t *testing.T) {
+        got := function(tt.input)
+        if got != tt.want {
+            t.Errorf("got %v, want %v", got, tt.want)
+        }
+    })
+}
+```
+
+2. **Real Git Operations** (No Mocking)
+- Tests use actual git repositories for realistic scenarios
+- Bare remotes are created for push/pull testing
+- Each test gets isolated temporary directories via `t.TempDir()`
+
+3. **Test Isolation**
+- Each test creates its own project in a temporary directory
+- No shared state between tests
+- Automatic cleanup on test completion
+
+4. **Testing Both Success and Failure Paths**
+- All commands test happy path scenarios
+- Error handling is validated with expected error messages
+- Edge cases are explicitly tested (missing repos, empty projects, etc.)
+
+### What's Tested
+
+**Core Commands** (Integration Tests):
+- ✅ `ramp up` - Feature creation with various branch scenarios
+- ✅ `ramp down` - Feature cleanup with safety checks
+- ✅ `ramp install` - Repository cloning and validation
+- ✅ `ramp refresh` - Repository synchronization
+- ✅ `ramp prune` - Merged feature detection and cleanup
+- ✅ `ramp rebase` - Branch switching with rollback
+- ✅ `ramp run` - Custom command execution with environment
+- ✅ `ramp status` - Comprehensive status display
+- ✅ `ramp version` - Version information
+- ❌ `ramp init` - Not tested (interactive, uses huh forms library)
+
+**Internal Packages** (Unit Tests):
+- ✅ Config loading, saving, and validation
+- ✅ Git operations (clone, worktree, branch, merge detection)
+- ✅ Project scaffolding and template generation
+- ✅ Port allocation and management
+- ✅ Environment variable generation
+
+**Key Scenarios Tested**:
+- Backwards compatibility (auto_refresh defaults, config migration)
+- Multi-repository workflows
+- Branch handling (local, remote, non-existent)
+- Uncommitted changes detection
+- Port allocation conflicts
+- Nested feature paths
+- Missing repositories
+- Empty projects
+- Error recovery and rollback
+
+### Known Limitations
+
+1. **Interactive Commands**: `ramp init` is not tested due to interactive stdin requirements
+2. **Coverage Gaps**: ~47% of cmd code paths not yet covered
+3. **Performance**: No benchmark tests for performance-critical operations
+4. **UI Testing**: Progress spinner and output formatting not validated
+
+### Adding New Tests
+
+When adding new functionality:
+
+1. **Write tests first** (TDD approach encouraged)
+2. **Use existing helpers** (`TestProject`, `TestRepo`, `runGitCmd`)
+3. **Test both success and failure** paths
+4. **Use descriptive test names** (`TestUpWithCustomPrefix`)
+5. **Add table-driven tests** for multiple scenarios
+6. **Check error messages** for user-facing errors
+7. **Run tests locally** before committing:
+   ```bash
+   go test ./... -cover
+   ```
+
+### Bug Fixes Found Through Testing
+
+Tests have already caught several bugs:
+- **max_ports persistence**: Config was not saving max_ports field (fixed in config.go:208-210)
+- **Empty project handling**: Installation check incorrectly failed for projects with no repos
+- **Git initialization**: Tests needed `commit.gpgsign false` to work in all environments
+
 This architecture enables Ramp to manage complex multi-repository workflows while providing a smooth developer experience through intelligent automation, safety checks, and comprehensive feedback systems.
