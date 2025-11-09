@@ -100,12 +100,15 @@ func runPrune() error {
 
 	fmt.Println()
 
+	// Create a single progress spinner for all cleanup operations
+	cleanupProgress := ui.NewProgress()
+
 	// Clean up each merged feature
 	successCount := 0
 	failedFeatures := []string{}
 
 	for _, feature := range mergedFeatures {
-		if err := cleanupFeature(projectDir, cfg, feature.name); err != nil {
+		if err := cleanupFeatureWithProgress(projectDir, cfg, feature.name, cleanupProgress); err != nil {
 			failedFeatures = append(failedFeatures, fmt.Sprintf("%s: %v", feature.name, err))
 		} else {
 			successCount++
@@ -213,6 +216,10 @@ func confirmPrune(count int) bool {
 
 func cleanupFeature(projectDir string, cfg *config.Config, featureName string) error {
 	progress := ui.NewProgress()
+	return cleanupFeatureWithProgress(projectDir, cfg, featureName, progress)
+}
+
+func cleanupFeatureWithProgress(projectDir string, cfg *config.Config, featureName string, progress *ui.ProgressUI) error {
 	progress.Start(fmt.Sprintf("Cleaning up %s", featureName))
 
 	// Get config prefix for fallback when branch detection fails

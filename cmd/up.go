@@ -124,8 +124,10 @@ func runUp(featureName, prefix, target string) error {
 		}
 	}
 
+	// Create a single progress instance for the entire operation
+	progress := ui.NewProgress()
+
 	if shouldRefreshRepos {
-		progress := ui.NewProgress()
 		progress.Start("Auto-refreshing repositories before creating feature")
 
 		for name, repo := range repos {
@@ -148,11 +150,13 @@ func runUp(featureName, prefix, target string) error {
 		}
 
 		progress.Success("Auto-refresh completed")
-	}
 
-	progress := ui.NewProgress()
-	progress.Start(fmt.Sprintf("Creating feature '%s' for project '%s'", featureName, cfg.Name))
-	progress.Success(fmt.Sprintf("Creating feature '%s' for project '%s'", featureName, cfg.Name))
+		// Restart progress for the main feature creation
+		progress.Start(fmt.Sprintf("Creating feature '%s' for project '%s'", featureName, cfg.Name))
+	} else {
+		// No refresh needed, start progress for feature creation
+		progress.Start(fmt.Sprintf("Creating feature '%s' for project '%s'", featureName, cfg.Name))
+	}
 
 	// Determine effective prefix
 	// Priority: --no-prefix flag (empty) > --prefix flag (custom) > config default
