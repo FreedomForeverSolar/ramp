@@ -13,7 +13,9 @@ import (
 // Helper function to initialize a test git repository
 func initTestRepo(t *testing.T, dir string) {
 	t.Helper()
-	runGitCmd(t, dir, "init")
+	// Explicitly set initial branch to "master" for consistent test behavior
+	// across different git configurations (requires Git 2.28+, July 2020)
+	runGitCmd(t, dir, "init", "--initial-branch=master")
 	runGitCmd(t, dir, "config", "user.email", "test@example.com")
 	runGitCmd(t, dir, "config", "user.name", "Test User")
 	runGitCmd(t, dir, "config", "commit.gpgsign", "false")
