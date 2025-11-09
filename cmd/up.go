@@ -83,6 +83,11 @@ func runUp(featureName, prefix, target string) error {
 		return err
 	}
 
+	// Validate that feature name doesn't contain slashes
+	if strings.Contains(featureName, "/") {
+		return fmt.Errorf("feature name cannot contain slashes - use --prefix flag to create nested branch names (e.g., 'ramp up my-feature --prefix epic/' creates branch 'epic/my-feature')")
+	}
+
 	// Validate that --refresh and --no-refresh are not both specified
 	if refreshFlag && noRefreshFlag {
 		return fmt.Errorf("cannot specify both --refresh and --no-refresh flags")
