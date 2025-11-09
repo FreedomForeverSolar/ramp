@@ -100,17 +100,23 @@ func runPrune() error {
 
 	fmt.Println()
 
+	// Create a single progress spinner for all cleanup operations
+	cleanupProgress := ui.NewProgress()
+	cleanupProgress.Start("Cleaning up merged features")
+
 	// Clean up each merged feature
 	successCount := 0
 	failedFeatures := []string{}
 
 	for _, feature := range mergedFeatures {
-		if err := cleanupFeature(projectDir, cfg, feature.name); err != nil {
+		if err := cleanupFeatureWithProgress(projectDir, cfg, feature.name, cleanupProgress); err != nil {
 			failedFeatures = append(failedFeatures, fmt.Sprintf("%s: %v", feature.name, err))
 		} else {
 			successCount++
 		}
 	}
+
+	cleanupProgress.Success("Cleanup completed")
 
 	// Display final summary
 	fmt.Println()
@@ -214,6 +220,18 @@ func confirmPrune(count int) bool {
 func cleanupFeature(projectDir string, cfg *config.Config, featureName string) error {
 	progress := ui.NewProgress()
 	progress.Start(fmt.Sprintf("Cleaning up %s", featureName))
+	err := cleanupFeatureWithProgress(projectDir, cfg, featureName, progress)
+	if err != nil {
+		progress.Error(fmt.Sprintf("Cleaning up %s", featureName))
+	} else {
+		progress.Success(fmt.Sprintf("Cleaned up %s", featureName))
+	}
+	return err
+}
+
+func cleanupFeatureWithProgress(projectDir string, cfg *config.Config, featureName string, progress *ui.ProgressUI) error {
+	// Use Update() instead of Start() since the spinner is already running from the caller
+	progress.Update(fmt.Sprintf("Cleaning up %s", featureName))
 
 	// Get config prefix for fallback when branch detection fails
 	configPrefix := cfg.GetBranchPrefix()
@@ -250,7 +268,7 @@ func cleanupFeature(projectDir string, cfg *config.Config, featureName string) e
 		}
 
 		if !featureExists {
-			progress.Error(fmt.Sprintf("Cleaning up %s", featureName))
+			// Don't call Error() - let caller handle it
 			return fmt.Errorf("trees directory does not exist")
 		}
 	}
@@ -303,8 +321,8 @@ func cleanupFeature(projectDir string, cfg *config.Config, featureName string) e
 				// Continue anyway
 			}
 
-			// Prune stale remote tracking branches
-			if err := git.FetchPrune(repoDir); err != nil {
+			// Prune stale remote tracking branches (use quiet version to avoid creating another spinner)
+			if err := git.FetchPruneQuiet(repoDir); err != nil {
 				// Ignore prune errors - not critical
 			}
 		}
@@ -319,12 +337,14 @@ func cleanupFeature(projectDir string, cfg *config.Config, featureName string) e
 	// Remove trees directory if it exists
 	if treesDirExists {
 		if err := os.RemoveAll(treesDir); err != nil {
-			progress.Error(fmt.Sprintf("Cleaning up %s", featureName))
+			// Don't call Error() here - let the caller handle it
+			// This allows batch operations to continue without stopping the spinner
 			return fmt.Errorf("failed to remove trees directory: %w", err)
 		}
 	}
 
-	progress.Success(fmt.Sprintf("Cleaned up %s", featureName))
+	// Don't call Success() here - let the caller handle it
+	// This allows batch operations to keep the spinner running for multiple features
 	return nil
 }
 

@@ -11,7 +11,6 @@ import (
 
 	"ramp/internal/config"
 	"ramp/internal/ports"
-	"ramp/internal/ui"
 )
 
 var runCmd = &cobra.Command{
@@ -76,15 +75,13 @@ func runCustomCommand(commandName, featureName string) error {
 
 	// If no feature name provided, run against source directory
 	if featureName == "" {
-		progress := ui.NewProgress()
-		progress.Start(fmt.Sprintf("Running command '%s' against source repositories", commandName))
-		
-		if err := runCommandInSource(projectDir, command.Command, progress); err != nil {
-			progress.Error(fmt.Sprintf("Command '%s' failed", commandName))
+		fmt.Printf("Running command '%s' against source repositories\n", commandName)
+
+		if err := runCommandInSource(projectDir, command.Command); err != nil {
 			return fmt.Errorf("command '%s' failed: %w", commandName, err)
 		}
 
-		progress.Success(fmt.Sprintf("Command '%s' completed successfully!", commandName))
+		fmt.Printf("✓ Command '%s' completed successfully!\n", commandName)
 		return nil
 	}
 
@@ -95,20 +92,18 @@ func runCustomCommand(commandName, featureName string) error {
 		return fmt.Errorf("feature '%s' not found (trees directory does not exist)", featureName)
 	}
 
-	progress := ui.NewProgress()
-	progress.Start(fmt.Sprintf("Running command '%s' for feature '%s'", commandName, featureName))
-	
-	if err := runCommandWithEnv(projectDir, treesDir, command.Command, progress); err != nil {
-		progress.Error(fmt.Sprintf("Command '%s' failed", commandName))
+	fmt.Printf("Running command '%s' for feature '%s'\n", commandName, featureName)
+
+	if err := runCommandWithEnv(projectDir, treesDir, command.Command); err != nil {
 		return fmt.Errorf("command '%s' failed: %w", commandName, err)
 	}
 
-	progress.Success(fmt.Sprintf("Command '%s' completed successfully!", commandName))
+	fmt.Printf("✓ Command '%s' completed successfully!\n", commandName)
 	return nil
 }
 
 
-func runCommandWithEnv(projectDir, treesDir, commandScript string, progress *ui.ProgressUI) error {
+func runCommandWithEnv(projectDir, treesDir, commandScript string) error {
 	scriptPath := filepath.Join(projectDir, ".ramp", commandScript)
 
 	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
@@ -120,7 +115,11 @@ func runCommandWithEnv(projectDir, treesDir, commandScript string, progress *ui.
 
 	cmd := exec.Command("/bin/bash", scriptPath)
 	cmd.Dir = treesDir
-	
+
+	// Stream output directly to terminal for real-time feedback
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
 	// Set up environment variables that the command script expects
 	cmd.Env = append(os.Environ(), fmt.Sprintf("RAMP_PROJECT_DIR=%s", projectDir))
 	cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_TREES_DIR=%s", treesDir))
@@ -140,7 +139,7 @@ func runCommandWithEnv(projectDir, treesDir, commandScript string, progress *ui.
 	if port, exists := portAllocations.GetPort(featureName); exists {
 		cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_PORT=%d", port))
 	}
-	
+
 	repos := cfg.GetRepos()
 	for name, repo := range repos {
 		envVarName := config.GenerateEnvVarName(name)
@@ -148,11 +147,10 @@ func runCommandWithEnv(projectDir, treesDir, commandScript string, progress *ui.
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", envVarName, repoPath))
 	}
 
-	message := fmt.Sprintf("Running command script: %s", commandScript)
-	return ui.RunCommandWithProgress(cmd, message)
+	return cmd.Run()
 }
 
-func runCommandInSource(projectDir, commandScript string, progress *ui.ProgressUI) error {
+func runCommandInSource(projectDir, commandScript string) error {
 	scriptPath := filepath.Join(projectDir, ".ramp", commandScript)
 
 	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
@@ -162,16 +160,20 @@ func runCommandInSource(projectDir, commandScript string, progress *ui.ProgressU
 	// Run from the project directory (where source repos are located)
 	cmd := exec.Command("/bin/bash", scriptPath)
 	cmd.Dir = projectDir
-	
+
+	// Stream output directly to terminal for real-time feedback
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
 	// Set up environment variables for source directory execution
 	cmd.Env = append(os.Environ(), fmt.Sprintf("RAMP_PROJECT_DIR=%s", projectDir))
-	
+
 	// Load config to get repository paths
 	cfg, err := config.LoadConfig(projectDir)
 	if err != nil {
 		return fmt.Errorf("failed to load config for env vars: %w", err)
 	}
-	
+
 	repos := cfg.GetRepos()
 	for name, repo := range repos {
 		envVarName := config.GenerateEnvVarName(name)
@@ -179,6 +181,5 @@ func runCommandInSource(projectDir, commandScript string, progress *ui.ProgressU
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", envVarName, repoPath))
 	}
 
-	message := fmt.Sprintf("Running command script: %s", commandScript)
-	return ui.RunCommandWithProgress(cmd, message)
+	return cmd.Run()
 }

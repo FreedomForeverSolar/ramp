@@ -377,6 +377,68 @@ func TestOutputCapturePrintOutput(t *testing.T) {
 	})
 }
 
+// TestProgressUIAntiPatterns documents patterns that cause terminal flashing
+func TestProgressUIAntiPatterns(t *testing.T) {
+	oldVerbose := Verbose
+	Verbose = false
+	defer func() { Verbose = oldVerbose }()
+
+	t.Run("anti-pattern: immediate start/stop causes flashing", func(t *testing.T) {
+		// This pattern causes visual flashing and should be avoided
+		// BAD: Starting and immediately stopping a spinner
+		progress := NewProgress()
+		progress.Start("Quick operation")
+		progress.Success("Quick operation") // Called immediately without any work
+
+		// This is the bug found in cmd/up.go:153-155
+		// The spinner flashes briefly on screen
+		// FIX: Remove the spinner entirely for instant operations,
+		// or use Update() on an existing spinner
+	})
+
+	t.Run("anti-pattern: multiple concurrent spinners", func(t *testing.T) {
+		// Creating multiple spinners without stopping the first causes conflicts
+		// BAD: Multiple active spinners
+		progress1 := NewProgress()
+		progress1.Start("Operation 1")
+
+		progress2 := NewProgress()
+		progress2.Start("Operation 2") // Second spinner while first still active!
+
+		// Cleanup
+		progress1.Stop()
+		progress2.Stop()
+
+		// This causes terminal control conflicts
+		// FIX: Stop first spinner before creating second,
+		// or better yet, reuse the same spinner with Update()
+	})
+
+	t.Run("good-pattern: reuse spinner with Update", func(t *testing.T) {
+		// GOOD: Single spinner updated throughout the operation
+		progress := NewProgress()
+		progress.Start("Phase 1")
+		progress.Update("Phase 2")
+		progress.Update("Phase 3")
+		progress.Success("All phases complete")
+
+		// This is smooth with no flashing
+	})
+
+	t.Run("good-pattern: stop before new spinner", func(t *testing.T) {
+		// GOOD: Properly stop first spinner before creating second
+		progress1 := NewProgress()
+		progress1.Start("Operation 1")
+		progress1.Success("Operation 1 complete") // Stops spinner
+
+		progress2 := NewProgress()
+		progress2.Start("Operation 2")
+		progress2.Success("Operation 2 complete")
+
+		// No conflicts because spinners are sequential, not concurrent
+	})
+}
+
 func TestRunCommandWithProgress(t *testing.T) {
 	t.Run("success in verbose mode", func(t *testing.T) {
 		oldVerbose := Verbose

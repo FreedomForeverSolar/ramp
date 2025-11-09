@@ -322,5 +322,5 @@ func runCleanupScriptWithProgress(projectDir, treesDir, cleanupScript string, pr
 	}
 
 	message := fmt.Sprintf("Running cleanup script: %s", cleanupScript)
-	return ui.RunCommandWithProgress(cmd, message)
+	return ui.RunCommandWithProgressQuiet(cmd, message)
 }
