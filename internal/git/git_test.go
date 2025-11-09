@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"ramp/internal/ui"
 )
 
 // Helper function to initialize a test git repository
@@ -731,6 +733,526 @@ func TestGetRemoteTrackingStatus(t *testing.T) {
 		}
 		if !strings.Contains(status, "ahead") {
 			t.Errorf("GetRemoteTrackingStatus() = %q, want to contain 'ahead'", status)
+		}
+	})
+}
+
+// TestClone tests repository cloning
+func TestClone(t *testing.T) {
+	// Enable verbose mode to avoid spinner issues in tests
+	oldVerbose := ui.Verbose
+	ui.Verbose = true
+	defer func() { ui.Verbose = oldVerbose }()
+
+	t.Run("clone success", func(t *testing.T) {
+		// Create a source repo
+		sourceDir := t.TempDir()
+		initTestRepo(t, sourceDir)
+
+		// Clone it
+		destDir := filepath.Join(t.TempDir(), "cloned")
+		err := Clone(sourceDir, destDir)
+		if err != nil {
+			t.Fatalf("Clone() error = %v", err)
+		}
+
+		// Verify clone
+		if !IsGitRepo(destDir) {
+			t.Error("Clone() did not create a git repository")
+		}
+	})
+
+	t.Run("clone creates parent directories", func(t *testing.T) {
+		sourceDir := t.TempDir()
+		initTestRepo(t, sourceDir)
+
+		destDir := filepath.Join(t.TempDir(), "nested", "deep", "path", "cloned")
+		err := Clone(sourceDir, destDir)
+		if err != nil {
+			t.Fatalf("Clone() error = %v", err)
+		}
+
+		if !IsGitRepo(destDir) {
+			t.Error("Clone() did not create repository in nested path")
+		}
+	})
+}
+
+// TestCreateWorktree tests worktree creation with different branch scenarios
+func TestCreateWorktree(t *testing.T) {
+	oldVerbose := ui.Verbose
+	ui.Verbose = true
+	defer func() { ui.Verbose = oldVerbose }()
+
+	t.Run("create with new branch", func(t *testing.T) {
+		tempDir := t.TempDir()
+		initTestRepo(t, tempDir)
+		runGitCmd(t, tempDir, "checkout", "-b", "main")
+
+		worktreeDir := filepath.Join(t.TempDir(), "worktree")
+		err := CreateWorktree(tempDir, worktreeDir, "feature/new", "test-repo")
+		if err != nil {
+			t.Fatalf("CreateWorktree() error = %v", err)
+		}
+
+		// Verify worktree exists
+		if !IsGitRepo(worktreeDir) {
+			t.Error("CreateWorktree() did not create worktree")
+		}
+
+		// Verify branch
+		branch, _ := GetWorktreeBranch(worktreeDir)
+		if branch != "feature/new" {
+			t.Errorf("CreateWorktree() branch = %q, want %q", branch, "feature/new")
+		}
+	})
+
+	t.Run("create with existing local branch", func(t *testing.T) {
+		tempDir := t.TempDir()
+		initTestRepo(t, tempDir)
+		runGitCmd(t, tempDir, "checkout", "-b", "main")
+		runGitCmd(t, tempDir, "checkout", "-b", "existing-branch")
+		runGitCmd(t, tempDir, "checkout", "main")
+
+		worktreeDir := filepath.Join(t.TempDir(), "worktree")
+		err := CreateWorktree(tempDir, worktreeDir, "existing-branch", "test-repo")
+		if err != nil {
+			t.Fatalf("CreateWorktree() error = %v", err)
+		}
+
+		branch, _ := GetWorktreeBranch(worktreeDir)
+		if branch != "existing-branch" {
+			t.Errorf("CreateWorktree() branch = %q, want %q", branch, "existing-branch")
+		}
+	})
+
+	t.Run("create with existing remote branch", func(t *testing.T) {
+		tempDir := t.TempDir()
+		initTestRepo(t, tempDir)
+		runGitCmd(t, tempDir, "checkout", "-b", "main")
+		runGitCmd(t, tempDir, "checkout", "-b", "remote-branch")
+
+		// Create remote
+		remoteDir := t.TempDir()
+		runGitCmd(t, remoteDir, "init", "--bare")
+		runGitCmd(t, tempDir, "remote", "add", "origin", remoteDir)
+		runGitCmd(t, tempDir, "push", "origin", "remote-branch")
+
+		// Delete local branch
+		runGitCmd(t, tempDir, "checkout", "main")
+		runGitCmd(t, tempDir, "branch", "-D", "remote-branch")
+
+		worktreeDir := filepath.Join(t.TempDir(), "worktree")
+		err := CreateWorktree(tempDir, worktreeDir, "remote-branch", "test-repo")
+		if err != nil {
+			t.Fatalf("CreateWorktree() error = %v", err)
+		}
+
+		branch, _ := GetWorktreeBranch(worktreeDir)
+		if branch != "remote-branch" {
+			t.Errorf("CreateWorktree() branch = %q, want %q", branch, "remote-branch")
+		}
+	})
+
+	t.Run("error when worktree already exists", func(t *testing.T) {
+		tempDir := t.TempDir()
+		initTestRepo(t, tempDir)
+		runGitCmd(t, tempDir, "checkout", "-b", "main")
+
+		worktreeDir := filepath.Join(t.TempDir(), "worktree")
+		os.MkdirAll(worktreeDir, 0755)
+
+		err := CreateWorktree(tempDir, worktreeDir, "feature/test", "test-repo")
+		if err == nil {
+			t.Error("CreateWorktree() should error when worktree dir exists")
+		}
+	})
+}
+
+// TestCreateWorktreeFromSource tests worktree creation from a source branch
+func TestCreateWorktreeFromSource(t *testing.T) {
+	oldVerbose := ui.Verbose
+	ui.Verbose = true
+	defer func() { ui.Verbose = oldVerbose }()
+
+	t.Run("create from local branch", func(t *testing.T) {
+		tempDir := t.TempDir()
+		initTestRepo(t, tempDir)
+		runGitCmd(t, tempDir, "checkout", "-b", "main")
+		runGitCmd(t, tempDir, "commit", "--allow-empty", "-m", "commit")
+
+		worktreeDir := filepath.Join(t.TempDir(), "worktree")
+		err := CreateWorktreeFromSource(tempDir, worktreeDir, "feature/new", "main", "test-repo")
+		if err != nil {
+			t.Fatalf("CreateWorktreeFromSource() error = %v", err)
+		}
+
+		branch, _ := GetWorktreeBranch(worktreeDir)
+		if branch != "feature/new" {
+			t.Errorf("CreateWorktreeFromSource() branch = %q, want %q", branch, "feature/new")
+		}
+	})
+
+	t.Run("create from remote branch", func(t *testing.T) {
+		tempDir := t.TempDir()
+		initTestRepo(t, tempDir)
+		runGitCmd(t, tempDir, "checkout", "-b", "main")
+		runGitCmd(t, tempDir, "commit", "--allow-empty", "-m", "commit")
+
+		// Create remote
+		remoteDir := t.TempDir()
+		runGitCmd(t, remoteDir, "init", "--bare")
+		runGitCmd(t, tempDir, "remote", "add", "origin", remoteDir)
+		runGitCmd(t, tempDir, "push", "origin", "main")
+
+		worktreeDir := filepath.Join(t.TempDir(), "worktree")
+		err := CreateWorktreeFromSource(tempDir, worktreeDir, "feature/from-remote", "origin/main", "test-repo")
+		if err != nil {
+			t.Fatalf("CreateWorktreeFromSource() error = %v", err)
+		}
+
+		branch, _ := GetWorktreeBranch(worktreeDir)
+		if branch != "feature/from-remote" {
+			t.Errorf("CreateWorktreeFromSource() branch = %q, want %q", branch, "feature/from-remote")
+		}
+	})
+
+	t.Run("error when source branch doesn't exist", func(t *testing.T) {
+		tempDir := t.TempDir()
+		initTestRepo(t, tempDir)
+		runGitCmd(t, tempDir, "checkout", "-b", "main")
+
+		worktreeDir := filepath.Join(t.TempDir(), "worktree")
+		err := CreateWorktreeFromSource(tempDir, worktreeDir, "feature/new", "nonexistent", "test-repo")
+		if err == nil {
+			t.Error("CreateWorktreeFromSource() should error with non-existent source")
+		}
+	})
+
+	t.Run("error when target branch exists", func(t *testing.T) {
+		tempDir := t.TempDir()
+		initTestRepo(t, tempDir)
+		runGitCmd(t, tempDir, "checkout", "-b", "main")
+		runGitCmd(t, tempDir, "checkout", "-b", "existing-branch")
+		runGitCmd(t, tempDir, "checkout", "main")
+
+		worktreeDir := filepath.Join(t.TempDir(), "worktree")
+		err := CreateWorktreeFromSource(tempDir, worktreeDir, "existing-branch", "main", "test-repo")
+		if err == nil {
+			t.Error("CreateWorktreeFromSource() should error when target branch exists")
+		}
+	})
+}
+
+// TestRemoveWorktree tests worktree removal
+func TestRemoveWorktree(t *testing.T) {
+	oldVerbose := ui.Verbose
+	ui.Verbose = true
+	defer func() { ui.Verbose = oldVerbose }()
+
+	t.Run("remove existing worktree", func(t *testing.T) {
+		tempDir := t.TempDir()
+		initTestRepo(t, tempDir)
+		runGitCmd(t, tempDir, "checkout", "-b", "main")
+		runGitCmd(t, tempDir, "commit", "--allow-empty", "-m", "commit")
+
+		worktreeDir := filepath.Join(t.TempDir(), "worktree")
+		runGitCmd(t, tempDir, "worktree", "add", "-b", "feature/test", worktreeDir)
+
+		err := RemoveWorktree(tempDir, worktreeDir)
+		if err != nil {
+			t.Fatalf("RemoveWorktree() error = %v", err)
+		}
+
+		// Verify worktree is removed
+		if _, err := os.Stat(worktreeDir); !os.IsNotExist(err) {
+			t.Error("RemoveWorktree() did not remove worktree directory")
+		}
+	})
+}
+
+// TestDeleteBranch tests branch deletion
+func TestDeleteBranch(t *testing.T) {
+	oldVerbose := ui.Verbose
+	ui.Verbose = true
+	defer func() { ui.Verbose = oldVerbose }()
+
+	t.Run("delete existing branch", func(t *testing.T) {
+		tempDir := t.TempDir()
+		initTestRepo(t, tempDir)
+		runGitCmd(t, tempDir, "checkout", "-b", "main")
+		runGitCmd(t, tempDir, "checkout", "-b", "to-delete")
+		runGitCmd(t, tempDir, "checkout", "main")
+
+		err := DeleteBranch(tempDir, "to-delete")
+		if err != nil {
+			t.Fatalf("DeleteBranch() error = %v", err)
+		}
+
+		// Verify branch is deleted
+		exists, _ := LocalBranchExists(tempDir, "to-delete")
+		if exists {
+			t.Error("DeleteBranch() did not delete branch")
+		}
+	})
+}
+
+// TestCheckout tests branch checkout
+func TestCheckout(t *testing.T) {
+	oldVerbose := ui.Verbose
+	ui.Verbose = true
+	defer func() { ui.Verbose = oldVerbose }()
+
+	t.Run("checkout existing branch", func(t *testing.T) {
+		tempDir := t.TempDir()
+		initTestRepo(t, tempDir)
+		runGitCmd(t, tempDir, "checkout", "-b", "main")
+		runGitCmd(t, tempDir, "checkout", "-b", "feature/test")
+		runGitCmd(t, tempDir, "checkout", "main")
+
+		err := Checkout(tempDir, "feature/test")
+		if err != nil {
+			t.Fatalf("Checkout() error = %v", err)
+		}
+
+		branch, _ := GetCurrentBranch(tempDir)
+		if branch != "feature/test" {
+			t.Errorf("Checkout() current branch = %q, want %q", branch, "feature/test")
+		}
+	})
+}
+
+// TestCheckoutRemoteBranch tests remote branch checkout
+func TestCheckoutRemoteBranch(t *testing.T) {
+	oldVerbose := ui.Verbose
+	ui.Verbose = true
+	defer func() { ui.Verbose = oldVerbose }()
+
+	t.Run("checkout remote branch", func(t *testing.T) {
+		tempDir := t.TempDir()
+		initTestRepo(t, tempDir)
+		runGitCmd(t, tempDir, "checkout", "-b", "main")
+		runGitCmd(t, tempDir, "checkout", "-b", "remote-feature")
+		runGitCmd(t, tempDir, "commit", "--allow-empty", "-m", "commit")
+
+		// Create remote
+		remoteDir := t.TempDir()
+		runGitCmd(t, remoteDir, "init", "--bare")
+		runGitCmd(t, tempDir, "remote", "add", "origin", remoteDir)
+		runGitCmd(t, tempDir, "push", "origin", "remote-feature")
+
+		// Delete local branch
+		runGitCmd(t, tempDir, "checkout", "main")
+		runGitCmd(t, tempDir, "branch", "-D", "remote-feature")
+
+		err := CheckoutRemoteBranch(tempDir, "remote-feature")
+		if err != nil {
+			t.Fatalf("CheckoutRemoteBranch() error = %v", err)
+		}
+
+		branch, _ := GetCurrentBranch(tempDir)
+		if branch != "remote-feature" {
+			t.Errorf("CheckoutRemoteBranch() current branch = %q, want %q", branch, "remote-feature")
+		}
+	})
+}
+
+// TestFetchAll tests fetching from all remotes
+func TestFetchAll(t *testing.T) {
+	oldVerbose := ui.Verbose
+	ui.Verbose = true
+	defer func() { ui.Verbose = oldVerbose }()
+
+	t.Run("fetch all remotes", func(t *testing.T) {
+		tempDir := t.TempDir()
+		initTestRepo(t, tempDir)
+		runGitCmd(t, tempDir, "checkout", "-b", "main")
+
+		// Create remote
+		remoteDir := t.TempDir()
+		runGitCmd(t, remoteDir, "init", "--bare")
+		runGitCmd(t, tempDir, "remote", "add", "origin", remoteDir)
+
+		err := FetchAll(tempDir)
+		if err != nil {
+			t.Fatalf("FetchAll() error = %v", err)
+		}
+	})
+}
+
+// TestFetchAllQuiet tests quiet fetching
+func TestFetchAllQuiet(t *testing.T) {
+	t.Run("fetch all quietly", func(t *testing.T) {
+		tempDir := t.TempDir()
+		initTestRepo(t, tempDir)
+		runGitCmd(t, tempDir, "checkout", "-b", "main")
+
+		// Create remote
+		remoteDir := t.TempDir()
+		runGitCmd(t, remoteDir, "init", "--bare")
+		runGitCmd(t, tempDir, "remote", "add", "origin", remoteDir)
+
+		err := FetchAllQuiet(tempDir)
+		if err != nil {
+			t.Fatalf("FetchAllQuiet() error = %v", err)
+		}
+	})
+}
+
+// TestPull tests pulling changes
+func TestPull(t *testing.T) {
+	oldVerbose := ui.Verbose
+	ui.Verbose = true
+	defer func() { ui.Verbose = oldVerbose }()
+
+	t.Run("pull with tracking branch", func(t *testing.T) {
+		tempDir := t.TempDir()
+		initTestRepo(t, tempDir)
+		runGitCmd(t, tempDir, "checkout", "-b", "main")
+
+		// Create remote
+		remoteDir := t.TempDir()
+		runGitCmd(t, remoteDir, "init", "--bare")
+		runGitCmd(t, tempDir, "remote", "add", "origin", remoteDir)
+		runGitCmd(t, tempDir, "commit", "--allow-empty", "-m", "commit")
+		runGitCmd(t, tempDir, "push", "-u", "origin", "main")
+
+		err := Pull(tempDir)
+		if err != nil {
+			t.Fatalf("Pull() error = %v", err)
+		}
+	})
+}
+
+// TestFetchBranch tests fetching a specific branch
+func TestFetchBranch(t *testing.T) {
+	oldVerbose := ui.Verbose
+	ui.Verbose = true
+	defer func() { ui.Verbose = oldVerbose }()
+
+	t.Run("fetch specific branch", func(t *testing.T) {
+		tempDir := t.TempDir()
+		initTestRepo(t, tempDir)
+		runGitCmd(t, tempDir, "checkout", "-b", "main")
+		runGitCmd(t, tempDir, "commit", "--allow-empty", "-m", "commit")
+
+		// Create remote
+		remoteDir := t.TempDir()
+		runGitCmd(t, remoteDir, "init", "--bare")
+		runGitCmd(t, tempDir, "remote", "add", "origin", remoteDir)
+		runGitCmd(t, tempDir, "push", "origin", "main")
+
+		err := FetchBranch(tempDir, "main")
+		if err != nil {
+			t.Fatalf("FetchBranch() error = %v", err)
+		}
+	})
+}
+
+// TestFetchPrune tests pruning stale remote tracking branches
+func TestFetchPrune(t *testing.T) {
+	oldVerbose := ui.Verbose
+	ui.Verbose = true
+	defer func() { ui.Verbose = oldVerbose }()
+
+	t.Run("fetch with prune", func(t *testing.T) {
+		tempDir := t.TempDir()
+		initTestRepo(t, tempDir)
+		runGitCmd(t, tempDir, "checkout", "-b", "main")
+		runGitCmd(t, tempDir, "commit", "--allow-empty", "-m", "commit")
+
+		// Create remote
+		remoteDir := t.TempDir()
+		runGitCmd(t, remoteDir, "init", "--bare")
+		runGitCmd(t, tempDir, "remote", "add", "origin", remoteDir)
+		runGitCmd(t, tempDir, "push", "origin", "main")
+
+		err := FetchPrune(tempDir)
+		if err != nil {
+			t.Fatalf("FetchPrune() error = %v", err)
+		}
+	})
+}
+
+// TestStashChanges tests stashing uncommitted changes
+func TestStashChanges(t *testing.T) {
+	oldVerbose := ui.Verbose
+	ui.Verbose = true
+	defer func() { ui.Verbose = oldVerbose }()
+
+	t.Run("stash with changes", func(t *testing.T) {
+		tempDir := t.TempDir()
+		initTestRepo(t, tempDir)
+
+		// Create a tracked file and modify it (stash only works on tracked files)
+		testFile := filepath.Join(tempDir, "test.txt")
+		os.WriteFile(testFile, []byte("original"), 0644)
+		runGitCmd(t, tempDir, "add", "test.txt")
+		runGitCmd(t, tempDir, "commit", "-m", "add test file")
+
+		// Modify the tracked file
+		os.WriteFile(testFile, []byte("modified"), 0644)
+
+		stashed, err := StashChanges(tempDir)
+		if err != nil {
+			t.Fatalf("StashChanges() error = %v", err)
+		}
+		if !stashed {
+			t.Error("StashChanges() = false, want true when changes exist")
+		}
+
+		// Verify changes are stashed
+		hasChanges, _ := HasUncommittedChanges(tempDir)
+		if hasChanges {
+			t.Error("StashChanges() did not stash uncommitted changes")
+		}
+	})
+
+	t.Run("no stash when clean", func(t *testing.T) {
+		tempDir := t.TempDir()
+		initTestRepo(t, tempDir)
+
+		stashed, err := StashChanges(tempDir)
+		if err != nil {
+			t.Fatalf("StashChanges() error = %v", err)
+		}
+		if stashed {
+			t.Error("StashChanges() = true, want false when repo is clean")
+		}
+	})
+}
+
+// TestPopStash tests popping stashed changes
+func TestPopStash(t *testing.T) {
+	oldVerbose := ui.Verbose
+	ui.Verbose = true
+	defer func() { ui.Verbose = oldVerbose }()
+
+	t.Run("pop stash", func(t *testing.T) {
+		tempDir := t.TempDir()
+		initTestRepo(t, tempDir)
+
+		// Create a tracked file and modify it
+		testFile := filepath.Join(tempDir, "test.txt")
+		os.WriteFile(testFile, []byte("original"), 0644)
+		runGitCmd(t, tempDir, "add", "test.txt")
+		runGitCmd(t, tempDir, "commit", "-m", "add test file")
+
+		// Modify the tracked file
+		os.WriteFile(testFile, []byte("modified"), 0644)
+
+		// Stash the changes
+		StashChanges(tempDir)
+
+		err := PopStash(tempDir)
+		if err != nil {
+			t.Fatalf("PopStash() error = %v", err)
+		}
+
+		// Verify changes are restored
+		hasChanges, _ := HasUncommittedChanges(tempDir)
+		if !hasChanges {
+			t.Error("PopStash() did not restore stashed changes")
 		}
 	})
 }

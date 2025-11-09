@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"ramp/internal/config"
@@ -343,5 +345,272 @@ func TestPruneWithMultipleRepos(t *testing.T) {
 	// Should detect as merged when all repos are merged
 	if len(merged) != 1 {
 		t.Errorf("findMergedFeatures() returned %d features, want 1", len(merged))
+	}
+}
+
+// TestPluralize tests the pluralize helper function
+func TestPluralize(t *testing.T) {
+	tests := []struct {
+		count int
+		want  string
+	}{
+		{0, "s"},
+		{1, ""},
+		{2, "s"},
+		{100, "s"},
+	}
+
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("count=%d", tt.count), func(t *testing.T) {
+			got := pluralize(tt.count)
+			if got != tt.want {
+				t.Errorf("pluralize(%d) = %q, want %q", tt.count, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestCleanupFeature tests the cleanupFeature function
+func TestCleanupFeature(t *testing.T) {
+	tp := NewTestProject(t)
+	repo1 := tp.InitRepo("repo1")
+
+	cleanup := tp.ChangeToProjectDir()
+	defer cleanup()
+
+	// Create and merge a feature
+	err := runUp("to-cleanup", "", "")
+	if err != nil {
+		t.Fatalf("runUp() error = %v", err)
+	}
+
+	// Add work to the feature
+	worktreeDir := filepath.Join(tp.TreesDir, "to-cleanup", "repo1")
+	testFile := filepath.Join(worktreeDir, "work.txt")
+	os.WriteFile(testFile, []byte("work"), 0644)
+	runGitCmd(t, worktreeDir, "add", ".")
+	runGitCmd(t, worktreeDir, "commit", "-m", "work")
+
+	// Merge it
+	runGitCmd(t, repo1.SourceDir, "checkout", "main")
+	runGitCmd(t, repo1.SourceDir, "merge", "feature/to-cleanup", "--no-ff", "-m", "merge")
+
+	// Load config
+	cfg, err := config.LoadConfig(tp.Dir)
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v", err)
+	}
+
+	// Cleanup the feature
+	err = cleanupFeature(tp.Dir, cfg, "to-cleanup")
+	if err != nil {
+		t.Fatalf("cleanupFeature() error = %v", err)
+	}
+
+	// Verify feature is removed
+	if tp.FeatureExists("to-cleanup") {
+		t.Error("feature directory should be removed")
+	}
+
+	// Verify branch is deleted
+	if repo1.BranchExists(t, "feature/to-cleanup") {
+		t.Error("branch should be deleted")
+	}
+}
+
+// TestCleanupFeatureWithCleanupScript tests cleanupFeature with a cleanup script
+func TestCleanupFeatureWithCleanupScript(t *testing.T) {
+	tp := NewTestProject(t)
+	tp.InitRepo("repo1")
+
+	cleanup := tp.ChangeToProjectDir()
+	defer cleanup()
+
+	// Create a cleanup script
+	scriptPath := filepath.Join(tp.Dir, ".ramp", "scripts", "cleanup.sh")
+	os.MkdirAll(filepath.Dir(scriptPath), 0755)
+	scriptContent := `#!/bin/bash
+echo "cleanup executed for $RAMP_WORKTREE_NAME" > "$RAMP_PROJECT_DIR/.ramp/prune-cleanup-marker.txt"
+`
+	os.WriteFile(scriptPath, []byte(scriptContent), 0755)
+
+	// Update config
+	cfg, _ := config.LoadConfig(tp.Dir)
+	cfg.Cleanup = "scripts/cleanup.sh"
+	config.SaveConfig(cfg, tp.Dir)
+
+	// Create feature
+	runUp("scripted-cleanup", "", "")
+
+	// Cleanup the feature
+	cfg, _ = config.LoadConfig(tp.Dir)
+	err := cleanupFeature(tp.Dir, cfg, "scripted-cleanup")
+	if err != nil {
+		t.Fatalf("cleanupFeature() error = %v", err)
+	}
+
+	// Verify cleanup script was executed
+	markerFile := filepath.Join(tp.Dir, ".ramp", "prune-cleanup-marker.txt")
+	if _, err := os.Stat(markerFile); os.IsNotExist(err) {
+		t.Error("cleanup script was not executed")
+	}
+
+	// Verify feature is removed
+	if tp.FeatureExists("scripted-cleanup") {
+		t.Error("feature directory should be removed")
+	}
+}
+
+// TestCleanupFeatureNonExistent tests cleanup of non-existent feature
+func TestCleanupFeatureNonExistent(t *testing.T) {
+	tp := NewTestProject(t)
+	tp.InitRepo("repo1")
+
+	cleanup := tp.ChangeToProjectDir()
+	defer cleanup()
+
+	cfg, _ := config.LoadConfig(tp.Dir)
+
+	// Try to cleanup non-existent feature
+	err := cleanupFeature(tp.Dir, cfg, "does-not-exist")
+	if err == nil {
+		t.Error("cleanupFeature() should error for non-existent feature")
+	}
+
+	if !strings.Contains(err.Error(), "does not exist") {
+		t.Errorf("error should mention 'does not exist', got: %v", err)
+	}
+}
+
+// TestRunCleanupScriptQuiet tests the quiet cleanup script execution
+func TestRunCleanupScriptQuiet(t *testing.T) {
+	tp := NewTestProject(t)
+	tp.InitRepo("repo1")
+
+	cleanup := tp.ChangeToProjectDir()
+	defer cleanup()
+
+	// Create a cleanup script
+	scriptPath := filepath.Join(tp.Dir, ".ramp", "scripts", "cleanup.sh")
+	os.MkdirAll(filepath.Dir(scriptPath), 0755)
+	scriptContent := `#!/bin/bash
+echo "quiet cleanup" > "$RAMP_PROJECT_DIR/.ramp/quiet-marker.txt"
+exit 0
+`
+	os.WriteFile(scriptPath, []byte(scriptContent), 0755)
+
+	// Create feature
+	runUp("quiet-test", "", "")
+	treesDir := filepath.Join(tp.Dir, "trees", "quiet-test")
+
+	// Run cleanup script quietly
+	err := runCleanupScriptQuiet(tp.Dir, treesDir, "scripts/cleanup.sh")
+	if err != nil {
+		t.Fatalf("runCleanupScriptQuiet() error = %v", err)
+	}
+
+	// Verify script executed
+	markerFile := filepath.Join(tp.Dir, ".ramp", "quiet-marker.txt")
+	if _, err := os.Stat(markerFile); os.IsNotExist(err) {
+		t.Error("cleanup script was not executed")
+	}
+}
+
+// TestRunCleanupScriptQuietFailure tests cleanup script failure handling
+func TestRunCleanupScriptQuietFailure(t *testing.T) {
+	tp := NewTestProject(t)
+	tp.InitRepo("repo1")
+
+	cleanup := tp.ChangeToProjectDir()
+	defer cleanup()
+
+	// Create a failing cleanup script
+	scriptPath := filepath.Join(tp.Dir, ".ramp", "scripts", "cleanup.sh")
+	os.MkdirAll(filepath.Dir(scriptPath), 0755)
+	scriptContent := `#!/bin/bash
+exit 1
+`
+	os.WriteFile(scriptPath, []byte(scriptContent), 0755)
+
+	// Create feature
+	runUp("fail-test", "", "")
+	treesDir := filepath.Join(tp.Dir, "trees", "fail-test")
+
+	// Run cleanup script - should return error
+	err := runCleanupScriptQuiet(tp.Dir, treesDir, "scripts/cleanup.sh")
+	if err == nil {
+		t.Error("runCleanupScriptQuiet() should return error when script fails")
+	}
+}
+
+// TestRunCleanupScriptQuietMissingScript tests behavior with missing script
+func TestRunCleanupScriptQuietMissingScript(t *testing.T) {
+	tp := NewTestProject(t)
+	tp.InitRepo("repo1")
+
+	cleanup := tp.ChangeToProjectDir()
+	defer cleanup()
+
+	// Create feature
+	runUp("missing-script", "", "")
+	treesDir := filepath.Join(tp.Dir, "trees", "missing-script")
+
+	// Run non-existent cleanup script
+	err := runCleanupScriptQuiet(tp.Dir, treesDir, "scripts/nonexistent.sh")
+	if err == nil {
+		t.Error("runCleanupScriptQuiet() should error for missing script")
+	}
+
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("error should mention 'not found', got: %v", err)
+	}
+}
+
+// TestCreateCleanupCommand tests cleanup command creation
+func TestCreateCleanupCommand(t *testing.T) {
+	tp := NewTestProject(t)
+	tp.InitRepo("repo1")
+
+	cleanup := tp.ChangeToProjectDir()
+	defer cleanup()
+
+	// Create a simple script
+	scriptPath := filepath.Join(tp.Dir, ".ramp", "scripts", "test.sh")
+	os.MkdirAll(filepath.Dir(scriptPath), 0755)
+	os.WriteFile(scriptPath, []byte("#!/bin/bash\necho test\n"), 0755)
+
+	// Create feature to get proper environment
+	runUp("cmd-test", "", "")
+	treesDir := filepath.Join(tp.Dir, "trees", "cmd-test")
+
+	// Create cleanup command
+	cmd := createCleanupCommand(tp.Dir, treesDir, "cmd-test", scriptPath)
+
+	if cmd == nil {
+		t.Fatal("createCleanupCommand() returned nil")
+	}
+
+	// Verify command setup
+	if cmd.Path != "/bin/bash" {
+		t.Errorf("cmd.Path = %q, want %q", cmd.Path, "/bin/bash")
+	}
+
+	if cmd.Dir != treesDir {
+		t.Errorf("cmd.Dir = %q, want %q", cmd.Dir, treesDir)
+	}
+
+	// Verify environment variables are set
+	envMap := make(map[string]bool)
+	for _, env := range cmd.Env {
+		if strings.HasPrefix(env, "RAMP_") {
+			envMap[strings.Split(env, "=")[0]] = true
+		}
+	}
+
+	requiredVars := []string{"RAMP_PROJECT_DIR", "RAMP_TREES_DIR", "RAMP_WORKTREE_NAME", "RAMP_PORT"}
+	for _, varName := range requiredVars {
+		if !envMap[varName] {
+			t.Errorf("environment variable %s not set", varName)
+		}
 	}
 }

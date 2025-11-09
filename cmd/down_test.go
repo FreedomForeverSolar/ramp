@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"ramp/internal/config"
 )
 
 // TestDownBasic tests basic feature teardown
@@ -422,5 +424,89 @@ func TestDownWithNestedBranchViaPrefix(t *testing.T) {
 	// Verify branch is gone
 	if repo1.BranchExists(t, "epic/task/subtask") {
 		t.Error("nested branch should be deleted")
+	}
+}
+
+func TestDownWithCleanupScript(t *testing.T) {
+	tp := NewTestProject(t)
+	_ = tp.InitRepo("repo1")
+
+	cleanup := tp.ChangeToProjectDir()
+	defer cleanup()
+
+	// Create a cleanup script that writes to a marker file
+	scriptPath := filepath.Join(tp.Dir, ".ramp", "scripts", "cleanup.sh")
+	os.MkdirAll(filepath.Dir(scriptPath), 0755)
+	scriptContent := `#!/bin/bash
+echo "cleanup executed" > "$RAMP_PROJECT_DIR/.ramp/cleanup-marker.txt"
+echo "feature=$RAMP_WORKTREE_NAME" >> "$RAMP_PROJECT_DIR/.ramp/cleanup-marker.txt"
+`
+	os.WriteFile(scriptPath, []byte(scriptContent), 0755)
+
+	// Update config to include cleanup script
+	cfg, _ := config.LoadConfig(tp.Dir)
+	cfg.Cleanup = "scripts/cleanup.sh"
+	config.SaveConfig(cfg, tp.Dir)
+
+	// Create feature first
+	runUp("test-feature", "", "")
+
+	// Delete feature
+	err := runDown("test-feature")
+	if err != nil {
+		t.Fatalf("runDown() error = %v", err)
+	}
+
+	// Verify cleanup script was executed
+	markerFile := filepath.Join(tp.Dir, ".ramp", "cleanup-marker.txt")
+	if _, err := os.Stat(markerFile); os.IsNotExist(err) {
+		t.Fatal("cleanup script was not executed - marker file not found")
+	}
+
+	// Verify environment variables were set correctly
+	content, _ := os.ReadFile(markerFile)
+	contentStr := string(content)
+
+	if !strings.Contains(contentStr, "cleanup executed") {
+		t.Error("cleanup script did not write expected content")
+	}
+	if !strings.Contains(contentStr, "feature=test-feature") {
+		t.Error("RAMP_WORKTREE_NAME environment variable not set correctly")
+	}
+}
+
+func TestDownCleanupScriptFailure(t *testing.T) {
+	tp := NewTestProject(t)
+	_ = tp.InitRepo("repo1")
+
+	cleanup := tp.ChangeToProjectDir()
+	defer cleanup()
+
+	// Create a cleanup script that fails
+	scriptPath := filepath.Join(tp.Dir, ".ramp", "scripts", "cleanup.sh")
+	os.MkdirAll(filepath.Dir(scriptPath), 0755)
+	scriptContent := `#!/bin/bash
+exit 1
+`
+	os.WriteFile(scriptPath, []byte(scriptContent), 0755)
+
+	// Update config to include cleanup script
+	cfg, _ := config.LoadConfig(tp.Dir)
+	cfg.Cleanup = "scripts/cleanup.sh"
+	config.SaveConfig(cfg, tp.Dir)
+
+	// Create feature first
+	runUp("test-feature", "", "")
+
+	// Delete feature - should continue despite cleanup script failure
+	err := runDown("test-feature")
+	// The function still succeeds but logs a warning about cleanup failure
+	if err != nil {
+		t.Fatalf("runDown() error = %v", err)
+	}
+
+	// Verify feature was still removed
+	if tp.FeatureExists("test-feature") {
+		t.Error("feature should be removed even when cleanup script fails")
 	}
 }
