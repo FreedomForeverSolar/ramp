@@ -504,3 +504,77 @@ func TestStatusWithMergedFeature(t *testing.T) {
 		t.Fatalf("runStatus() error = %v", err)
 	}
 }
+
+// TestStatusWithOrphanedWorktree tests that status handles orphaned worktrees
+func TestStatusWithOrphanedWorktree(t *testing.T) {
+	tp := NewTestProject(t)
+	tp.InitRepo("repo1")
+	tp.InitRepo("repo2")
+
+	cleanup := tp.ChangeToProjectDir()
+	defer cleanup()
+
+	// Create a feature
+	err := runUp("orphaned", "", "")
+	if err != nil {
+		t.Fatalf("runUp() error = %v", err)
+	}
+
+	// Verify feature was created
+	if !tp.FeatureExists("orphaned") {
+		t.Fatal("feature was not created")
+	}
+
+	// Manually delete the trees directory (simulating user action)
+	treesDir := filepath.Join(tp.TreesDir, "orphaned")
+	if err := os.RemoveAll(treesDir); err != nil {
+		t.Fatalf("failed to manually remove trees directory: %v", err)
+	}
+
+	// Status should handle orphaned worktree gracefully and not crash
+	err = runStatus()
+	if err != nil {
+		t.Fatalf("runStatus() should handle orphaned worktree gracefully, got error: %v", err)
+	}
+
+	// The status command should complete successfully even with orphaned worktrees
+	// It's acceptable if the feature doesn't show up in the status output since the directory is gone
+}
+
+// TestGetFeatureWorktreeStatusOrphaned tests orphaned worktree detection
+func TestGetFeatureWorktreeStatusOrphaned(t *testing.T) {
+	tp := NewTestProject(t)
+	tp.InitRepo("repo1")
+
+	cleanup := tp.ChangeToProjectDir()
+	defer cleanup()
+
+	// Create a feature
+	err := runUp("orphaned-status", "", "")
+	if err != nil {
+		t.Fatalf("runUp() error = %v", err)
+	}
+
+	// Manually delete the worktree directory
+	worktreePath := filepath.Join(tp.TreesDir, "orphaned-status", "repo1")
+	if err := os.RemoveAll(worktreePath); err != nil {
+		t.Fatalf("failed to remove worktree directory: %v", err)
+	}
+
+	// Get status for the orphaned worktree
+	cfg, err := config.LoadConfig(tp.Dir)
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v", err)
+	}
+
+	status := getFeatureWorktreeStatus(tp.Dir, "orphaned-status", "repo1", cfg.Repos[0])
+
+	// Should have an error indicating worktree not found
+	if status.error == "" {
+		t.Error("expected error for orphaned worktree, got none")
+	}
+
+	if status.error != "worktree not found" {
+		t.Errorf("expected 'worktree not found' error, got: %q", status.error)
+	}
+}

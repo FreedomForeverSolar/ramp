@@ -715,3 +715,27 @@ func GetStatusStats(repoDir string) (*StatusStats, error) {
 
 	return stats, nil
 }
+
+// WorktreeRegistered checks if a worktree path is registered with git, even if the directory doesn't exist
+func WorktreeRegistered(repoDir, worktreeDir string) bool {
+	cmd := exec.Command("git", "worktree", "list", "--porcelain")
+	cmd.Dir = repoDir
+
+	output, err := cmd.Output()
+	if err != nil {
+		return false
+	}
+
+	// Parse worktree list output to find matching worktree path
+	lines := strings.Split(string(output), "\n")
+	for _, line := range lines {
+		if strings.HasPrefix(line, "worktree ") {
+			path := strings.TrimPrefix(line, "worktree ")
+			if path == worktreeDir {
+				return true
+			}
+		}
+	}
+
+	return false
+}

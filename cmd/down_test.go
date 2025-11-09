@@ -510,3 +510,65 @@ exit 1
 		t.Error("feature should be removed even when cleanup script fails")
 	}
 }
+
+// TestDownOrphanedWorktree tests that down handles manually deleted trees directory
+func TestDownOrphanedWorktree(t *testing.T) {
+	tp := NewTestProject(t)
+	tp.InitRepo("repo1")
+	tp.InitRepo("repo2")
+
+	cleanup := tp.ChangeToProjectDir()
+	defer cleanup()
+
+	// Create feature
+	err := runUp("orphaned", "", "")
+	if err != nil {
+		t.Fatalf("runUp() error = %v", err)
+	}
+
+	// Verify feature was created
+	if !tp.FeatureExists("orphaned") {
+		t.Fatal("feature was not created")
+	}
+
+	// Verify git worktrees exist (check git directly)
+	repo1 := tp.Repos["repo1"]
+	repo2 := tp.Repos["repo2"]
+
+	if !repo1.BranchExists(t, "feature/orphaned") {
+		t.Fatal("repo1 branch was not created")
+	}
+	if !repo2.BranchExists(t, "feature/orphaned") {
+		t.Fatal("repo2 branch was not created")
+	}
+
+	// Manually delete the entire trees/orphaned directory (simulating user action)
+	treesDir := filepath.Join(tp.TreesDir, "orphaned")
+	if err := os.RemoveAll(treesDir); err != nil {
+		t.Fatalf("failed to manually remove trees directory: %v", err)
+	}
+
+	// Verify directory is gone
+	if _, err := os.Stat(treesDir); !os.IsNotExist(err) {
+		t.Fatal("trees directory should be gone after manual removal")
+	}
+
+	// Now run down - should handle the orphaned worktree gracefully
+	err = runDown("orphaned")
+	if err != nil {
+		t.Fatalf("runDown() should handle orphaned worktree gracefully, got error: %v", err)
+	}
+
+	// Verify git branches were cleaned up
+	if repo1.BranchExists(t, "feature/orphaned") {
+		t.Error("repo1 branch should be deleted even with orphaned worktree")
+	}
+	if repo2.BranchExists(t, "feature/orphaned") {
+		t.Error("repo2 branch should be deleted even with orphaned worktree")
+	}
+
+	// Verify feature directory doesn't exist
+	if tp.FeatureExists("orphaned") {
+		t.Error("feature directory should not exist after cleanup")
+	}
+}
