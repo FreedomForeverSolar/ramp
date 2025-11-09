@@ -263,7 +263,8 @@ The application uses the Cobra CLI framework with commands organized in `cmd/`:
 **Key Functions**:
 - `NewProgress()` - Creates progress indicator with cyan spinner
 - `Start()` / `Success()` / `Error()` / `Warning()` / `Info()` - Status reporting methods
-- `RunCommandWithProgress()` - Executes shell commands with progress feedback
+- `RunCommandWithProgress()` - Executes shell commands with progress feedback, displaying output on completion
+- `RunCommandWithProgressQuiet()` - Executes shell commands with progress feedback, hiding output on success (shows only on error)
 - `OutputCapture` - Captures and conditionally displays command output
 - Respects global `--verbose` flag to switch between spinner and direct output modes
 
@@ -361,6 +362,19 @@ Comprehensive progress reporting with two modes:
 - **Normal mode**: Animated spinners with status updates and emoji indicators
 - **Verbose mode**: Direct command output for debugging and CI environments
 
+#### Git Stashes and Worktrees
+**Important limitation**: Git stashes are **shared across all worktrees** of the same repository because they're stored in `.git/refs/stash` which is shared, not per-worktree.
+
+**What this means**:
+- When you create a stash in a feature worktree, it's visible in the source repository and all other worktrees
+- Running `git stash pop` in the source repository might accidentally apply stashes created in feature worktrees
+- This is a potential "footgun" that users should be aware of
+
+**Best practice**:
+- Use `git stash push -m "descriptive message"` to clearly identify stashes
+- Check `git stash list` before popping to ensure you're applying the correct stash
+- Consider using commits or branches instead of stashes for longer-lived work
+
 ## Testing Infrastructure
 
 Ramp has a comprehensive test suite designed to protect backwards compatibility and enable test-driven development. The test suite uses real git operations for realistic integration testing.
@@ -387,12 +401,13 @@ go test ./... -v
 ### Test Coverage
 
 Current test coverage (as of latest update):
-- **cmd package**: 52.6% (55 tests covering main commands)
-- **internal/config**: 96.7% (54 tests for configuration management)
-- **internal/git**: 46.1% (58 tests for git operations)
-- **internal/scaffold**: 88.9% (23 tests for project scaffolding)
-- **internal/ports**: 74.2% (3 tests for port allocation)
-- **Total**: 256 tests across all packages
+- **cmd package**: 61.2% (covering main commands)
+- **internal/config**: 95.7% (configuration management)
+- **internal/git**: 75.0% (git operations)
+- **internal/scaffold**: 88.9% (project scaffolding)
+- **internal/ports**: 74.2% (port allocation)
+- **internal/ui**: 77.6% (UI and progress feedback)
+- **Total**: 362 tests across all packages
 
 ### Test Organization
 
@@ -493,9 +508,8 @@ for _, tt := range tests {
 ### Known Limitations
 
 1. **Interactive Commands**: `ramp init` is not tested due to interactive stdin requirements
-2. **Coverage Gaps**: ~47% of cmd code paths not yet covered
+2. **Coverage Gaps**: ~39% of cmd code paths not yet covered
 3. **Performance**: No benchmark tests for performance-critical operations
-4. **UI Testing**: Progress spinner and output formatting not validated
 
 ### Adding New Tests
 
