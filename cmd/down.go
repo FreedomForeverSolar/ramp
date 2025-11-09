@@ -157,6 +157,9 @@ func runDown(featureName string) error {
 			progress.Info(fmt.Sprintf("%s: removing worktree registration", name))
 			if err := git.RemoveWorktree(repoDir, worktreeDir); err != nil {
 				progress.Warning(fmt.Sprintf("Failed to remove worktree for %s: %v", name, err))
+				// If worktree removal failed, prune orphaned worktrees before deleting branch
+				// This handles cases where the worktree directory was manually deleted
+				_ = git.PruneWorktrees(repoDir)
 			}
 
 			// Delete branch
@@ -319,5 +322,5 @@ func runCleanupScriptWithProgress(projectDir, treesDir, cleanupScript string, pr
 	}
 
 	message := fmt.Sprintf("Running cleanup script: %s", cleanupScript)
-	return ui.RunCommandWithProgress(cmd, message)
+	return ui.RunCommandWithProgressQuiet(cmd, message)
 }

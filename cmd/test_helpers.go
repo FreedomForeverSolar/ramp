@@ -34,6 +34,13 @@ func NewTestProject(t *testing.T) *TestProject {
 
 	projectDir := t.TempDir()
 
+	// Resolve symlinks to ensure canonical path (important on macOS where /var -> /private/var)
+	canonicalDir, err := filepath.EvalSymlinks(projectDir)
+	if err != nil {
+		// If we can't resolve symlinks, use the original path
+		canonicalDir = projectDir
+	}
+
 	// Create project structure with NO repos initially
 	// Repos will be added via InitRepo()
 	data := scaffold.ProjectData{
@@ -46,20 +53,20 @@ func NewTestProject(t *testing.T) *TestProject {
 		Repos:          []scaffold.RepoData{}, // Empty - repos added via InitRepo
 	}
 
-	if err := scaffold.CreateProject(projectDir, data); err != nil {
+	if err := scaffold.CreateProject(canonicalDir, data); err != nil {
 		t.Fatalf("failed to create test project: %v", err)
 	}
 
-	cfg, err := config.LoadConfig(projectDir)
+	cfg, err := config.LoadConfig(canonicalDir)
 	if err != nil {
 		t.Fatalf("failed to load test config: %v", err)
 	}
 
 	tp := &TestProject{
-		Dir:      projectDir,
-		ReposDir: filepath.Join(projectDir, "repos"),
-		TreesDir: filepath.Join(projectDir, "trees"),
-		RampDir:  filepath.Join(projectDir, ".ramp"),
+		Dir:      canonicalDir,
+		ReposDir: filepath.Join(canonicalDir, "repos"),
+		TreesDir: filepath.Join(canonicalDir, "trees"),
+		RampDir:  filepath.Join(canonicalDir, ".ramp"),
 		Repos:    make(map[string]*TestRepo),
 		Config:   cfg,
 		t:        t,

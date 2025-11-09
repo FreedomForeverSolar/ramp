@@ -28,11 +28,12 @@ type UpState struct {
 var prefixFlag string
 var noPrefixFlag bool
 var targetFlag string
+var fromFlag string
 var refreshFlag bool
 var noRefreshFlag bool
 
 var upCmd = &cobra.Command{
-	Use:   "up <feature-name>",
+	Use:   "up [feature-name]",
 	Short: "Create a new feature branch with git worktrees for all repositories",
 	Long: `Create a new feature branch by creating git worktrees for all repositories
 from their configured locations. This creates isolated working directories for each repo
@@ -44,14 +45,59 @@ flag to create the feature from a different source:
   - Local branch name: ramp up new-feature --target feature/my-branch
   - Remote branch name: ramp up new-feature --target origin/feature/my-branch
 
+Use the --from flag to create from a remote branch with automatic naming:
+  - Remote branch: ramp up --from claude/feature-123
+    Creates trees/feature-123/ with branch claude/feature-123 from origin/claude/feature-123
+  - Override name: ramp up my-name --from claude/feature-123
+    Creates trees/my-name/ with branch claude/feature-123 from origin/claude/feature-123
+
 The operation is atomic - if any step fails, all successful operations will be
 rolled back to ensure no partial feature state remains.
 
 After creating worktrees, runs any setup script specified in the configuration.`,
-	Args: cobra.ExactArgs(1),
+	Args: cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		featureName := strings.TrimRight(args[0], "/")
-		if err := runUp(featureName, prefixFlag, targetFlag); err != nil {
+		var featureName string
+		var derivedPrefix string
+		var derivedTarget string
+
+		// Handle --from flag
+		if fromFlag != "" {
+			// Parse the from flag to extract prefix and feature name
+			lastSlash := strings.LastIndex(fromFlag, "/")
+			if lastSlash == -1 {
+				// No slash found - entire string is feature name, no prefix
+				derivedPrefix = ""
+				if len(args) == 0 {
+					featureName = fromFlag
+				} else {
+					featureName = strings.TrimRight(args[0], "/")
+				}
+			} else {
+				// Found slash - split into prefix and feature name
+				derivedPrefix = fromFlag[:lastSlash+1] // Include trailing slash
+				derivedName := fromFlag[lastSlash+1:]
+				if len(args) == 0 {
+					featureName = derivedName
+				} else {
+					featureName = strings.TrimRight(args[0], "/")
+				}
+			}
+
+			// Always prepend origin/ to the from value for the target
+			derivedTarget = "origin/" + fromFlag
+		} else {
+			// Traditional usage - feature name is required
+			if len(args) == 0 {
+				fmt.Fprintf(os.Stderr, "Error: feature-name is required when not using --from flag\n")
+				os.Exit(1)
+			}
+			featureName = strings.TrimRight(args[0], "/")
+			derivedPrefix = prefixFlag
+			derivedTarget = targetFlag
+		}
+
+		if err := runUp(featureName, derivedPrefix, derivedTarget); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -63,6 +109,7 @@ func init() {
 	upCmd.Flags().StringVar(&prefixFlag, "prefix", "", "Override the branch prefix (defaults to config default_branch_prefix)")
 	upCmd.Flags().BoolVar(&noPrefixFlag, "no-prefix", false, "Disable branch prefix for this feature (mutually exclusive with --prefix)")
 	upCmd.Flags().StringVar(&targetFlag, "target", "", "Create feature from existing feature name, local branch, or remote branch")
+	upCmd.Flags().StringVar(&fromFlag, "from", "", "Create from remote branch with automatic prefix/name derivation (mutually exclusive with --target, --prefix, --no-prefix)")
 	upCmd.Flags().BoolVar(&refreshFlag, "refresh", false, "Force refresh all repositories before creating feature (overrides auto_refresh config)")
 	upCmd.Flags().BoolVar(&noRefreshFlag, "no-refresh", false, "Skip refresh for all repositories (overrides auto_refresh config)")
 }
@@ -98,6 +145,19 @@ func runUp(featureName, prefix, target string) error {
 		return fmt.Errorf("cannot specify both --prefix and --no-prefix flags")
 	}
 
+	// Validate that --from is mutually exclusive with --target, --prefix, and --no-prefix
+	if fromFlag != "" {
+		if targetFlag != "" {
+			return fmt.Errorf("cannot specify both --from and --target flags")
+		}
+		if prefixFlag != "" {
+			return fmt.Errorf("cannot specify both --from and --prefix flags")
+		}
+		if noPrefixFlag {
+			return fmt.Errorf("cannot specify both --from and --no-prefix flags")
+		}
+	}
+
 	// Auto-install if needed
 	if err := AutoInstallIfNeeded(projectDir, cfg); err != nil {
 		return fmt.Errorf("auto-installation failed: %w", err)
@@ -124,8 +184,10 @@ func runUp(featureName, prefix, target string) error {
 		}
 	}
 
+	// Create a single progress instance for the entire operation
+	progress := ui.NewProgress()
+
 	if shouldRefreshRepos {
-		progress := ui.NewProgress()
 		progress.Start("Auto-refreshing repositories before creating feature")
 
 		for name, repo := range repos {
@@ -148,11 +210,13 @@ func runUp(featureName, prefix, target string) error {
 		}
 
 		progress.Success("Auto-refresh completed")
-	}
 
-	progress := ui.NewProgress()
-	progress.Start(fmt.Sprintf("Creating feature '%s' for project '%s'", featureName, cfg.Name))
-	progress.Success(fmt.Sprintf("Creating feature '%s' for project '%s'", featureName, cfg.Name))
+		// Restart progress for the main feature creation
+		progress.Start(fmt.Sprintf("Creating feature '%s' for project '%s'", featureName, cfg.Name))
+	} else {
+		// No refresh needed, start progress for feature creation
+		progress.Start(fmt.Sprintf("Creating feature '%s' for project '%s'", featureName, cfg.Name))
+	}
 
 	// Determine effective prefix
 	// Priority: --no-prefix flag (empty) > --prefix flag (custom) > config default
@@ -521,7 +585,7 @@ func runSetupScriptWithProgress(projectDir, treesDir, setupScript string, progre
 
 	cmd := exec.Command("/bin/bash", scriptPath)
 	cmd.Dir = treesDir
-	
+
 	// Set up environment variables that the setup script expects
 	cmd.Env = append(os.Environ(), fmt.Sprintf("RAMP_PROJECT_DIR=%s", projectDir))
 	cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_TREES_DIR=%s", treesDir))
@@ -543,7 +607,7 @@ func runSetupScriptWithProgress(projectDir, treesDir, setupScript string, progre
 			cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_PORT=%d", port))
 		}
 	}
-	
+
 	repos := cfg.GetRepos()
 	for name, repo := range repos {
 		envVarName := config.GenerateEnvVarName(name)
@@ -552,5 +616,5 @@ func runSetupScriptWithProgress(projectDir, treesDir, setupScript string, progre
 	}
 
 	message := fmt.Sprintf("Running setup script: %s", setupScript)
-	return ui.RunCommandWithProgress(cmd, message)
+	return ui.RunCommandWithProgressQuiet(cmd, message)
 }

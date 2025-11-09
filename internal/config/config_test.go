@@ -513,13 +513,20 @@ func TestLoadConfigErrors(t *testing.T) {
 func TestFindRampProject(t *testing.T) {
 	tempDir := t.TempDir()
 
+	// Resolve symlinks to ensure canonical path (important on macOS where /var -> /private/var)
+	canonicalTempDir, err := filepath.EvalSymlinks(tempDir)
+	if err != nil {
+		// If we can't resolve symlinks, use the original path
+		canonicalTempDir = tempDir
+	}
+
 	// Create project structure:
 	// tempDir/
 	//   .ramp/
 	//     ramp.yaml
 	//   subdir1/
 	//     subdir2/
-	projectRoot := tempDir
+	projectRoot := canonicalTempDir
 	rampDir := filepath.Join(projectRoot, ".ramp")
 	if err := os.MkdirAll(rampDir, 0755); err != nil {
 		t.Fatalf("failed to create .ramp: %v", err)

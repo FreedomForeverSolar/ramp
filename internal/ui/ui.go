@@ -159,3 +159,39 @@ func RunCommandWithProgress(cmd *exec.Cmd, message string) error {
 
 	return err
 }
+
+// RunCommandWithProgressQuiet runs a command with a progress spinner but suppresses
+// output on success (only shows output on error). Useful for setup/cleanup scripts
+// where you want a clean UI in non-verbose mode.
+func RunCommandWithProgressQuiet(cmd *exec.Cmd, message string) error {
+	if Verbose {
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		fmt.Printf("%s\n", message)
+		return cmd.Run()
+	}
+
+	progress := NewProgress()
+	progress.Start(message)
+
+	capture := &OutputCapture{}
+	cmd.Stdout = capture.GetStdout()
+	cmd.Stderr = capture.GetStderr()
+
+	err := cmd.Run()
+
+	progress.Stop()
+
+	if err != nil {
+		progress.Error(fmt.Sprintf("%s failed", message))
+		if capture.HasOutput() {
+			fmt.Println("\nOutput:")
+			capture.PrintOutput()
+		}
+	} else {
+		// DON'T print output on success - keep the UI clean
+		progress.Success(message)
+	}
+
+	return err
+}
