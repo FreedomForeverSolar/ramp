@@ -177,24 +177,35 @@ ramp install -v    # Verbose output showing clone operations
 **Flags:**
 - `-v, --verbose`: Show detailed command output instead of progress spinners
 
-#### `ramp up <feature-name>`
+#### `ramp up [feature-name]`
 Create feature branch with worktrees across all repositories. Automatically refreshes repositories that have `auto_refresh` enabled (defaults to true).
 ```bash
 ramp up user-auth-feature
 ramp up urgent-fix --prefix hotfix/           # Custom branch prefix
+ramp up urgent-fix --no-prefix                # No prefix at all
 ramp up new-feature --target existing-feature # Create from existing feature
 ramp up new-feature --target feature/my-branch # Create from specific branch
 ramp up new-feature --target origin/main      # Create from remote branch
+ramp up --from claude/feature-123             # Create from remote branch, auto-name as "feature-123"
+ramp up my-name --from claude/feature-123     # Create from remote branch, name as "my-name"
+ramp up my-feature --refresh                  # Force refresh all repos (overrides config)
+ramp up my-feature --no-refresh               # Skip refresh for all repos (overrides config)
 ramp up my-feature -v                         # Verbose output showing all commands
 ```
 
 **Flags:**
 - `--prefix <prefix>`: Override the branch prefix from config (e.g., `--prefix hotfix/`)
+- `--no-prefix`: Disable branch prefix entirely (mutually exclusive with `--prefix` and `--from`)
 - `--target <target>`: Create feature from existing feature name, local branch, or remote branch
+- `--from <remote-branch>`: Create from remote branch with automatic naming (e.g., `--from claude/feature-123`). Automatically derives prefix and feature name from the remote branch path. Feature name becomes optional when using this flag. Mutually exclusive with `--target`, `--prefix`, and `--no-prefix`
+- `--refresh`: Force refresh all repositories before creating feature (overrides `auto_refresh` config)
+- `--no-refresh`: Skip refresh for all repositories (overrides `auto_refresh` config, mutually exclusive with `--refresh`)
 - `-v, --verbose`: Show detailed command output instead of progress spinners
 
+**Note:** Feature names cannot contain slashes. Use `--prefix` instead: `ramp up my-feature --prefix epic/` rather than `ramp up epic/my-feature`.
+
 #### `ramp down <feature-name>`
-Clean up feature branch, worktrees, and allocated resources.
+Clean up feature branch, worktrees, and allocated resources. Runs `git fetch --prune` to clean up stale remote tracking branches. Can clean up orphaned features even if the directory was manually deleted.
 ```bash
 ramp down user-auth-feature  # Prompts for confirmation if uncommitted changes
 ramp down -v my-feature      # Verbose output showing cleanup steps
@@ -210,7 +221,7 @@ ramp prune        # Shows summary, asks for confirmation, then removes all merge
 ramp prune -v     # Verbose output showing detailed cleanup operations
 ```
 
-Scans all features in the `trees/` directory, identifies features that have been merged into their default branch (using `git merge-base`), and removes them after confirmation. Features categorized as "CLEAN" (never had any commits) are excluded from pruning.
+Scans all features in the `trees/` directory, identifies features that have been merged into their default branch (using `git merge-base`), and removes them after confirmation. Features categorized as "CLEAN" (never had any commits) are excluded from pruning. Can handle orphaned features where directories were manually deleted.
 
 **What gets removed:**
 - Git worktrees for each repository
@@ -219,8 +230,11 @@ Scans all features in the `trees/` directory, identifies features that have been
 - Feature directories in `trees/`
 
 **Behavior:**
+- Categorizes all features as MERGED, IN FLIGHT, or CLEAN
+- Only prunes features marked as MERGED (excludes CLEAN features)
 - Shows summary of all merged features before proceeding
 - Asks for single confirmation to remove all
+- Runs `git fetch --prune` to clean up stale remote tracking branches
 - Continues with remaining features if one fails (non-blocking errors)
 - Displays final summary with success count and any failures
 
@@ -228,14 +242,22 @@ Scans all features in the `trees/` directory, identifies features that have been
 - `-v, --verbose`: Show detailed command output instead of progress spinners
 
 #### `ramp status`
-Show comprehensive project status, including active features.
+Show comprehensive project status, including active features with merge status tracking. Automatically fetches from all remotes before displaying status.
 ```bash
 ramp status
 ramp status -v      # Verbose output with additional repository details
 ```
 
+**What it shows:**
+- **Source repositories**: Current branch, remote tracking status (ahead/behind commits), uncommitted changes
+- **Active features**: All features sorted chronologically by creation date, with merge status (MERGED, IN FLIGHT, or CLEAN)
+- **Port allocations**: Current port usage (if port management is configured)
+- **Worktree details**: Which repositories have active worktrees for each feature
+
 **Flags:**
 - `-v, --verbose`: Show detailed command output instead of progress spinners
+
+**Note:** Can handle orphaned worktrees where directories were manually deleted.
 
 ### Repository Management
 
@@ -274,6 +296,16 @@ ramp run -v dev my-feature # Verbose output showing script execution
 **Flags:**
 - `-v, --verbose`: Show detailed command output instead of progress spinners
 
+### Utility Commands
+
+#### `ramp version`
+Display the current version of the ramp CLI tool.
+```bash
+ramp version
+```
+
+Shows the installed version number (e.g., `1.2.3` for releases, `dev` for local builds).
+
 ### Global Options
 
 - `-v, --verbose`: Show detailed output and disable progress spinners
@@ -289,34 +321,40 @@ name: my-project
 
 # Repository configurations
 repos:
-  - path: repos                 # Local directory name
+  - path: repos                      # Local directory name
     git: git@github.com:org/frontend.git  # Git clone URL
-    auto_refresh: true          # Optional: auto-refresh before 'ramp up' (default: true)
+    auto_refresh: true               # Optional: auto-refresh before 'ramp up' (default: true)
+                                     # Can be overridden per-command with --refresh or --no-refresh
 
   - path: repos
     git: https://github.com/org/api.git
-    auto_refresh: true          # Optional: auto-refresh before 'ramp up' (default: true)
+    auto_refresh: true               # Optional: auto-refresh before 'ramp up' (default: true)
 
 # Optional: Scripts to run during lifecycle events
-setup: scripts/setup.sh       # After 'ramp up'
-cleanup: scripts/cleanup.sh   # Before 'ramp down'
+setup: scripts/setup.sh              # After 'ramp up'
+cleanup: scripts/cleanup.sh          # Before 'ramp down'
 
 # Optional: Branch naming
-default-branch-prefix: feature/  # Prefix for new branches
+default-branch-prefix: feature/      # Prefix for new branches (can be overridden with --prefix or --no-prefix)
 
 # Optional: Port management (allocates ONE port per feature)
-base_port: 3000              # Starting port number
-max_ports: 100              # Maximum ports to allocate
+base_port: 3000                      # Starting port number (default: 3000)
+max_ports: 100                       # Maximum ports to allocate (default: 100)
 
 # Optional: Custom commands
 commands:
-  - name: dev                # 'ramp run dev'
+  - name: dev                        # 'ramp run dev'
     command: scripts/dev.sh
   - name: test
     command: scripts/test.sh
   - name: deploy
     command: scripts/deploy.sh
 ```
+
+**Configuration Notes:**
+- `auto_refresh` defaults to `true` if not specified. When enabled, repositories are automatically refreshed before `ramp up` operations
+- Use `--refresh` or `--no-refresh` flags to override `auto_refresh` on a per-command basis
+- Feature names cannot contain slashes; use `--prefix` flag instead for nested branch names
 
 ### Environment Variables for Scripts
 
@@ -423,6 +461,12 @@ A: Ensure Git 2.25+ is installed and repositories are properly initialized
 
 **Q: Permission denied on scripts**
 A: Make scripts executable: `chmod +x .ramp/scripts/*.sh`
+
+**Q: "Feature name cannot contain slashes"**
+A: Use `--prefix` flag instead: `ramp up my-feature --prefix epic/` rather than `ramp up epic/my-feature`
+
+**Q: Orphaned worktrees (manually deleted feature directories)**
+A: Use `ramp status` to identify orphaned worktrees, then clean them up with `ramp down <feature-name>` or `ramp prune`. Ramp can handle cleanup even when directories are missing.
 
 ### Debug Mode
 
