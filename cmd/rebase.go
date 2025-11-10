@@ -164,7 +164,8 @@ func runRebase(branchName string) error {
 		progress.Start("Stashing uncommitted changes")
 		for name, repo := range repos {
 			repoDir := repo.GetRepoPath(projectDir)
-			stashed, err := git.StashChanges(repoDir)
+			// Use quiet version to avoid nested spinners
+			stashed, err := git.StashChangesQuiet(repoDir)
 			if err != nil {
 				progress.Error(fmt.Sprintf("Failed to stash changes in %s", name))
 				return fmt.Errorf("failed to stash changes in %s: %w", name, err)
@@ -202,16 +203,16 @@ func runRebase(branchName string) error {
 		}
 
 		localExists, _ := git.LocalBranchExists(repoDir, branchName)
-		
+
 		var err error
 		if localExists {
-			// Checkout existing local branch
+			// Checkout existing local branch (quiet version to avoid nested spinners)
 			progress.Info(fmt.Sprintf("%s: checking out local branch %s", name, branchName))
-			err = git.Checkout(repoDir, branchName)
+			err = git.CheckoutQuiet(repoDir, branchName)
 		} else {
-			// Create and checkout remote branch
+			// Create and checkout remote branch (quiet version to avoid nested spinners)
 			progress.Info(fmt.Sprintf("%s: checking out remote branch %s", name, branchName))
-			err = git.CheckoutRemoteBranch(repoDir, branchName)
+			err = git.CheckoutRemoteBranchQuiet(repoDir, branchName)
 		}
 
 		if err != nil {
@@ -237,7 +238,8 @@ func runRebase(branchName string) error {
 			state := states[name]
 			if state.Stashed {
 				repoDir := repo.GetRepoPath(projectDir)
-				if err := git.PopStash(repoDir); err != nil {
+				// Use quiet version to avoid nested spinners
+				if err := git.PopStashQuiet(repoDir); err != nil {
 					progress.Warning(fmt.Sprintf("Failed to restore stashed changes in %s: %v", name, err))
 					progress.Warning("You may need to manually restore stashed changes with 'git stash pop'")
 				} else {
@@ -265,7 +267,8 @@ func rollbackRebase(projectDir string, repos map[string]*config.Repo, states map
 		if state.Success {
 			repoDir := repo.GetRepoPath(projectDir)
 			progress.Info(fmt.Sprintf("%s: rolling back to %s", name, state.OriginalBranch))
-			if err := git.Checkout(repoDir, state.OriginalBranch); err != nil {
+			// Use quiet version to avoid nested spinners
+			if err := git.CheckoutQuiet(repoDir, state.OriginalBranch); err != nil {
 				progress.Error(fmt.Sprintf("Failed to rollback %s: %v", name, err))
 			}
 		}
@@ -273,7 +276,8 @@ func rollbackRebase(projectDir string, repos map[string]*config.Repo, states map
 		// Restore stashed changes if any
 		if state.Stashed {
 			repoDir := repo.GetRepoPath(projectDir)
-			if err := git.PopStash(repoDir); err != nil {
+			// Use quiet version to avoid nested spinners
+			if err := git.PopStashQuiet(repoDir); err != nil {
 				progress.Warning(fmt.Sprintf("Failed to restore stashed changes in %s during rollback: %v", name, err))
 			}
 		}
