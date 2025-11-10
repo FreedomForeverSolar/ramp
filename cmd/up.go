@@ -358,12 +358,12 @@ func runUp(featureName, prefix, target string) error {
 
 		var err error
 		if target != "" && sourceBranches[name] != "" {
-			// Use target source branch
+			// Use target source branch (quiet version to avoid nested spinners)
 			sourceBranch := sourceBranches[name]
-			err = git.CreateWorktreeFromSource(repoDir, state.WorktreeDir, state.BranchName, sourceBranch, name)
+			err = git.CreateWorktreeFromSourceQuiet(repoDir, state.WorktreeDir, state.BranchName, sourceBranch, name)
 		} else {
-			// Use default behavior (either no target, or target not found in this repo)
-			err = git.CreateWorktree(repoDir, state.WorktreeDir, state.BranchName, name)
+			// Use default behavior (quiet version to avoid nested spinners)
+			err = git.CreateWorktreeQuiet(repoDir, state.WorktreeDir, state.BranchName, name)
 		}
 
 		if err != nil {

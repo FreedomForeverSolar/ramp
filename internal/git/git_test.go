@@ -1258,3 +1258,291 @@ func TestPopStash(t *testing.T) {
 		}
 	})
 }
+
+// TestRemoveWorktreeQuiet tests quiet worktree removal without spinner
+func TestRemoveWorktreeQuiet(t *testing.T) {
+	// Set verbose to false to verify no spinner is created
+	oldVerbose := ui.Verbose
+	ui.Verbose = false
+	defer func() { ui.Verbose = oldVerbose }()
+
+	t.Run("remove worktree quietly", func(t *testing.T) {
+		repoDir := t.TempDir()
+		initTestRepo(t, repoDir)
+		runGitCmd(t, repoDir, "checkout", "-b", "main")
+		runGitCmd(t, repoDir, "commit", "--allow-empty", "-m", "initial")
+
+		// Create a worktree
+		worktreeDir := filepath.Join(t.TempDir(), "feature-worktree")
+		err := CreateWorktree(repoDir, worktreeDir, "feature-branch", "test-repo")
+		if err != nil {
+			t.Fatalf("CreateWorktree() error = %v", err)
+		}
+
+		// Remove worktree quietly (should not create a spinner)
+		err = RemoveWorktreeQuiet(repoDir, worktreeDir)
+		if err != nil {
+			t.Fatalf("RemoveWorktreeQuiet() error = %v", err)
+		}
+
+		// Verify worktree was removed
+		if _, err := os.Stat(worktreeDir); !os.IsNotExist(err) {
+			t.Error("worktree directory should be removed")
+		}
+	})
+}
+
+// TestDeleteBranchQuiet tests quiet branch deletion without spinner
+func TestDeleteBranchQuiet(t *testing.T) {
+	// Set verbose to false to verify no spinner is created
+	oldVerbose := ui.Verbose
+	ui.Verbose = false
+	defer func() { ui.Verbose = oldVerbose }()
+
+	t.Run("delete branch quietly", func(t *testing.T) {
+		repoDir := t.TempDir()
+		initTestRepo(t, repoDir)
+		runGitCmd(t, repoDir, "checkout", "-b", "main")
+		runGitCmd(t, repoDir, "commit", "--allow-empty", "-m", "initial")
+
+		// Create a test branch
+		runGitCmd(t, repoDir, "checkout", "-b", "test-branch")
+		runGitCmd(t, repoDir, "checkout", "main")
+
+		// Verify branch exists
+		exists, _ := LocalBranchExists(repoDir, "test-branch")
+		if !exists {
+			t.Fatal("test-branch should exist before deletion")
+		}
+
+		// Delete branch quietly (should not create a spinner)
+		err := DeleteBranchQuiet(repoDir, "test-branch")
+		if err != nil {
+			t.Fatalf("DeleteBranchQuiet() error = %v", err)
+		}
+
+		// Verify branch was deleted
+		exists, _ = LocalBranchExists(repoDir, "test-branch")
+		if exists {
+			t.Error("test-branch should be deleted")
+		}
+	})
+}
+
+// TestCreateWorktreeQuiet tests quiet worktree creation without spinner
+func TestCreateWorktreeQuiet(t *testing.T) {
+	oldVerbose := ui.Verbose
+	ui.Verbose = false
+	defer func() { ui.Verbose = oldVerbose }()
+
+	t.Run("create new branch worktree quietly", func(t *testing.T) {
+		repoDir := t.TempDir()
+		initTestRepo(t, repoDir)
+		runGitCmd(t, repoDir, "checkout", "-b", "main")
+		runGitCmd(t, repoDir, "commit", "--allow-empty", "-m", "initial")
+
+		worktreeDir := filepath.Join(t.TempDir(), "test-worktree")
+		err := CreateWorktreeQuiet(repoDir, worktreeDir, "feature-branch", "test-repo")
+		if err != nil {
+			t.Fatalf("CreateWorktreeQuiet() error = %v", err)
+		}
+
+		// Verify worktree was created
+		if _, err := os.Stat(worktreeDir); os.IsNotExist(err) {
+			t.Error("worktree directory should exist")
+		}
+	})
+}
+
+// TestCreateWorktreeFromSourceQuiet tests quiet worktree creation from source without spinner
+func TestCreateWorktreeFromSourceQuiet(t *testing.T) {
+	oldVerbose := ui.Verbose
+	ui.Verbose = false
+	defer func() { ui.Verbose = oldVerbose }()
+
+	t.Run("create worktree from source quietly", func(t *testing.T) {
+		repoDir := t.TempDir()
+		initTestRepo(t, repoDir)
+		runGitCmd(t, repoDir, "checkout", "-b", "main")
+		runGitCmd(t, repoDir, "commit", "--allow-empty", "-m", "initial")
+
+		// Create a source branch
+		runGitCmd(t, repoDir, "checkout", "-b", "source-branch")
+		runGitCmd(t, repoDir, "commit", "--allow-empty", "-m", "source commit")
+		runGitCmd(t, repoDir, "checkout", "main")
+
+		worktreeDir := filepath.Join(t.TempDir(), "test-worktree")
+		err := CreateWorktreeFromSourceQuiet(repoDir, worktreeDir, "feature-branch", "source-branch", "test-repo")
+		if err != nil {
+			t.Fatalf("CreateWorktreeFromSourceQuiet() error = %v", err)
+		}
+
+		// Verify worktree was created
+		if _, err := os.Stat(worktreeDir); os.IsNotExist(err) {
+			t.Error("worktree directory should exist")
+		}
+	})
+}
+
+// TestStashChangesQuiet tests quiet stash without spinner
+func TestStashChangesQuiet(t *testing.T) {
+	oldVerbose := ui.Verbose
+	ui.Verbose = false
+	defer func() { ui.Verbose = oldVerbose }()
+
+	t.Run("stash changes quietly", func(t *testing.T) {
+		repoDir := t.TempDir()
+		initTestRepo(t, repoDir)
+
+		// Create and commit a file
+		testFile := filepath.Join(repoDir, "test.txt")
+		os.WriteFile(testFile, []byte("original"), 0644)
+		runGitCmd(t, repoDir, "add", "test.txt")
+		runGitCmd(t, repoDir, "commit", "-m", "initial")
+
+		// Modify the file
+		os.WriteFile(testFile, []byte("modified"), 0644)
+
+		stashed, err := StashChangesQuiet(repoDir)
+		if err != nil {
+			t.Fatalf("StashChangesQuiet() error = %v", err)
+		}
+
+		if !stashed {
+			t.Error("should have stashed changes")
+		}
+
+		// Verify changes were stashed
+		hasChanges, _ := HasUncommittedChanges(repoDir)
+		if hasChanges {
+			t.Error("should not have uncommitted changes after stash")
+		}
+	})
+}
+
+// TestPopStashQuiet tests quiet stash pop without spinner
+func TestPopStashQuiet(t *testing.T) {
+	oldVerbose := ui.Verbose
+	ui.Verbose = false
+	defer func() { ui.Verbose = oldVerbose }()
+
+	t.Run("pop stash quietly", func(t *testing.T) {
+		repoDir := t.TempDir()
+		initTestRepo(t, repoDir)
+
+		// Create and commit a file
+		testFile := filepath.Join(repoDir, "test.txt")
+		os.WriteFile(testFile, []byte("original"), 0644)
+		runGitCmd(t, repoDir, "add", "test.txt")
+		runGitCmd(t, repoDir, "commit", "-m", "initial")
+
+		// Modify and stash
+		os.WriteFile(testFile, []byte("modified"), 0644)
+		runGitCmd(t, repoDir, "stash")
+
+		err := PopStashQuiet(repoDir)
+		if err != nil {
+			t.Fatalf("PopStashQuiet() error = %v", err)
+		}
+
+		// Verify changes were restored
+		hasChanges, _ := HasUncommittedChanges(repoDir)
+		if !hasChanges {
+			t.Error("should have uncommitted changes after pop")
+		}
+	})
+}
+
+// TestCheckoutQuiet tests quiet checkout without spinner
+func TestCheckoutQuiet(t *testing.T) {
+	oldVerbose := ui.Verbose
+	ui.Verbose = false
+	defer func() { ui.Verbose = oldVerbose }()
+
+	t.Run("checkout branch quietly", func(t *testing.T) {
+		repoDir := t.TempDir()
+		initTestRepo(t, repoDir)
+		runGitCmd(t, repoDir, "checkout", "-b", "main")
+		runGitCmd(t, repoDir, "commit", "--allow-empty", "-m", "initial")
+
+		// Create test branch
+		runGitCmd(t, repoDir, "checkout", "-b", "test-branch")
+		runGitCmd(t, repoDir, "checkout", "main")
+
+		err := CheckoutQuiet(repoDir, "test-branch")
+		if err != nil {
+			t.Fatalf("CheckoutQuiet() error = %v", err)
+		}
+
+		// Verify we're on test-branch
+		currentBranch, _ := GetCurrentBranch(repoDir)
+		if currentBranch != "test-branch" {
+			t.Errorf("expected to be on test-branch, got %s", currentBranch)
+		}
+	})
+}
+
+// TestCheckoutRemoteBranchQuiet tests quiet remote branch checkout without spinner
+func TestCheckoutRemoteBranchQuiet(t *testing.T) {
+	oldVerbose := ui.Verbose
+	ui.Verbose = false
+	defer func() { ui.Verbose = oldVerbose }()
+
+	t.Run("checkout remote branch quietly", func(t *testing.T) {
+		repoDir := t.TempDir()
+		initTestRepo(t, repoDir)
+		runGitCmd(t, repoDir, "checkout", "-b", "main")
+		runGitCmd(t, repoDir, "commit", "--allow-empty", "-m", "initial")
+
+		// Create a bare remote
+		remoteDir := t.TempDir()
+		runGitCmd(t, remoteDir, "init", "--bare")
+		runGitCmd(t, repoDir, "remote", "add", "origin", remoteDir)
+
+		// Push main branch
+		runGitCmd(t, repoDir, "push", "origin", "main")
+
+		// Create and push a remote branch
+		runGitCmd(t, repoDir, "checkout", "-b", "remote-branch")
+		runGitCmd(t, repoDir, "commit", "--allow-empty", "-m", "remote commit")
+		runGitCmd(t, repoDir, "push", "origin", "remote-branch")
+		runGitCmd(t, repoDir, "checkout", "main")
+		runGitCmd(t, repoDir, "branch", "-D", "remote-branch")
+
+		err := CheckoutRemoteBranchQuiet(repoDir, "remote-branch")
+		if err != nil {
+			t.Fatalf("CheckoutRemoteBranchQuiet() error = %v", err)
+		}
+
+		// Verify we're on remote-branch
+		currentBranch, _ := GetCurrentBranch(repoDir)
+		if currentBranch != "remote-branch" {
+			t.Errorf("expected to be on remote-branch, got %s", currentBranch)
+		}
+	})
+}
+
+// TestFetchBranchQuiet tests quiet branch fetch without spinner
+func TestFetchBranchQuiet(t *testing.T) {
+	oldVerbose := ui.Verbose
+	ui.Verbose = false
+	defer func() { ui.Verbose = oldVerbose }()
+
+	t.Run("fetch branch quietly", func(t *testing.T) {
+		repoDir := t.TempDir()
+		initTestRepo(t, repoDir)
+		runGitCmd(t, repoDir, "checkout", "-b", "main")
+		runGitCmd(t, repoDir, "commit", "--allow-empty", "-m", "initial")
+
+		// Create a bare remote
+		remoteDir := t.TempDir()
+		runGitCmd(t, remoteDir, "init", "--bare")
+		runGitCmd(t, repoDir, "remote", "add", "origin", remoteDir)
+		runGitCmd(t, repoDir, "push", "origin", "main")
+
+		err := FetchBranchQuiet(repoDir, "main")
+		if err != nil {
+			t.Fatalf("FetchBranchQuiet() error = %v", err)
+		}
+	})
+}

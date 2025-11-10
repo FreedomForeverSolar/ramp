@@ -154,22 +154,23 @@ func runDown(featureName string) error {
 
 			// Always try to remove worktree (even if directory is missing)
 			// git worktree remove --force works for orphaned worktrees
+			// Use quiet version to avoid nested spinners (even though parent stopped, for consistency)
 			progress.Info(fmt.Sprintf("%s: removing worktree registration", name))
-			if err := git.RemoveWorktree(repoDir, worktreeDir); err != nil {
+			if err := git.RemoveWorktreeQuiet(repoDir, worktreeDir); err != nil {
 				progress.Warning(fmt.Sprintf("Failed to remove worktree for %s: %v", name, err))
 				// If worktree removal failed, prune orphaned worktrees before deleting branch
 				// This handles cases where the worktree directory was manually deleted
 				_ = git.PruneWorktrees(repoDir)
 			}
 
-			// Delete branch
+			// Delete branch (quiet version for consistency)
 			progress.Info(fmt.Sprintf("%s: deleting branch %s", name, branchName))
-			if err := git.DeleteBranch(repoDir, branchName); err != nil {
+			if err := git.DeleteBranchQuiet(repoDir, branchName); err != nil {
 				progress.Warning(fmt.Sprintf("Failed to delete branch for %s: %v", name, err))
 			}
 
-			// Prune stale remote tracking branches
-			if err := git.FetchPrune(repoDir); err != nil {
+			// Prune stale remote tracking branches (quiet version for consistency)
+			if err := git.FetchPruneQuiet(repoDir); err != nil {
 				progress.Warning(fmt.Sprintf("Failed to prune remote tracking branches for %s: %v", name, err))
 			}
 		}
