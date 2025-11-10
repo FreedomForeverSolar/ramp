@@ -213,6 +213,17 @@ func RemoveWorktree(repoDir, worktreeDir string) error {
 	return nil
 }
 
+func RemoveWorktreeQuiet(repoDir, worktreeDir string) error {
+	cmd := exec.Command("git", "worktree", "remove", worktreeDir, "--force")
+	cmd.Dir = repoDir
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to remove worktree %s: %w", worktreeDir, err)
+	}
+
+	return nil
+}
+
 func PruneWorktrees(repoDir string) error {
 	cmd := exec.Command("git", "worktree", "prune")
 	cmd.Dir = repoDir
@@ -230,6 +241,17 @@ func DeleteBranch(repoDir, branchName string) error {
 	message := fmt.Sprintf("deleting branch %s", branchName)
 
 	if err := ui.RunCommandWithProgress(cmd, message); err != nil {
+		return fmt.Errorf("failed to delete branch %s: %w", branchName, err)
+	}
+
+	return nil
+}
+
+func DeleteBranchQuiet(repoDir, branchName string) error {
+	cmd := exec.Command("git", "branch", "-D", branchName)
+	cmd.Dir = repoDir
+
+	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to delete branch %s: %w", branchName, err)
 	}
 

@@ -1258,3 +1258,73 @@ func TestPopStash(t *testing.T) {
 		}
 	})
 }
+
+// TestRemoveWorktreeQuiet tests quiet worktree removal without spinner
+func TestRemoveWorktreeQuiet(t *testing.T) {
+	// Set verbose to false to verify no spinner is created
+	oldVerbose := ui.Verbose
+	ui.Verbose = false
+	defer func() { ui.Verbose = oldVerbose }()
+
+	t.Run("remove worktree quietly", func(t *testing.T) {
+		repoDir := t.TempDir()
+		initTestRepo(t, repoDir)
+		runGitCmd(t, repoDir, "checkout", "-b", "main")
+		runGitCmd(t, repoDir, "commit", "--allow-empty", "-m", "initial")
+
+		// Create a worktree
+		worktreeDir := filepath.Join(t.TempDir(), "feature-worktree")
+		err := CreateWorktree(repoDir, worktreeDir, "feature-branch", "test-repo")
+		if err != nil {
+			t.Fatalf("CreateWorktree() error = %v", err)
+		}
+
+		// Remove worktree quietly (should not create a spinner)
+		err = RemoveWorktreeQuiet(repoDir, worktreeDir)
+		if err != nil {
+			t.Fatalf("RemoveWorktreeQuiet() error = %v", err)
+		}
+
+		// Verify worktree was removed
+		if _, err := os.Stat(worktreeDir); !os.IsNotExist(err) {
+			t.Error("worktree directory should be removed")
+		}
+	})
+}
+
+// TestDeleteBranchQuiet tests quiet branch deletion without spinner
+func TestDeleteBranchQuiet(t *testing.T) {
+	// Set verbose to false to verify no spinner is created
+	oldVerbose := ui.Verbose
+	ui.Verbose = false
+	defer func() { ui.Verbose = oldVerbose }()
+
+	t.Run("delete branch quietly", func(t *testing.T) {
+		repoDir := t.TempDir()
+		initTestRepo(t, repoDir)
+		runGitCmd(t, repoDir, "checkout", "-b", "main")
+		runGitCmd(t, repoDir, "commit", "--allow-empty", "-m", "initial")
+
+		// Create a test branch
+		runGitCmd(t, repoDir, "checkout", "-b", "test-branch")
+		runGitCmd(t, repoDir, "checkout", "main")
+
+		// Verify branch exists
+		exists, _ := LocalBranchExists(repoDir, "test-branch")
+		if !exists {
+			t.Fatal("test-branch should exist before deletion")
+		}
+
+		// Delete branch quietly (should not create a spinner)
+		err := DeleteBranchQuiet(repoDir, "test-branch")
+		if err != nil {
+			t.Fatalf("DeleteBranchQuiet() error = %v", err)
+		}
+
+		// Verify branch was deleted
+		exists, _ = LocalBranchExists(repoDir, "test-branch")
+		if exists {
+			t.Error("test-branch should be deleted")
+		}
+	})
+}
