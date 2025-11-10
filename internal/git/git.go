@@ -62,6 +62,42 @@ func CreateWorktreeFromSource(repoDir, worktreeDir, branchName, sourceBranch, re
 	return nil
 }
 
+func CreateWorktreeFromSourceQuiet(repoDir, worktreeDir, branchName, sourceBranch, repoName string) error {
+	if err := os.MkdirAll(filepath.Dir(worktreeDir), 0755); err != nil {
+		return fmt.Errorf("failed to create directory %s: %w", filepath.Dir(worktreeDir), err)
+	}
+
+	// Check if worktree already exists
+	if _, err := os.Stat(worktreeDir); err == nil {
+		return fmt.Errorf("worktree directory already exists: %s", worktreeDir)
+	}
+
+	// Check if target branch already exists locally
+	localExists, err := LocalBranchExists(repoDir, branchName)
+	if err != nil {
+		return fmt.Errorf("failed to check if local branch exists: %w", err)
+	}
+
+	if localExists {
+		return fmt.Errorf("branch %s already exists locally", branchName)
+	}
+
+	// Verify source branch exists
+	if err := validateSourceBranch(repoDir, sourceBranch); err != nil {
+		return fmt.Errorf("source branch validation failed: %w", err)
+	}
+
+	// Create new branch from source
+	cmd := exec.Command("git", "worktree", "add", "-b", branchName, worktreeDir, sourceBranch)
+	cmd.Dir = repoDir
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to create worktree %s with branch %s from %s: %w", worktreeDir, branchName, sourceBranch, err)
+	}
+
+	return nil
+}
+
 func CreateWorktree(repoDir, worktreeDir, branchName, repoName string) error {
 	if err := os.MkdirAll(filepath.Dir(worktreeDir), 0755); err != nil {
 		return fmt.Errorf("failed to create directory %s: %w", filepath.Dir(worktreeDir), err)
@@ -107,6 +143,53 @@ func CreateWorktree(repoDir, worktreeDir, branchName, repoName string) error {
 	cmd.Dir = repoDir
 
 	if err := ui.RunCommandWithProgress(cmd, message); err != nil {
+		return fmt.Errorf("failed to create worktree %s with branch %s: %w", worktreeDir, branchName, err)
+	}
+
+	return nil
+}
+
+func CreateWorktreeQuiet(repoDir, worktreeDir, branchName, repoName string) error {
+	if err := os.MkdirAll(filepath.Dir(worktreeDir), 0755); err != nil {
+		return fmt.Errorf("failed to create directory %s: %w", filepath.Dir(worktreeDir), err)
+	}
+
+	// Check if worktree already exists
+	if _, err := os.Stat(worktreeDir); err == nil {
+		return fmt.Errorf("worktree directory already exists: %s", worktreeDir)
+	}
+
+	// Check branch status
+	localExists, err := LocalBranchExists(repoDir, branchName)
+	if err != nil {
+		return fmt.Errorf("failed to check if local branch exists: %w", err)
+	}
+
+	remoteExists, err := RemoteBranchExists(repoDir, branchName)
+	if err != nil {
+		return fmt.Errorf("failed to check if remote branch exists: %w", err)
+	}
+
+	var cmd *exec.Cmd
+
+	if localExists {
+		// Use existing local branch
+		cmd = exec.Command("git", "worktree", "add", worktreeDir, branchName)
+	} else if remoteExists {
+		// Create local branch tracking the remote
+		remoteBranch, err := getRemoteBranchName(repoDir, branchName)
+		if err != nil {
+			return fmt.Errorf("failed to get remote branch name: %w", err)
+		}
+		cmd = exec.Command("git", "worktree", "add", "-b", branchName, worktreeDir, remoteBranch)
+	} else {
+		// Create new branch
+		cmd = exec.Command("git", "worktree", "add", "-b", branchName, worktreeDir)
+	}
+
+	cmd.Dir = repoDir
+
+	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to create worktree %s with branch %s: %w", worktreeDir, branchName, err)
 	}
 
@@ -213,6 +296,17 @@ func RemoveWorktree(repoDir, worktreeDir string) error {
 	return nil
 }
 
+func RemoveWorktreeQuiet(repoDir, worktreeDir string) error {
+	cmd := exec.Command("git", "worktree", "remove", worktreeDir, "--force")
+	cmd.Dir = repoDir
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to remove worktree %s: %w", worktreeDir, err)
+	}
+
+	return nil
+}
+
 func PruneWorktrees(repoDir string) error {
 	cmd := exec.Command("git", "worktree", "prune")
 	cmd.Dir = repoDir
@@ -230,6 +324,17 @@ func DeleteBranch(repoDir, branchName string) error {
 	message := fmt.Sprintf("deleting branch %s", branchName)
 
 	if err := ui.RunCommandWithProgress(cmd, message); err != nil {
+		return fmt.Errorf("failed to delete branch %s: %w", branchName, err)
+	}
+
+	return nil
+}
+
+func DeleteBranchQuiet(repoDir, branchName string) error {
+	cmd := exec.Command("git", "branch", "-D", branchName)
+	cmd.Dir = repoDir
+
+	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to delete branch %s: %w", branchName, err)
 	}
 
@@ -345,12 +450,34 @@ func Checkout(repoDir, branchName string) error {
 	return nil
 }
 
+func CheckoutQuiet(repoDir, branchName string) error {
+	cmd := exec.Command("git", "checkout", branchName)
+	cmd.Dir = repoDir
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to checkout branch %s: %w", branchName, err)
+	}
+
+	return nil
+}
+
 func FetchBranch(repoDir, branchName string) error {
 	cmd := exec.Command("git", "fetch", "origin", branchName)
 	cmd.Dir = repoDir
 	message := fmt.Sprintf("fetching branch %s from origin", branchName)
 
 	if err := ui.RunCommandWithProgress(cmd, message); err != nil {
+		return fmt.Errorf("failed to fetch branch %s: %w", branchName, err)
+	}
+
+	return nil
+}
+
+func FetchBranchQuiet(repoDir, branchName string) error {
+	cmd := exec.Command("git", "fetch", "origin", branchName, "--quiet")
+	cmd.Dir = repoDir
+
+	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to fetch branch %s: %w", branchName, err)
 	}
 
@@ -402,12 +529,44 @@ func StashChanges(repoDir string) (bool, error) {
 	return true, nil
 }
 
+func StashChangesQuiet(repoDir string) (bool, error) {
+	// First check if there are changes to stash
+	hasChanges, err := HasUncommittedChanges(repoDir)
+	if err != nil {
+		return false, err
+	}
+
+	if !hasChanges {
+		return false, nil
+	}
+
+	cmd := exec.Command("git", "stash", "push", "-m", "ramp rebase stash", "--quiet")
+	cmd.Dir = repoDir
+
+	if err := cmd.Run(); err != nil {
+		return false, fmt.Errorf("failed to stash changes: %w", err)
+	}
+
+	return true, nil
+}
+
 func PopStash(repoDir string) error {
 	cmd := exec.Command("git", "stash", "pop")
 	cmd.Dir = repoDir
 	message := "restoring stashed changes"
 
 	if err := ui.RunCommandWithProgress(cmd, message); err != nil {
+		return fmt.Errorf("failed to pop stash: %w", err)
+	}
+
+	return nil
+}
+
+func PopStashQuiet(repoDir string) error {
+	cmd := exec.Command("git", "stash", "pop", "--quiet")
+	cmd.Dir = repoDir
+
+	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to pop stash: %w", err)
 	}
 
@@ -427,6 +586,24 @@ func CheckoutRemoteBranch(repoDir, branchName string) error {
 	message := fmt.Sprintf("creating local branch %s tracking %s", branchName, remoteBranch)
 
 	if err := ui.RunCommandWithProgress(cmd, message); err != nil {
+		return fmt.Errorf("failed to checkout remote branch %s: %w", branchName, err)
+	}
+
+	return nil
+}
+
+func CheckoutRemoteBranchQuiet(repoDir, branchName string) error {
+	// First try to fetch the branch (use quiet version to avoid nested spinner)
+	if err := FetchBranchQuiet(repoDir, branchName); err != nil {
+		return err
+	}
+
+	// Create local branch tracking the remote
+	remoteBranch := "origin/" + branchName
+	cmd := exec.Command("git", "checkout", "-b", branchName, remoteBranch)
+	cmd.Dir = repoDir
+
+	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to checkout remote branch %s: %w", branchName, err)
 	}
 

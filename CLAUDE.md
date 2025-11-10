@@ -223,25 +223,46 @@ The application uses the Cobra CLI framework with commands organized in `cmd/`:
 
 #### `internal/git/`
 **Purpose**: Git operations and worktree management.
-**Key Functions**:
+
+**Key Functions (with progress spinners - for standalone use):**
 - `Clone(repoURL, destDir)` - Clones repositories with progress feedback
 - `CreateWorktree(repoDir, worktreeDir, branchName)` - Intelligent worktree creation with branch detection
 - `CreateWorktreeFromSource(repoDir, worktreeDir, branchName, sourceBranch, repoName)` - Creates worktree with new branch from specified source branch
+- `RemoveWorktree(repoDir, worktreeDir)` - Removes worktree with force flag and progress spinner
+- `DeleteBranch(repoDir, branchName)` - Deletes branch with force flag and progress spinner
+- `Checkout(repoDir, branchName)` - Switches to existing local branch with progress spinner
+- `CheckoutRemoteBranch(repoDir, branchName)` - Creates and switches to remote tracking branch with progress spinner
+- `StashChanges(repoDir)` - Stashes uncommitted changes with progress spinner
+- `PopStash(repoDir)` - Restores stashed changes with progress spinner
+- `FetchBranch(repoDir, branchName)` - Fetches specific branch from remote with progress spinner
+- `FetchAll(repoDir)` - Fetches all remotes with progress spinner
+- `Pull(repoDir)` - Pulls changes with progress spinner
+- `FetchPrune(repoDir)` - Prunes stale remote tracking branches with progress spinner
+
+**Quiet Functions (without spinners - for use in loops with active parent spinner):**
+- `CreateWorktreeQuiet()` - Worktree creation without spinner (use inside loops)
+- `CreateWorktreeFromSourceQuiet()` - Worktree creation from source without spinner (use inside loops)
+- `RemoveWorktreeQuiet()` - Worktree removal without spinner (use inside loops)
+- `DeleteBranchQuiet()` - Branch deletion without spinner (use inside loops)
+- `CheckoutQuiet()` - Branch checkout without spinner (use inside loops)
+- `CheckoutRemoteBranchQuiet()` - Remote branch checkout without spinner (use inside loops)
+- `StashChangesQuiet()` - Stash without spinner (use inside loops)
+- `PopStashQuiet()` - Stash pop without spinner (use inside loops)
+- `FetchBranchQuiet()` - Branch fetch without spinner (use inside loops)
+- `FetchAllQuiet()` - Fetch all without spinner (use inside loops)
+- `PullQuiet()` - Pull without spinner (use inside loops)
+- `FetchPruneQuiet()` - Prune without spinner (use inside loops)
+
+**Helper Functions (no spinners):**
 - `LocalBranchExists()` / `RemoteBranchExists()` / `BranchExists()` - Branch existence checking with exact name matching
-- `RemoveWorktree()` / `DeleteBranch()` - Cleanup operations with force flags
 - `HasUncommittedChanges()` - Safety check using `git status --porcelain`
 - `GetWorktreeBranch()` - Extracts actual branch name from worktree
 - `GetCurrentBranch(repoDir)` - Gets current branch name in a repository
-- `FetchAll()` / `FetchAllQuiet()` / `Pull()` - Repository synchronization operations
-- `FetchPrune(repoDir)` - Prunes stale remote tracking branches using `git fetch --prune`
 - `HasRemoteTrackingBranch()` - Detects if current branch tracks a remote
-- `Checkout(repoDir, branchName)` - Switches to existing local branch
-- `CheckoutRemoteBranch(repoDir, branchName)` - Creates and switches to remote tracking branch
-- `StashChanges(repoDir)` / `PopStash(repoDir)` - Stash management for uncommitted changes
-- `FetchBranch(repoDir, branchName)` - Fetches specific branch from remote
 - `ResolveSourceBranch(repoDir, target, effectivePrefix)` - Resolves target to actual source branch (feature name, local branch, or remote branch)
 - `GetRemoteTrackingStatus(repoDir)` - Gets ahead/behind commit status relative to remote tracking branch
 - `IsGitRepo(dir)` - Checks if directory is a git repository
+- `PruneWorktrees(repoDir)` - Prunes orphaned worktree registrations (no spinner)
 
 **Internal Helper Functions** (not typically called directly):
 - `getRemoteBranchName()` - Internal helper to find matching remote branch name
@@ -267,6 +288,66 @@ The application uses the Cobra CLI framework with commands organized in `cmd/`:
 - `RunCommandWithProgressQuiet()` - Executes shell commands with progress feedback, hiding output on success (shows only on error)
 - `OutputCapture` - Captures and conditionally displays command output
 - Respects global `--verbose` flag to switch between spinner and direct output modes
+
+**CRITICAL: Nested Spinner Anti-Pattern**
+
+**NEVER create nested spinners** - this causes visual flashing and conflicts for terminal control.
+
+**❌ BAD - Nested Spinner Anti-Pattern:**
+```go
+progress := ui.NewProgress()
+progress.Start("Processing repositories")
+
+for name, repo := range repos {
+    // BAD: git.SomeOperation() creates its own spinner via ui.RunCommandWithProgress()
+    // This creates a nested spinner while parent is still active!
+    git.SomeOperation(repoDir)  // ⚡ CAUSES FLASHING
+}
+
+progress.Success("Processing complete")
+```
+
+**✅ GOOD - Use Quiet Versions in Loops:**
+```go
+progress := ui.NewProgress()
+progress.Start("Processing repositories")
+
+for name, repo := range repos {
+    // GOOD: Use quiet version that runs git command without creating spinner
+    git.SomeOperationQuiet(repoDir)  // ✓ No nested spinner
+    progress.Update(fmt.Sprintf("Processed %s", name))  // Update existing spinner
+}
+
+progress.Success("Processing complete")
+```
+
+**Pattern to follow:**
+1. **Create ONE spinner** at the start of an operation
+2. **Use `Update()`** to change the message for each iteration
+3. **Inside loops, ALWAYS use "Quiet" versions** of git operations:
+   - `CreateWorktreeQuiet()` instead of `CreateWorktree()`
+   - `RemoveWorktreeQuiet()` instead of `RemoveWorktree()`
+   - `DeleteBranchQuiet()` instead of `DeleteBranch()`
+   - `FetchPruneQuiet()` instead of `FetchPrune()`
+   - `StashChangesQuiet()` instead of `StashChanges()`
+   - `PopStashQuiet()` instead of `PopStash()`
+   - `CheckoutQuiet()` instead of `Checkout()`
+   - `CheckoutRemoteBranchQuiet()` instead of `CheckoutRemoteBranch()`
+   - `FetchBranchQuiet()` instead of `FetchBranch()`
+   - `FetchAllQuiet()` instead of `FetchAll()`
+   - `PullQuiet()` instead of `Pull()`
+4. **Complete with `Success()` or `Error()`** after the loop
+
+**All git functions in `internal/git/` that call `ui.RunCommandWithProgress()` MUST have a corresponding "Quiet" version that calls `cmd.Run()` directly for use in loops.**
+
+**When adding new git operations:**
+1. Create both regular version (with progress) and Quiet version (without progress)
+2. Regular version uses `ui.RunCommandWithProgress()` for standalone use
+3. Quiet version uses `cmd.Run()` directly for use inside loops with active spinners
+
+**Detection pattern:**
+Look for: `for ... range repos` combined with git operations that might create spinners.
+If found, ensure quiet versions are being used.
 
 ### Configuration Schema
 Projects require a `.ramp/ramp.yaml` file with complete configuration:
