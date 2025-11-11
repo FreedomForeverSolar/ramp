@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"ramp/internal/config"
+	"ramp/internal/envfile"
 	"ramp/internal/git"
 	"ramp/internal/ports"
 	"ramp/internal/ui"
@@ -410,6 +411,30 @@ func runUp(featureName, prefix, target string) error {
 		progress.Success(fmt.Sprintf("Allocated port %d", allocatedPort))
 	}
 
+	// Process env files for each repository if configured
+	if hasEnvFiles(repos) {
+		progress.Update("Processing environment files")
+		envVars := buildEnvVars(projectDir, treesDir, featureName, allocatedPort, cfg, repos)
+
+		for name, repo := range repos {
+			if len(repo.EnvFiles) > 0 {
+				state := states[name]
+				sourceRepoDir := repo.GetRepoPath(projectDir)
+				worktreeDir := state.WorktreeDir
+
+				if err := envfile.ProcessEnvFiles(name, repo.EnvFiles, sourceRepoDir, worktreeDir, envVars); err != nil {
+					progress.Error(fmt.Sprintf("Failed to process env files for %s", name))
+					// Rollback all successful operations
+					if rollbackErr := rollbackUp(projectDir, treesDir, featureName, states, progress); rollbackErr != nil {
+						return fmt.Errorf("env file processing failed for %s (%v) and rollback failed: %w", name, err, rollbackErr)
+					}
+					return fmt.Errorf("failed to process env files for %s: %w", name, err)
+				}
+			}
+		}
+		progress.Success("Environment files processed")
+	}
+
 	// Run setup script if configured
 	if cfg.Setup != "" {
 		progress.Update("Running setup script")
@@ -617,4 +642,38 @@ func runSetupScriptWithProgress(projectDir, treesDir, setupScript string, progre
 
 	message := fmt.Sprintf("Running setup script: %s", setupScript)
 	return ui.RunCommandWithProgressQuiet(cmd, message)
+}
+
+// hasEnvFiles checks if any repository has env_files configured
+func hasEnvFiles(repos map[string]*config.Repo) bool {
+	for _, repo := range repos {
+		if len(repo.EnvFiles) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// buildEnvVars builds the environment variables map for env file processing
+func buildEnvVars(projectDir, treesDir, featureName string, allocatedPort int, cfg *config.Config, repos map[string]*config.Repo) map[string]string {
+	envVars := make(map[string]string)
+
+	// Standard RAMP variables
+	envVars["RAMP_PROJECT_DIR"] = projectDir
+	envVars["RAMP_TREES_DIR"] = treesDir
+	envVars["RAMP_WORKTREE_NAME"] = featureName
+
+	// Add port if configured
+	if cfg.HasPortConfig() && allocatedPort > 0 {
+		envVars["RAMP_PORT"] = fmt.Sprintf("%d", allocatedPort)
+	}
+
+	// Add repo path variables
+	for name, repo := range repos {
+		envVarName := config.GenerateEnvVarName(name)
+		repoPath := repo.GetRepoPath(projectDir)
+		envVars[envVarName] = repoPath
+	}
+
+	return envVars
 }

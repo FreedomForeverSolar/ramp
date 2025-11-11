@@ -10,10 +10,41 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+type EnvFile struct {
+	Source  string            `yaml:"source"`
+	Dest    string            `yaml:"dest"`
+	Replace map[string]string `yaml:"replace,omitempty"`
+}
+
+// UnmarshalYAML implements custom unmarshaling to support both simple string
+// syntax (e.g., "- .env") and full object syntax (e.g., "- source: .env")
+func (e *EnvFile) UnmarshalYAML(node *yaml.Node) error {
+	// Try to unmarshal as a string first (simple syntax)
+	var simpleStr string
+	if err := node.Decode(&simpleStr); err == nil {
+		// Simple string syntax: use same value for both source and dest
+		e.Source = simpleStr
+		e.Dest = simpleStr
+		e.Replace = nil
+		return nil
+	}
+
+	// If not a string, try to unmarshal as an object (full syntax)
+	type envFileAlias EnvFile // Prevent recursion
+	var alias envFileAlias
+	if err := node.Decode(&alias); err != nil {
+		return err
+	}
+
+	*e = EnvFile(alias)
+	return nil
+}
+
 type Repo struct {
-	Path        string `yaml:"path"`
-	Git         string `yaml:"git"`
-	AutoRefresh *bool  `yaml:"auto_refresh,omitempty"`
+	Path        string    `yaml:"path"`
+	Git         string    `yaml:"git"`
+	AutoRefresh *bool     `yaml:"auto_refresh,omitempty"`
+	EnvFiles    []EnvFile `yaml:"env_files,omitempty"`
 }
 
 type Command struct {
@@ -198,6 +229,25 @@ func SaveConfig(cfg *Config, projectDir string) error {
 			yamlBuilder.WriteString(fmt.Sprintf("    git: %s\n", repo.Git))
 			if repo.AutoRefresh != nil {
 				yamlBuilder.WriteString(fmt.Sprintf("    auto_refresh: %t\n", *repo.AutoRefresh))
+			}
+			if len(repo.EnvFiles) > 0 {
+				yamlBuilder.WriteString("    env_files:\n")
+				for _, envFile := range repo.EnvFiles {
+					// Simple syntax if source and dest are the same and no replacements
+					if envFile.Source == envFile.Dest && len(envFile.Replace) == 0 {
+						yamlBuilder.WriteString(fmt.Sprintf("      - %s\n", envFile.Source))
+					} else {
+						// Full object syntax
+						yamlBuilder.WriteString(fmt.Sprintf("      - source: %s\n", envFile.Source))
+						yamlBuilder.WriteString(fmt.Sprintf("        dest: %s\n", envFile.Dest))
+						if len(envFile.Replace) > 0 {
+							yamlBuilder.WriteString("        replace:\n")
+							for key, value := range envFile.Replace {
+								yamlBuilder.WriteString(fmt.Sprintf("          %s: %q\n", key, value))
+							}
+						}
+					}
+				}
 			}
 		}
 		yamlBuilder.WriteString("\n")

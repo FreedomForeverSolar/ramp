@@ -768,3 +768,252 @@ func BenchmarkFindRampProject(b *testing.B) {
 		FindRampProject(deepDir)
 	}
 }
+
+// TestEnvFilesParsing tests parsing of env_files configuration
+func TestEnvFilesParsing(t *testing.T) {
+	t.Run("simple string syntax", func(t *testing.T) {
+		configContent := `name: test-project
+repos:
+  - path: repos
+    git: git@github.com:owner/app.git
+    env_files:
+      - .env
+      - .env.local
+`
+		tempDir := t.TempDir()
+		rampDir := filepath.Join(tempDir, ".ramp")
+		os.MkdirAll(rampDir, 0755)
+		configPath := filepath.Join(rampDir, "ramp.yaml")
+		os.WriteFile(configPath, []byte(configContent), 0644)
+
+		cfg, err := LoadConfig(tempDir)
+		if err != nil {
+			t.Fatalf("LoadConfig() error = %v", err)
+		}
+
+		if len(cfg.Repos) != 1 {
+			t.Fatalf("expected 1 repo, got %d", len(cfg.Repos))
+		}
+
+		repo := cfg.Repos[0]
+		if len(repo.EnvFiles) != 2 {
+			t.Fatalf("expected 2 env files, got %d", len(repo.EnvFiles))
+		}
+
+		// Check first env file
+		if repo.EnvFiles[0].Source != ".env" {
+			t.Errorf("EnvFiles[0].Source = %q, want %q", repo.EnvFiles[0].Source, ".env")
+		}
+		if repo.EnvFiles[0].Dest != ".env" {
+			t.Errorf("EnvFiles[0].Dest = %q, want %q", repo.EnvFiles[0].Dest, ".env")
+		}
+		if repo.EnvFiles[0].Replace != nil {
+			t.Errorf("EnvFiles[0].Replace should be nil for simple syntax")
+		}
+
+		// Check second env file
+		if repo.EnvFiles[1].Source != ".env.local" {
+			t.Errorf("EnvFiles[1].Source = %q, want %q", repo.EnvFiles[1].Source, ".env.local")
+		}
+		if repo.EnvFiles[1].Dest != ".env.local" {
+			t.Errorf("EnvFiles[1].Dest = %q, want %q", repo.EnvFiles[1].Dest, ".env.local")
+		}
+	})
+
+	t.Run("full object syntax with source and dest", func(t *testing.T) {
+		configContent := `name: test-project
+repos:
+  - path: repos
+    git: git@github.com:owner/app.git
+    env_files:
+      - source: .env.example
+        dest: .env
+`
+		tempDir := t.TempDir()
+		rampDir := filepath.Join(tempDir, ".ramp")
+		os.MkdirAll(rampDir, 0755)
+		configPath := filepath.Join(rampDir, "ramp.yaml")
+		os.WriteFile(configPath, []byte(configContent), 0644)
+
+		cfg, err := LoadConfig(tempDir)
+		if err != nil {
+			t.Fatalf("LoadConfig() error = %v", err)
+		}
+
+		repo := cfg.Repos[0]
+		if len(repo.EnvFiles) != 1 {
+			t.Fatalf("expected 1 env file, got %d", len(repo.EnvFiles))
+		}
+
+		envFile := repo.EnvFiles[0]
+		if envFile.Source != ".env.example" {
+			t.Errorf("Source = %q, want %q", envFile.Source, ".env.example")
+		}
+		if envFile.Dest != ".env" {
+			t.Errorf("Dest = %q, want %q", envFile.Dest, ".env")
+		}
+	})
+
+	t.Run("full object syntax with replacements", func(t *testing.T) {
+		configContent := `name: test-project
+repos:
+  - path: repos
+    git: git@github.com:owner/app.git
+    env_files:
+      - source: ../configs/app/prod.env
+        dest: .env
+        replace:
+          PORT: "${RAMP_PORT}"
+          API_PORT: "${RAMP_PORT}1"
+          APP_NAME: "myapp-${RAMP_WORKTREE_NAME}"
+`
+		tempDir := t.TempDir()
+		rampDir := filepath.Join(tempDir, ".ramp")
+		os.MkdirAll(rampDir, 0755)
+		configPath := filepath.Join(rampDir, "ramp.yaml")
+		os.WriteFile(configPath, []byte(configContent), 0644)
+
+		cfg, err := LoadConfig(tempDir)
+		if err != nil {
+			t.Fatalf("LoadConfig() error = %v", err)
+		}
+
+		repo := cfg.Repos[0]
+		if len(repo.EnvFiles) != 1 {
+			t.Fatalf("expected 1 env file, got %d", len(repo.EnvFiles))
+		}
+
+		envFile := repo.EnvFiles[0]
+		if envFile.Source != "../configs/app/prod.env" {
+			t.Errorf("Source = %q, want %q", envFile.Source, "../configs/app/prod.env")
+		}
+		if envFile.Dest != ".env" {
+			t.Errorf("Dest = %q, want %q", envFile.Dest, ".env")
+		}
+
+		if envFile.Replace == nil {
+			t.Fatal("Replace should not be nil")
+		}
+
+		expectedReplacements := map[string]string{
+			"PORT":     "${RAMP_PORT}",
+			"API_PORT": "${RAMP_PORT}1",
+			"APP_NAME": "myapp-${RAMP_WORKTREE_NAME}",
+		}
+
+		if len(envFile.Replace) != len(expectedReplacements) {
+			t.Fatalf("expected %d replacements, got %d", len(expectedReplacements), len(envFile.Replace))
+		}
+
+		for key, expectedVal := range expectedReplacements {
+			if val, ok := envFile.Replace[key]; !ok {
+				t.Errorf("missing replacement for key %q", key)
+			} else if val != expectedVal {
+				t.Errorf("Replace[%q] = %q, want %q", key, val, expectedVal)
+			}
+		}
+	})
+
+	t.Run("mixed simple and complex syntax", func(t *testing.T) {
+		configContent := `name: test-project
+repos:
+  - path: repos
+    git: git@github.com:owner/app.git
+    env_files:
+      - .env.example
+      - source: ../configs/app/prod.env
+        dest: .env.prod
+        replace:
+          PORT: "${RAMP_PORT}"
+`
+		tempDir := t.TempDir()
+		rampDir := filepath.Join(tempDir, ".ramp")
+		os.MkdirAll(rampDir, 0755)
+		configPath := filepath.Join(rampDir, "ramp.yaml")
+		os.WriteFile(configPath, []byte(configContent), 0644)
+
+		cfg, err := LoadConfig(tempDir)
+		if err != nil {
+			t.Fatalf("LoadConfig() error = %v", err)
+		}
+
+		repo := cfg.Repos[0]
+		if len(repo.EnvFiles) != 2 {
+			t.Fatalf("expected 2 env files, got %d", len(repo.EnvFiles))
+		}
+
+		// First should be simple
+		if repo.EnvFiles[0].Source != ".env.example" || repo.EnvFiles[0].Dest != ".env.example" {
+			t.Errorf("first env file should be simple syntax")
+		}
+
+		// Second should be complex
+		if repo.EnvFiles[1].Source != "../configs/app/prod.env" {
+			t.Errorf("second env file Source = %q, want %q", repo.EnvFiles[1].Source, "../configs/app/prod.env")
+		}
+		if repo.EnvFiles[1].Replace == nil {
+			t.Errorf("second env file should have replacements")
+		}
+	})
+}
+
+// TestSaveConfigWithEnvFiles tests that env_files are properly saved
+func TestSaveConfigWithEnvFiles(t *testing.T) {
+	tempDir := t.TempDir()
+
+	cfg := &Config{
+		Name: "test-project",
+		Repos: []*Repo{
+			{
+				Path: "repos",
+				Git:  "git@github.com:owner/app.git",
+				EnvFiles: []EnvFile{
+					{Source: ".env", Dest: ".env"},
+					{
+						Source: "../configs/app/prod.env",
+						Dest:   ".env.prod",
+						Replace: map[string]string{
+							"PORT":     "${RAMP_PORT}",
+							"API_PORT": "${RAMP_PORT}1",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	if err := SaveConfig(cfg, tempDir); err != nil {
+		t.Fatalf("SaveConfig() error = %v", err)
+	}
+
+	// Load it back
+	loaded, err := LoadConfig(tempDir)
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v", err)
+	}
+
+	if len(loaded.Repos) != 1 {
+		t.Fatalf("expected 1 repo, got %d", len(loaded.Repos))
+	}
+
+	repo := loaded.Repos[0]
+	if len(repo.EnvFiles) != 2 {
+		t.Fatalf("expected 2 env files, got %d", len(repo.EnvFiles))
+	}
+
+	// Verify first env file
+	if repo.EnvFiles[0].Source != ".env" {
+		t.Errorf("EnvFiles[0].Source = %q, want %q", repo.EnvFiles[0].Source, ".env")
+	}
+
+	// Verify second env file
+	if repo.EnvFiles[1].Source != "../configs/app/prod.env" {
+		t.Errorf("EnvFiles[1].Source = %q, want %q", repo.EnvFiles[1].Source, "../configs/app/prod.env")
+	}
+	if repo.EnvFiles[1].Replace == nil {
+		t.Fatal("EnvFiles[1].Replace should not be nil")
+	}
+	if repo.EnvFiles[1].Replace["PORT"] != "${RAMP_PORT}" {
+		t.Errorf("EnvFiles[1].Replace[PORT] = %q, want %q", repo.EnvFiles[1].Replace["PORT"], "${RAMP_PORT}")
+	}
+}
