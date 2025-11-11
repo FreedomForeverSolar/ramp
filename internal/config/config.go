@@ -10,15 +10,58 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+type EnvFile struct {
+	Source  string            `yaml:"source"`
+	Dest    string            `yaml:"dest"`
+	Replace map[string]string `yaml:"replace,omitempty"`
+}
+
+// UnmarshalYAML implements custom unmarshaling to support both simple string
+// syntax (e.g., "- .env") and full object syntax (e.g., "- source: .env")
+func (e *EnvFile) UnmarshalYAML(node *yaml.Node) error {
+	// Try to unmarshal as a string first (simple syntax)
+	var simpleStr string
+	if err := node.Decode(&simpleStr); err == nil {
+		// Simple string syntax: use same value for both source and dest
+		e.Source = simpleStr
+		e.Dest = simpleStr
+		e.Replace = nil
+		return nil
+	}
+
+	// If not a string, try to unmarshal as an object (full syntax)
+	type envFileAlias EnvFile // Prevent recursion
+	var alias envFileAlias
+	if err := node.Decode(&alias); err != nil {
+		return err
+	}
+
+	*e = EnvFile(alias)
+	return nil
+}
+
 type Repo struct {
-	Path        string `yaml:"path"`
-	Git         string `yaml:"git"`
-	AutoRefresh *bool  `yaml:"auto_refresh,omitempty"`
+	Path        string    `yaml:"path"`
+	Git         string    `yaml:"git"`
+	AutoRefresh *bool     `yaml:"auto_refresh,omitempty"`
+	EnvFiles    []EnvFile `yaml:"env_files,omitempty"`
 }
 
 type Command struct {
 	Name    string `yaml:"name"`
 	Command string `yaml:"command"`
+}
+
+type PromptOption struct {
+	Value string `yaml:"value"`
+	Label string `yaml:"label"`
+}
+
+type Prompt struct {
+	Name     string          `yaml:"name"`
+	Question string          `yaml:"question"`
+	Options  []*PromptOption `yaml:"options"`
+	Default  string          `yaml:"default,omitempty"`
 }
 
 type Config struct {
@@ -30,6 +73,11 @@ type Config struct {
 	Commands            []*Command `yaml:"commands,omitempty"`
 	BasePort            int        `yaml:"base_port,omitempty"`
 	MaxPorts            int        `yaml:"max_ports,omitempty"`
+	Prompts             []*Prompt  `yaml:"prompts,omitempty"`
+}
+
+type LocalConfig struct {
+	Preferences map[string]string `yaml:"preferences"`
 }
 
 func (c *Config) GetRepos() map[string]*Repo {
@@ -70,6 +118,10 @@ func (c *Config) GetMaxPorts() int {
 
 func (c *Config) HasPortConfig() bool {
 	return c.BasePort > 0 || c.MaxPorts > 0
+}
+
+func (c *Config) HasPrompts() bool {
+	return len(c.Prompts) > 0
 }
 
 func extractRepoName(repoPath string) string {
@@ -199,6 +251,25 @@ func SaveConfig(cfg *Config, projectDir string) error {
 			if repo.AutoRefresh != nil {
 				yamlBuilder.WriteString(fmt.Sprintf("    auto_refresh: %t\n", *repo.AutoRefresh))
 			}
+			if len(repo.EnvFiles) > 0 {
+				yamlBuilder.WriteString("    env_files:\n")
+				for _, envFile := range repo.EnvFiles {
+					// Simple syntax if source and dest are the same and no replacements
+					if envFile.Source == envFile.Dest && len(envFile.Replace) == 0 {
+						yamlBuilder.WriteString(fmt.Sprintf("      - %s\n", envFile.Source))
+					} else {
+						// Full object syntax
+						yamlBuilder.WriteString(fmt.Sprintf("      - source: %s\n", envFile.Source))
+						yamlBuilder.WriteString(fmt.Sprintf("        dest: %s\n", envFile.Dest))
+						if len(envFile.Replace) > 0 {
+							yamlBuilder.WriteString("        replace:\n")
+							for key, value := range envFile.Replace {
+								yamlBuilder.WriteString(fmt.Sprintf("          %s: %q\n", key, value))
+							}
+						}
+					}
+				}
+			}
 		}
 		yamlBuilder.WriteString("\n")
 	}
@@ -233,9 +304,73 @@ func SaveConfig(cfg *Config, projectDir string) error {
 		}
 	}
 
+	// Prompts section
+	if len(cfg.Prompts) > 0 {
+		yamlBuilder.WriteString("\nprompts:\n")
+		for _, prompt := range cfg.Prompts {
+			yamlBuilder.WriteString(fmt.Sprintf("  - name: %s\n", prompt.Name))
+			yamlBuilder.WriteString(fmt.Sprintf("    question: %q\n", prompt.Question))
+			yamlBuilder.WriteString("    options:\n")
+			for _, opt := range prompt.Options {
+				yamlBuilder.WriteString(fmt.Sprintf("      - value: %s\n", opt.Value))
+				yamlBuilder.WriteString(fmt.Sprintf("        label: %s\n", opt.Label))
+			}
+			if prompt.Default != "" {
+				yamlBuilder.WriteString(fmt.Sprintf("    default: %s\n", prompt.Default))
+			}
+		}
+	}
+
 	// Write to file
 	if err := os.WriteFile(configPath, []byte(yamlBuilder.String()), 0644); err != nil {
 		return fmt.Errorf("failed to write config file: %w", err)
+	}
+
+	return nil
+}
+
+// LoadLocalConfig loads the local.yaml configuration file.
+// Returns nil if the file doesn't exist (not an error).
+func LoadLocalConfig(projectDir string) (*LocalConfig, error) {
+	localPath := filepath.Join(projectDir, ".ramp", "local.yaml")
+
+	// If file doesn't exist, return nil (not an error)
+	if _, err := os.Stat(localPath); os.IsNotExist(err) {
+		return nil, nil
+	}
+
+	data, err := os.ReadFile(localPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read local config file %s: %w", localPath, err)
+	}
+
+	var localCfg LocalConfig
+	if err := yaml.Unmarshal(data, &localCfg); err != nil {
+		return nil, fmt.Errorf("failed to parse local config file %s: %w", localPath, err)
+	}
+
+	return &localCfg, nil
+}
+
+// SaveLocalConfig writes a LocalConfig structure to local.yaml
+func SaveLocalConfig(localCfg *LocalConfig, projectDir string) error {
+	localPath := filepath.Join(projectDir, ".ramp", "local.yaml")
+
+	// Ensure .ramp directory exists
+	rampDir := filepath.Join(projectDir, ".ramp")
+	if err := os.MkdirAll(rampDir, 0755); err != nil {
+		return fmt.Errorf("failed to create .ramp directory: %w", err)
+	}
+
+	// Marshal to YAML
+	data, err := yaml.Marshal(localCfg)
+	if err != nil {
+		return fmt.Errorf("failed to marshal local config: %w", err)
+	}
+
+	// Write to file
+	if err := os.WriteFile(localPath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write local config file: %w", err)
 	}
 
 	return nil

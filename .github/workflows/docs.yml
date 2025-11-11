@@ -1,0 +1,74 @@
+name: Generate Documentation
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'cmd/**'
+      - 'scripts/gen-docs.go'
+      - '.github/workflows/docs.yml'
+  pull_request:
+    paths:
+      - 'cmd/**'
+      - 'scripts/gen-docs.go'
+  release:
+    types: [published]
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  generate-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for potential changelog generation
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+
+      - name: Generate command documentation
+        run: go run scripts/gen-docs.go
+
+      - name: Check for changes
+        id: check_changes
+        run: |
+          git diff --exit-code docs/commands/ || echo "changed=true" >> $GITHUB_OUTPUT
+
+      - name: Create Pull Request (if on main branch)
+        if: steps.check_changes.outputs.changed == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "docs: update auto-generated command documentation"
+          title: "docs: update command documentation"
+          body: |
+            Auto-generated command documentation has been updated.
+
+            This PR was automatically created because changes to command definitions were detected.
+
+            Changes:
+            - Updated docs/commands/ with latest command help text
+            - Reflects changes from recent commits to cmd/
+
+            Please review and merge to keep documentation in sync with code.
+          branch: docs/auto-update-commands
+          delete-branch: true
+          labels: documentation, auto-generated
+
+      - name: Fail if docs out of sync (on PR)
+        if: steps.check_changes.outputs.changed == 'true' && github.event_name == 'pull_request'
+        run: |
+          echo "❌ Command documentation is out of sync!"
+          echo "Please run 'go run scripts/gen-docs.go' locally and commit the changes."
+          exit 1
+
+      - name: Upload documentation artifacts
+        if: github.event_name == 'release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: command-documentation
+          path: docs/commands/

@@ -32,6 +32,10 @@ func CreateProject(projectDir string, data ProjectData) error {
 		return fmt.Errorf("failed to create directory structure: %w", err)
 	}
 
+	if err := CreateGitignore(projectDir); err != nil {
+		return fmt.Errorf("failed to create .gitignore: %w", err)
+	}
+
 	if err := GenerateConfigFile(projectDir, data); err != nil {
 		return fmt.Errorf("failed to generate config file: %w", err)
 	}
@@ -69,6 +73,25 @@ func CreateDirectoryStructure(projectDir string) error {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return fmt.Errorf("failed to create directory %s: %w", dir, err)
 		}
+	}
+
+	return nil
+}
+
+// CreateGitignore creates a .gitignore file in the .ramp directory
+func CreateGitignore(projectDir string) error {
+	gitignorePath := filepath.Join(projectDir, ".ramp", ".gitignore")
+
+	// Content for .gitignore
+	content := `# Local preferences (not committed to git)
+local.yaml
+
+# Port allocations (not committed to git)
+port_allocations.json
+`
+
+	if err := os.WriteFile(gitignorePath, []byte(content), 0644); err != nil {
+		return fmt.Errorf("failed to write .gitignore: %w", err)
 	}
 
 	return nil
