@@ -164,6 +164,11 @@ func runUp(featureName, prefix, target string) error {
 		return fmt.Errorf("auto-installation failed: %w", err)
 	}
 
+	// Auto-prompt for local config if needed
+	if err := EnsureLocalConfig(projectDir, cfg); err != nil {
+		return fmt.Errorf("failed to configure local preferences: %w", err)
+	}
+
 	// Auto-refresh repositories based on flags and config
 	repos := cfg.GetRepos()
 
@@ -638,6 +643,15 @@ func runSetupScriptWithProgress(projectDir, treesDir, setupScript string, progre
 		envVarName := config.GenerateEnvVarName(name)
 		repoPath := repo.GetRepoPath(projectDir)
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", envVarName, repoPath))
+	}
+
+	// Add local config environment variables
+	localEnvVars, err := GetLocalEnvVars(projectDir)
+	if err != nil {
+		return fmt.Errorf("failed to load local env vars: %w", err)
+	}
+	for key, value := range localEnvVars {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", key, value))
 	}
 
 	message := fmt.Sprintf("Running setup script: %s", setupScript)

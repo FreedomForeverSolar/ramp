@@ -52,6 +52,18 @@ type Command struct {
 	Command string `yaml:"command"`
 }
 
+type PromptOption struct {
+	Value string `yaml:"value"`
+	Label string `yaml:"label"`
+}
+
+type Prompt struct {
+	Name     string          `yaml:"name"`
+	Question string          `yaml:"question"`
+	Options  []*PromptOption `yaml:"options"`
+	Default  string          `yaml:"default,omitempty"`
+}
+
 type Config struct {
 	Name                string     `yaml:"name"`
 	Repos               []*Repo    `yaml:"repos"`
@@ -61,6 +73,11 @@ type Config struct {
 	Commands            []*Command `yaml:"commands,omitempty"`
 	BasePort            int        `yaml:"base_port,omitempty"`
 	MaxPorts            int        `yaml:"max_ports,omitempty"`
+	Prompts             []*Prompt  `yaml:"prompts,omitempty"`
+}
+
+type LocalConfig struct {
+	Preferences map[string]string `yaml:"preferences"`
 }
 
 func (c *Config) GetRepos() map[string]*Repo {
@@ -101,6 +118,10 @@ func (c *Config) GetMaxPorts() int {
 
 func (c *Config) HasPortConfig() bool {
 	return c.BasePort > 0 || c.MaxPorts > 0
+}
+
+func (c *Config) HasPrompts() bool {
+	return len(c.Prompts) > 0
 }
 
 func extractRepoName(repoPath string) string {
@@ -283,9 +304,73 @@ func SaveConfig(cfg *Config, projectDir string) error {
 		}
 	}
 
+	// Prompts section
+	if len(cfg.Prompts) > 0 {
+		yamlBuilder.WriteString("\nprompts:\n")
+		for _, prompt := range cfg.Prompts {
+			yamlBuilder.WriteString(fmt.Sprintf("  - name: %s\n", prompt.Name))
+			yamlBuilder.WriteString(fmt.Sprintf("    question: %q\n", prompt.Question))
+			yamlBuilder.WriteString("    options:\n")
+			for _, opt := range prompt.Options {
+				yamlBuilder.WriteString(fmt.Sprintf("      - value: %s\n", opt.Value))
+				yamlBuilder.WriteString(fmt.Sprintf("        label: %s\n", opt.Label))
+			}
+			if prompt.Default != "" {
+				yamlBuilder.WriteString(fmt.Sprintf("    default: %s\n", prompt.Default))
+			}
+		}
+	}
+
 	// Write to file
 	if err := os.WriteFile(configPath, []byte(yamlBuilder.String()), 0644); err != nil {
 		return fmt.Errorf("failed to write config file: %w", err)
+	}
+
+	return nil
+}
+
+// LoadLocalConfig loads the local.yaml configuration file.
+// Returns nil if the file doesn't exist (not an error).
+func LoadLocalConfig(projectDir string) (*LocalConfig, error) {
+	localPath := filepath.Join(projectDir, ".ramp", "local.yaml")
+
+	// If file doesn't exist, return nil (not an error)
+	if _, err := os.Stat(localPath); os.IsNotExist(err) {
+		return nil, nil
+	}
+
+	data, err := os.ReadFile(localPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read local config file %s: %w", localPath, err)
+	}
+
+	var localCfg LocalConfig
+	if err := yaml.Unmarshal(data, &localCfg); err != nil {
+		return nil, fmt.Errorf("failed to parse local config file %s: %w", localPath, err)
+	}
+
+	return &localCfg, nil
+}
+
+// SaveLocalConfig writes a LocalConfig structure to local.yaml
+func SaveLocalConfig(localCfg *LocalConfig, projectDir string) error {
+	localPath := filepath.Join(projectDir, ".ramp", "local.yaml")
+
+	// Ensure .ramp directory exists
+	rampDir := filepath.Join(projectDir, ".ramp")
+	if err := os.MkdirAll(rampDir, 0755); err != nil {
+		return fmt.Errorf("failed to create .ramp directory: %w", err)
+	}
+
+	// Marshal to YAML
+	data, err := yaml.Marshal(localCfg)
+	if err != nil {
+		return fmt.Errorf("failed to marshal local config: %w", err)
+	}
+
+	// Write to file
+	if err := os.WriteFile(localPath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write local config file: %w", err)
 	}
 
 	return nil
