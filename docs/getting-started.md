@@ -1,0 +1,194 @@
+# Getting Started
+
+This guide will walk you through creating your first Ramp project and understanding the basic workflow.
+
+## Your First Ramp Project
+
+### Option 1: Try the Demo
+
+The fastest way to understand Ramp is to run the included demo:
+
+```bash
+cd demo/demo-microservices-app
+ramp install                # Clone demo repositories
+ramp up my-feature          # Create feature branch across all repos
+ramp run dev                # Start simulated development environment
+ramp status                 # View project status
+ramp down my-feature        # Clean up feature
+```
+
+See [demo/demo-microservices-app/README.md](../demo/demo-microservices-app/README.md) for a detailed walkthrough.
+
+### Option 2: Create Your Own Project
+
+#### 1. Initialize a New Project
+
+```bash
+mkdir my-project && cd my-project
+ramp init
+```
+
+The interactive setup will guide you through:
+
+- **Project name** - Defaults to directory name
+- **Branch prefix** - Defaults to "feature/" (e.g., `feature/my-branch`)
+- **Repository URLs** - Add as many as needed (GitHub, GitLab, etc.)
+- **Setup/cleanup scripts** - Optional automation hooks
+- **Port management** - Optional unique port per feature
+- **Custom commands** - Like 'doctor' for environment checks
+
+#### 2. Customize Your Scripts
+
+Edit the generated files in `.ramp/scripts/`:
+
+```bash
+# .ramp/scripts/setup.sh - Runs after 'ramp up'
+# Install dependencies, start databases, etc.
+
+# .ramp/scripts/cleanup.sh - Runs before 'ramp down'
+# Stop services, clean up temp files, etc.
+
+# .ramp/scripts/doctor.sh - Environment validation
+# Check for required tools, dependencies, etc.
+```
+
+All scripts receive environment variables for paths, ports, and repository locations. See [Custom Scripts Guide](guides/custom-scripts.md) for details.
+
+#### 3. Install Repositories
+
+```bash
+ramp install  # Clone all configured repositories
+```
+
+This happens automatically if you selected "Yes" during `ramp init`.
+
+## Basic Workflow
+
+### Creating a Feature
+
+```bash
+ramp up my-feature
+```
+
+This command:
+- Creates `feature/my-feature` branch in all repositories
+- Sets up git worktrees in `trees/my-feature/`
+- Allocates a unique port number
+- Runs your setup script
+
+### Working on Your Feature
+
+Your feature workspace is in `trees/my-feature/`:
+
+```
+trees/my-feature/
+├── frontend/     # Worktree for frontend repo
+└── api/          # Worktree for api repo
+```
+
+Make changes across repositories as needed. Each worktree is a fully functional git repository.
+
+### Checking Status
+
+```bash
+ramp status
+```
+
+Shows:
+- Current branch and sync status for each repository
+- Active features and their worktrees
+- Port allocations
+- Uncommitted changes
+
+### Running Custom Commands
+
+```bash
+ramp run dev           # Auto-detect current feature
+ramp run dev my-feature  # Specify feature explicitly
+```
+
+Custom commands are defined in your `ramp.yaml` configuration.
+
+### Cleaning Up
+
+When your feature is complete and merged:
+
+```bash
+ramp down my-feature
+```
+
+This command:
+- Runs cleanup script
+- Removes git worktrees
+- Deletes local branches
+- Releases port allocation
+- Removes feature directory
+
+### Batch Cleanup
+
+After merging multiple features:
+
+```bash
+ramp prune
+```
+
+This identifies all merged features and removes them after confirmation.
+
+## Understanding the Directory Structure
+
+```
+my-project/
+├── .ramp/
+│   ├── ramp.yaml                # Configuration
+│   ├── port_allocations.json    # Auto-generated
+│   └── scripts/
+│       ├── setup.sh
+│       ├── cleanup.sh
+│       └── dev.sh
+├── repos/                       # Source repositories
+│   ├── frontend/
+│   └── api/
+└── trees/                       # Feature worktrees
+    ├── my-feature/
+    │   ├── frontend/
+    │   └── api/
+    └── other-feature/
+        ├── frontend/
+        └── api/
+```
+
+### Key Directories
+
+- **repos/** - Your main repository clones (don't modify directly)
+- **trees/** - Feature-specific worktrees (this is where you work)
+- **.ramp/** - Configuration and scripts
+
+## Common Patterns
+
+### Creating a Feature from an Existing Branch
+
+```bash
+ramp up new-feature --target existing-feature
+ramp up new-feature --target origin/main
+```
+
+### Using Custom Branch Prefixes
+
+```bash
+ramp up urgent-fix --prefix hotfix/
+# Creates: hotfix/urgent-fix
+```
+
+### Verbose Mode for Debugging
+
+```bash
+ramp -v up my-feature
+ramp -v status
+```
+
+## Next Steps
+
+- [Configuration Reference](configuration.md) - Customize your ramp.yaml
+- [Custom Scripts Guide](guides/custom-scripts.md) - Automate your workflow
+- [Command Reference](commands/ramp.md) - Explore all commands
+- [Troubleshooting](advanced/troubleshooting.md) - Common issues

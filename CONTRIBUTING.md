@@ -148,18 +148,78 @@ When adding new functionality:
 - Add supporting logic to appropriate `internal/` packages
 - Keep business logic out of CLI command handlers
 
+## Documentation
+
+### Documentation Structure
+
+Ramp uses a docs-as-code approach with the following structure:
+
+```
+docs/
+├── index.md                    # Documentation home
+├── getting-started.md          # Quick start guide
+├── configuration.md            # Configuration reference
+├── installation.md             # Installation guide
+├── commands/                   # Auto-generated command docs
+│   ├── ramp.md
+│   ├── ramp-up.md
+│   └── ...
+├── guides/                     # How-to guides
+│   ├── microservices.md
+│   ├── frontend-backend.md
+│   └── custom-scripts.md
+└── advanced/                   # Advanced topics
+    ├── port-management.md
+    ├── worktrees.md
+    └── troubleshooting.md
+```
+
+### Updating Documentation
+
+**Command Documentation** (auto-generated):
+- Command docs in `docs/commands/` are auto-generated from Cobra command definitions
+- After modifying command descriptions, flags, or help text in `cmd/`, run:
+  ```bash
+  make docs
+  # Or: go run scripts/gen-docs.go
+  ```
+- Commit the generated changes with your PR
+- CI will verify docs are up-to-date
+
+**Manual Documentation**:
+- Update guides in `docs/guides/` when adding new features or patterns
+- Update `docs/configuration.md` when changing config schema
+- Update `docs/troubleshooting.md` when fixing common issues
+- Keep `README.md` concise - move detailed content to `docs/`
+
+### Testing Documentation Locally
+
+Verify docs are up-to-date:
+```bash
+make docs-verify
+```
+
+This will fail if command documentation is out of sync with code.
+
 ## Testing
 
 ### Running Tests
 
 Run all tests:
 ```bash
-go test ./...
+make test
+# Or: go test ./...
 ```
 
 Run tests with verbose output:
 ```bash
 go test -v ./...
+```
+
+Run tests with coverage:
+```bash
+make test-coverage
+# Opens coverage.html in browser
 ```
 
 Run tests for a specific package:
@@ -221,7 +281,7 @@ func TestFunctionName(t *testing.T) {
 
 2. **Run tests** and ensure they pass:
    ```bash
-   go test ./...
+   make test
    ```
 
 3. **Run formatting**:
@@ -229,9 +289,20 @@ func TestFunctionName(t *testing.T) {
    go fmt ./...
    ```
 
-4. **Build the project** to ensure it compiles:
+4. **Update documentation** if you changed commands:
    ```bash
-   go build -o ramp .
+   make docs
+   git add docs/commands/
+   ```
+
+5. **Verify docs are up-to-date**:
+   ```bash
+   make docs-verify
+   ```
+
+6. **Build the project** to ensure it compiles:
+   ```bash
+   make build
    ```
 
 ### Submitting Your Pull Request
@@ -256,9 +327,12 @@ func TestFunctionName(t *testing.T) {
 
 - Keep PRs focused on a single feature or fix
 - Break large changes into smaller, reviewable PRs when possible
-- Update documentation if you're changing functionality
+- **Update documentation**:
+  - Run `make docs` if you changed command definitions
+  - Update relevant guides in `docs/` for new features
+  - Update `docs/configuration.md` for config changes
 - Add or update tests for your changes
-- Ensure CI checks pass
+- Ensure CI checks pass (including docs verification)
 - Respond to review feedback promptly
 
 ### After Your PR is Merged
