@@ -40,3 +40,8 @@ func init() {
 	rootCmd.CompletionOptions.DisableDefaultCmd = true
 	rootCmd.PersistentFlags().BoolP("verbose", "v", false, "Show detailed output during operations")
 }
+
+// GetRootCmd returns the root command for documentation generation
+func GetRootCmd() *cobra.Command {
+	return rootCmd
+}
