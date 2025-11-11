@@ -524,3 +524,234 @@ echo "port=$RAMP_PORT" > "$RAMP_TREES_DIR/port-marker.txt"
 		t.Errorf("RAMP_PORT not set correctly, got: %s", contentStr)
 	}
 }
+
+// TestUpWithEnvFilesSimple tests simple env file copy with auto-replace
+func TestUpWithEnvFilesSimple(t *testing.T) {
+	tp := NewTestProject(t)
+	repo1 := tp.InitRepo("app")
+
+	cleanup := tp.ChangeToProjectDir()
+	defer cleanup()
+
+	// Create source .env file with RAMP variables
+	envContent := `PORT=${RAMP_PORT}
+API_PORT=${RAMP_PORT}1
+APP_NAME=myapp-${RAMP_WORKTREE_NAME}
+`
+	os.WriteFile(filepath.Join(repo1.SourceDir, ".env"), []byte(envContent), 0644)
+
+	// Update config to include env_files
+	cfg, _ := config.LoadConfig(tp.Dir)
+	cfg.BasePort = 4000
+	cfg.Repos[0].EnvFiles = []config.EnvFile{
+		{Source: ".env", Dest: ".env"},
+	}
+	config.SaveConfig(cfg, tp.Dir)
+
+	// Create feature
+	err := runUp("my-feature", "", "")
+	if err != nil {
+		t.Fatalf("runUp() error = %v", err)
+	}
+
+	// Verify .env was copied and variables replaced
+	destEnv := filepath.Join(tp.Dir, "trees", "my-feature", "app", ".env")
+	content, err := os.ReadFile(destEnv)
+	if err != nil {
+		t.Fatalf("failed to read destination .env: %v", err)
+	}
+
+	expected := `PORT=4000
+API_PORT=40001
+APP_NAME=myapp-my-feature
+`
+	if string(content) != expected {
+		t.Errorf("env file content mismatch\ngot:\n%s\nwant:\n%s", string(content), expected)
+	}
+}
+
+// TestUpWithEnvFilesCrossRepo tests cross-repo env file copying
+func TestUpWithEnvFilesCrossRepo(t *testing.T) {
+	tp := NewTestProject(t)
+	configsRepo := tp.InitRepo("configs")
+	_ = tp.InitRepo("app")
+
+	cleanup := tp.ChangeToProjectDir()
+	defer cleanup()
+
+	// Create env file in configs repo
+	os.MkdirAll(filepath.Join(configsRepo.SourceDir, "app"), 0755)
+	envContent := `PORT=3000
+API_URL=http://localhost:3000
+`
+	os.WriteFile(filepath.Join(configsRepo.SourceDir, "app", "prod.env"), []byte(envContent), 0644)
+
+	// Commit to configs repo so worktree can be created
+	runGitCmd(t, configsRepo.SourceDir, "add", ".")
+	runGitCmd(t, configsRepo.SourceDir, "commit", "-m", "Add env file")
+
+	// Update config to include cross-repo env_files
+	cfg, _ := config.LoadConfig(tp.Dir)
+	cfg.BasePort = 4000
+	cfg.Repos[1].EnvFiles = []config.EnvFile{
+		{
+			Source: "../configs/app/prod.env",
+			Dest:   ".env",
+			Replace: map[string]string{
+				"PORT":    "${RAMP_PORT}",
+				"API_URL": "http://localhost:${RAMP_PORT}",
+			},
+		},
+	}
+	config.SaveConfig(cfg, tp.Dir)
+
+	// Create feature
+	err := runUp("my-feature", "", "")
+	if err != nil {
+		t.Fatalf("runUp() error = %v", err)
+	}
+
+	// Verify .env was copied from configs to app with replacements
+	destEnv := filepath.Join(tp.Dir, "trees", "my-feature", "app", ".env")
+	content, err := os.ReadFile(destEnv)
+	if err != nil {
+		t.Fatalf("failed to read destination .env: %v", err)
+	}
+
+	expected := `PORT=4000
+API_URL=http://localhost:4000
+`
+	if string(content) != expected {
+		t.Errorf("env file content mismatch\ngot:\n%s\nwant:\n%s", string(content), expected)
+	}
+}
+
+// TestUpWithEnvFilesCustomReplacements tests custom replacements only
+func TestUpWithEnvFilesCustomReplacements(t *testing.T) {
+	tp := NewTestProject(t)
+	repo1 := tp.InitRepo("app")
+
+	cleanup := tp.ChangeToProjectDir()
+	defer cleanup()
+
+	// Create source .env with both custom keys and RAMP vars
+	envContent := `PORT=3000
+API_PORT=3001
+UNUSED_VAR=${RAMP_PORT}
+APP_NAME=default
+`
+	os.WriteFile(filepath.Join(repo1.SourceDir, ".env"), []byte(envContent), 0644)
+
+	// Update config with explicit replacements
+	cfg, _ := config.LoadConfig(tp.Dir)
+	cfg.BasePort = 4000
+	cfg.Repos[0].EnvFiles = []config.EnvFile{
+		{
+			Source: ".env",
+			Dest:   ".env",
+			Replace: map[string]string{
+				"PORT":     "${RAMP_PORT}",
+				"API_PORT": "${RAMP_PORT}1",
+			},
+		},
+	}
+	config.SaveConfig(cfg, tp.Dir)
+
+	// Create feature
+	err := runUp("my-feature", "", "")
+	if err != nil {
+		t.Fatalf("runUp() error = %v", err)
+	}
+
+	// Verify only specified keys were replaced
+	destEnv := filepath.Join(tp.Dir, "trees", "my-feature", "app", ".env")
+	content, err := os.ReadFile(destEnv)
+	if err != nil {
+		t.Fatalf("failed to read destination .env: %v", err)
+	}
+
+	expected := `PORT=4000
+API_PORT=40001
+UNUSED_VAR=${RAMP_PORT}
+APP_NAME=default
+`
+	if string(content) != expected {
+		t.Errorf("env file content mismatch\ngot:\n%s\nwant:\n%s", string(content), expected)
+	}
+}
+
+// TestUpWithEnvFilesMultiple tests multiple env files
+func TestUpWithEnvFilesMultiple(t *testing.T) {
+	tp := NewTestProject(t)
+	repo1 := tp.InitRepo("app")
+
+	cleanup := tp.ChangeToProjectDir()
+	defer cleanup()
+
+	// Create multiple source files
+	os.WriteFile(filepath.Join(repo1.SourceDir, ".env"), []byte("PORT=${RAMP_PORT}\n"), 0644)
+	os.WriteFile(filepath.Join(repo1.SourceDir, ".env.local"), []byte("DEBUG=true\n"), 0644)
+
+	// Update config with multiple env_files
+	cfg, _ := config.LoadConfig(tp.Dir)
+	cfg.BasePort = 4000
+	cfg.Repos[0].EnvFiles = []config.EnvFile{
+		{Source: ".env", Dest: ".env"},
+		{Source: ".env.local", Dest: ".env.local"},
+	}
+	config.SaveConfig(cfg, tp.Dir)
+
+	// Create feature
+	err := runUp("my-feature", "", "")
+	if err != nil {
+		t.Fatalf("runUp() error = %v", err)
+	}
+
+	// Verify both files were copied
+	destEnv1 := filepath.Join(tp.Dir, "trees", "my-feature", "app", ".env")
+	content1, err := os.ReadFile(destEnv1)
+	if err != nil {
+		t.Fatalf("failed to read .env: %v", err)
+	}
+	if string(content1) != "PORT=4000\n" {
+		t.Errorf(".env content = %q, want %q", string(content1), "PORT=4000\n")
+	}
+
+	destEnv2 := filepath.Join(tp.Dir, "trees", "my-feature", "app", ".env.local")
+	content2, err := os.ReadFile(destEnv2)
+	if err != nil {
+		t.Fatalf("failed to read .env.local: %v", err)
+	}
+	if string(content2) != "DEBUG=true\n" {
+		t.Errorf(".env.local content = %q, want %q", string(content2), "DEBUG=true\n")
+	}
+}
+
+// TestUpWithEnvFilesMissing tests graceful handling of missing source files
+func TestUpWithEnvFilesMissing(t *testing.T) {
+	tp := NewTestProject(t)
+	_ = tp.InitRepo("app")
+
+	cleanup := tp.ChangeToProjectDir()
+	defer cleanup()
+
+	// Update config with env_files but don't create source file
+	cfg, _ := config.LoadConfig(tp.Dir)
+	cfg.Repos[0].EnvFiles = []config.EnvFile{
+		{Source: ".env", Dest: ".env"},
+	}
+	config.SaveConfig(cfg, tp.Dir)
+
+	// Create feature - should succeed with warning
+	err := runUp("my-feature", "", "")
+	if err != nil {
+		t.Fatalf("runUp() should not error on missing env file, got: %v", err)
+	}
+
+	// Verify destination file was not created
+	destEnv := filepath.Join(tp.Dir, "trees", "my-feature", "app", ".env")
+	_, err = os.ReadFile(destEnv)
+	if err == nil {
+		t.Error("destination .env should not exist when source is missing")
+	}
+}

@@ -768,3 +768,512 @@ func BenchmarkFindRampProject(b *testing.B) {
 		FindRampProject(deepDir)
 	}
 }
+
+// TestEnvFilesParsing tests parsing of env_files configuration
+func TestEnvFilesParsing(t *testing.T) {
+	t.Run("simple string syntax", func(t *testing.T) {
+		configContent := `name: test-project
+repos:
+  - path: repos
+    git: git@github.com:owner/app.git
+    env_files:
+      - .env
+      - .env.local
+`
+		tempDir := t.TempDir()
+		rampDir := filepath.Join(tempDir, ".ramp")
+		os.MkdirAll(rampDir, 0755)
+		configPath := filepath.Join(rampDir, "ramp.yaml")
+		os.WriteFile(configPath, []byte(configContent), 0644)
+
+		cfg, err := LoadConfig(tempDir)
+		if err != nil {
+			t.Fatalf("LoadConfig() error = %v", err)
+		}
+
+		if len(cfg.Repos) != 1 {
+			t.Fatalf("expected 1 repo, got %d", len(cfg.Repos))
+		}
+
+		repo := cfg.Repos[0]
+		if len(repo.EnvFiles) != 2 {
+			t.Fatalf("expected 2 env files, got %d", len(repo.EnvFiles))
+		}
+
+		// Check first env file
+		if repo.EnvFiles[0].Source != ".env" {
+			t.Errorf("EnvFiles[0].Source = %q, want %q", repo.EnvFiles[0].Source, ".env")
+		}
+		if repo.EnvFiles[0].Dest != ".env" {
+			t.Errorf("EnvFiles[0].Dest = %q, want %q", repo.EnvFiles[0].Dest, ".env")
+		}
+		if repo.EnvFiles[0].Replace != nil {
+			t.Errorf("EnvFiles[0].Replace should be nil for simple syntax")
+		}
+
+		// Check second env file
+		if repo.EnvFiles[1].Source != ".env.local" {
+			t.Errorf("EnvFiles[1].Source = %q, want %q", repo.EnvFiles[1].Source, ".env.local")
+		}
+		if repo.EnvFiles[1].Dest != ".env.local" {
+			t.Errorf("EnvFiles[1].Dest = %q, want %q", repo.EnvFiles[1].Dest, ".env.local")
+		}
+	})
+
+	t.Run("full object syntax with source and dest", func(t *testing.T) {
+		configContent := `name: test-project
+repos:
+  - path: repos
+    git: git@github.com:owner/app.git
+    env_files:
+      - source: .env.example
+        dest: .env
+`
+		tempDir := t.TempDir()
+		rampDir := filepath.Join(tempDir, ".ramp")
+		os.MkdirAll(rampDir, 0755)
+		configPath := filepath.Join(rampDir, "ramp.yaml")
+		os.WriteFile(configPath, []byte(configContent), 0644)
+
+		cfg, err := LoadConfig(tempDir)
+		if err != nil {
+			t.Fatalf("LoadConfig() error = %v", err)
+		}
+
+		repo := cfg.Repos[0]
+		if len(repo.EnvFiles) != 1 {
+			t.Fatalf("expected 1 env file, got %d", len(repo.EnvFiles))
+		}
+
+		envFile := repo.EnvFiles[0]
+		if envFile.Source != ".env.example" {
+			t.Errorf("Source = %q, want %q", envFile.Source, ".env.example")
+		}
+		if envFile.Dest != ".env" {
+			t.Errorf("Dest = %q, want %q", envFile.Dest, ".env")
+		}
+	})
+
+	t.Run("full object syntax with replacements", func(t *testing.T) {
+		configContent := `name: test-project
+repos:
+  - path: repos
+    git: git@github.com:owner/app.git
+    env_files:
+      - source: ../configs/app/prod.env
+        dest: .env
+        replace:
+          PORT: "${RAMP_PORT}"
+          API_PORT: "${RAMP_PORT}1"
+          APP_NAME: "myapp-${RAMP_WORKTREE_NAME}"
+`
+		tempDir := t.TempDir()
+		rampDir := filepath.Join(tempDir, ".ramp")
+		os.MkdirAll(rampDir, 0755)
+		configPath := filepath.Join(rampDir, "ramp.yaml")
+		os.WriteFile(configPath, []byte(configContent), 0644)
+
+		cfg, err := LoadConfig(tempDir)
+		if err != nil {
+			t.Fatalf("LoadConfig() error = %v", err)
+		}
+
+		repo := cfg.Repos[0]
+		if len(repo.EnvFiles) != 1 {
+			t.Fatalf("expected 1 env file, got %d", len(repo.EnvFiles))
+		}
+
+		envFile := repo.EnvFiles[0]
+		if envFile.Source != "../configs/app/prod.env" {
+			t.Errorf("Source = %q, want %q", envFile.Source, "../configs/app/prod.env")
+		}
+		if envFile.Dest != ".env" {
+			t.Errorf("Dest = %q, want %q", envFile.Dest, ".env")
+		}
+
+		if envFile.Replace == nil {
+			t.Fatal("Replace should not be nil")
+		}
+
+		expectedReplacements := map[string]string{
+			"PORT":     "${RAMP_PORT}",
+			"API_PORT": "${RAMP_PORT}1",
+			"APP_NAME": "myapp-${RAMP_WORKTREE_NAME}",
+		}
+
+		if len(envFile.Replace) != len(expectedReplacements) {
+			t.Fatalf("expected %d replacements, got %d", len(expectedReplacements), len(envFile.Replace))
+		}
+
+		for key, expectedVal := range expectedReplacements {
+			if val, ok := envFile.Replace[key]; !ok {
+				t.Errorf("missing replacement for key %q", key)
+			} else if val != expectedVal {
+				t.Errorf("Replace[%q] = %q, want %q", key, val, expectedVal)
+			}
+		}
+	})
+
+	t.Run("mixed simple and complex syntax", func(t *testing.T) {
+		configContent := `name: test-project
+repos:
+  - path: repos
+    git: git@github.com:owner/app.git
+    env_files:
+      - .env.example
+      - source: ../configs/app/prod.env
+        dest: .env.prod
+        replace:
+          PORT: "${RAMP_PORT}"
+`
+		tempDir := t.TempDir()
+		rampDir := filepath.Join(tempDir, ".ramp")
+		os.MkdirAll(rampDir, 0755)
+		configPath := filepath.Join(rampDir, "ramp.yaml")
+		os.WriteFile(configPath, []byte(configContent), 0644)
+
+		cfg, err := LoadConfig(tempDir)
+		if err != nil {
+			t.Fatalf("LoadConfig() error = %v", err)
+		}
+
+		repo := cfg.Repos[0]
+		if len(repo.EnvFiles) != 2 {
+			t.Fatalf("expected 2 env files, got %d", len(repo.EnvFiles))
+		}
+
+		// First should be simple
+		if repo.EnvFiles[0].Source != ".env.example" || repo.EnvFiles[0].Dest != ".env.example" {
+			t.Errorf("first env file should be simple syntax")
+		}
+
+		// Second should be complex
+		if repo.EnvFiles[1].Source != "../configs/app/prod.env" {
+			t.Errorf("second env file Source = %q, want %q", repo.EnvFiles[1].Source, "../configs/app/prod.env")
+		}
+		if repo.EnvFiles[1].Replace == nil {
+			t.Errorf("second env file should have replacements")
+		}
+	})
+}
+
+// TestConfigWithPrompts tests loading and saving configs with prompts defined
+func TestConfigWithPrompts(t *testing.T) {
+	tempDir := t.TempDir()
+
+	configWithPrompts := `name: test-project
+repos:
+  - path: repos
+    git: git@github.com:owner/repo.git
+
+prompts:
+  - name: RAMP_IDE
+    question: "Which IDE do you use?"
+    options:
+      - value: vscode
+        label: VSCode
+      - value: intellij
+        label: IntelliJ IDEA
+      - value: none
+        label: None
+    default: none
+
+  - name: RAMP_DATABASE
+    question: "Which database for local dev?"
+    options:
+      - value: postgres
+        label: PostgreSQL
+      - value: mysql
+        label: MySQL
+    default: postgres
+`
+
+	rampDir := filepath.Join(tempDir, ".ramp")
+	if err := os.MkdirAll(rampDir, 0755); err != nil {
+		t.Fatalf("failed to create .ramp dir: %v", err)
+	}
+
+	configPath := filepath.Join(rampDir, "ramp.yaml")
+	if err := os.WriteFile(configPath, []byte(configWithPrompts), 0644); err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+
+	// Load the config
+	cfg, err := LoadConfig(tempDir)
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v", err)
+	}
+
+	// Check prompts were loaded
+	if len(cfg.Prompts) != 2 {
+		t.Fatalf("got %d prompts, want 2", len(cfg.Prompts))
+	}
+
+	// Check first prompt
+	prompt1 := cfg.Prompts[0]
+	if prompt1.Name != "RAMP_IDE" {
+		t.Errorf("Prompt[0].Name = %q, want %q", prompt1.Name, "RAMP_IDE")
+	}
+	if prompt1.Question != "Which IDE do you use?" {
+		t.Errorf("Prompt[0].Question = %q, want %q", prompt1.Question, "Which IDE do you use?")
+	}
+	if prompt1.Default != "none" {
+		t.Errorf("Prompt[0].Default = %q, want %q", prompt1.Default, "none")
+	}
+	if len(prompt1.Options) != 3 {
+		t.Fatalf("Prompt[0] has %d options, want 3", len(prompt1.Options))
+	}
+	if prompt1.Options[0].Value != "vscode" || prompt1.Options[0].Label != "VSCode" {
+		t.Errorf("Prompt[0].Options[0] = {%q, %q}, want {vscode, VSCode}",
+			prompt1.Options[0].Value, prompt1.Options[0].Label)
+	}
+
+	// Check second prompt
+	prompt2 := cfg.Prompts[1]
+	if prompt2.Name != "RAMP_DATABASE" {
+		t.Errorf("Prompt[1].Name = %q, want %q", prompt2.Name, "RAMP_DATABASE")
+	}
+	if len(prompt2.Options) != 2 {
+		t.Fatalf("Prompt[1] has %d options, want 2", len(prompt2.Options))
+	}
+}
+
+// TestConfigWithoutPrompts tests that configs without prompts still work (backwards compatible)
+func TestConfigWithoutPrompts(t *testing.T) {
+	tempDir := t.TempDir()
+
+	configWithoutPrompts := `name: test-project
+repos:
+  - path: repos
+    git: git@github.com:owner/repo.git
+`
+
+	rampDir := filepath.Join(tempDir, ".ramp")
+	if err := os.MkdirAll(rampDir, 0755); err != nil {
+		t.Fatalf("failed to create .ramp dir: %v", err)
+	}
+
+	configPath := filepath.Join(rampDir, "ramp.yaml")
+	if err := os.WriteFile(configPath, []byte(configWithoutPrompts), 0644); err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+
+	cfg, err := LoadConfig(tempDir)
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v", err)
+	}
+
+	// Prompts should be empty/nil
+	if len(cfg.Prompts) != 0 {
+		t.Errorf("got %d prompts, want 0 for config without prompts", len(cfg.Prompts))
+	}
+
+	// HasPrompts should return false
+	if cfg.HasPrompts() {
+		t.Error("HasPrompts() = true, want false for config without prompts")
+	}
+}
+
+// TestLocalConfigSaveAndLoad tests saving and loading local preferences
+func TestLocalConfigSaveAndLoad(t *testing.T) {
+	tempDir := t.TempDir()
+
+	localCfg := &LocalConfig{
+		Preferences: map[string]string{
+			"RAMP_IDE":      "vscode",
+			"RAMP_DATABASE": "postgres",
+		},
+	}
+
+	// Save
+	if err := SaveLocalConfig(localCfg, tempDir); err != nil {
+		t.Fatalf("SaveLocalConfig() error = %v", err)
+	}
+
+	// Verify file exists
+	localPath := filepath.Join(tempDir, ".ramp", "local.yaml")
+	if _, err := os.Stat(localPath); os.IsNotExist(err) {
+		t.Fatalf("local.yaml was not created at %s", localPath)
+	}
+
+	// Load
+	loaded, err := LoadLocalConfig(tempDir)
+	if err != nil {
+		t.Fatalf("LoadLocalConfig() error = %v", err)
+	}
+
+	// Compare
+	if len(loaded.Preferences) != 2 {
+		t.Fatalf("got %d preferences, want 2", len(loaded.Preferences))
+	}
+
+	if loaded.Preferences["RAMP_IDE"] != "vscode" {
+		t.Errorf("RAMP_IDE = %q, want %q", loaded.Preferences["RAMP_IDE"], "vscode")
+	}
+
+	if loaded.Preferences["RAMP_DATABASE"] != "postgres" {
+		t.Errorf("RAMP_DATABASE = %q, want %q", loaded.Preferences["RAMP_DATABASE"], "postgres")
+	}
+}
+
+// TestLocalConfigNotFound tests that LoadLocalConfig returns nil when file doesn't exist
+func TestLocalConfigNotFound(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// Create .ramp directory but no local.yaml
+	rampDir := filepath.Join(tempDir, ".ramp")
+	if err := os.MkdirAll(rampDir, 0755); err != nil {
+		t.Fatalf("failed to create .ramp dir: %v", err)
+	}
+
+	loaded, err := LoadLocalConfig(tempDir)
+	if err != nil {
+		t.Fatalf("LoadLocalConfig() with missing file should not error, got: %v", err)
+	}
+
+	if loaded != nil {
+		t.Errorf("LoadLocalConfig() = %v, want nil when file doesn't exist", loaded)
+	}
+}
+
+// TestHasPrompts tests the HasPrompts helper
+func TestHasPrompts(t *testing.T) {
+	t.Run("with prompts", func(t *testing.T) {
+		cfg := &Config{
+			Prompts: []*Prompt{
+				{Name: "TEST", Question: "Test?", Options: []*PromptOption{{Value: "yes", Label: "Yes"}}},
+			},
+		}
+		if !cfg.HasPrompts() {
+			t.Error("HasPrompts() = false, want true")
+		}
+	})
+
+	t.Run("without prompts", func(t *testing.T) {
+		cfg := &Config{}
+		if cfg.HasPrompts() {
+			t.Error("HasPrompts() = true, want false")
+		}
+	})
+
+	t.Run("with empty prompts slice", func(t *testing.T) {
+		cfg := &Config{Prompts: []*Prompt{}}
+		if cfg.HasPrompts() {
+			t.Error("HasPrompts() = true, want false for empty slice")
+		}
+	})
+}
+
+// TestSaveConfigWithEnvFiles tests that env_files are properly saved
+func TestSaveConfigWithEnvFiles(t *testing.T) {
+	tempDir := t.TempDir()
+
+	cfg := &Config{
+		Name: "test-project",
+		Repos: []*Repo{
+			{
+				Path: "repos",
+				Git:  "git@github.com:owner/app.git",
+				EnvFiles: []EnvFile{
+					{Source: ".env", Dest: ".env"},
+					{
+						Source: "../configs/app/prod.env",
+						Dest:   ".env.prod",
+						Replace: map[string]string{
+							"PORT":     "${RAMP_PORT}",
+							"API_PORT": "${RAMP_PORT}1",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	if err := SaveConfig(cfg, tempDir); err != nil {
+		t.Fatalf("SaveConfig() error = %v", err)
+	}
+
+	// Load it back
+	loaded, err := LoadConfig(tempDir)
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v", err)
+	}
+
+	if len(loaded.Repos) != 1 {
+		t.Fatalf("expected 1 repo, got %d", len(loaded.Repos))
+	}
+
+	repo := loaded.Repos[0]
+	if len(repo.EnvFiles) != 2 {
+		t.Fatalf("expected 2 env files, got %d", len(repo.EnvFiles))
+	}
+
+	// Verify first env file
+	if repo.EnvFiles[0].Source != ".env" {
+		t.Errorf("EnvFiles[0].Source = %q, want %q", repo.EnvFiles[0].Source, ".env")
+	}
+
+	// Verify second env file
+	if repo.EnvFiles[1].Source != "../configs/app/prod.env" {
+		t.Errorf("EnvFiles[1].Source = %q, want %q", repo.EnvFiles[1].Source, "../configs/app/prod.env")
+	}
+	if repo.EnvFiles[1].Replace == nil {
+		t.Fatal("EnvFiles[1].Replace should not be nil")
+	}
+	if repo.EnvFiles[1].Replace["PORT"] != "${RAMP_PORT}" {
+		t.Errorf("EnvFiles[1].Replace[PORT] = %q, want %q", repo.EnvFiles[1].Replace["PORT"], "${RAMP_PORT}")
+	}
+}
+
+// TestSaveConfigWithPrompts tests that SaveConfig preserves prompts
+func TestSaveConfigWithPrompts(t *testing.T) {
+	tempDir := t.TempDir()
+
+	cfg := &Config{
+		Name: "test-project",
+		Repos: []*Repo{
+			{Path: "repos", Git: "git@github.com:owner/repo.git"},
+		},
+		Prompts: []*Prompt{
+			{
+				Name:     "RAMP_IDE",
+				Question: "Which IDE?",
+				Options: []*PromptOption{
+					{Value: "vscode", Label: "VSCode"},
+					{Value: "vim", Label: "Vim"},
+				},
+				Default: "vscode",
+			},
+		},
+	}
+
+	// Save
+	if err := SaveConfig(cfg, tempDir); err != nil {
+		t.Fatalf("SaveConfig() error = %v", err)
+	}
+
+	// Load back
+	loaded, err := LoadConfig(tempDir)
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v", err)
+	}
+
+	// Verify prompts were preserved
+	if len(loaded.Prompts) != 1 {
+		t.Fatalf("got %d prompts, want 1", len(loaded.Prompts))
+	}
+
+	prompt := loaded.Prompts[0]
+	if prompt.Name != "RAMP_IDE" {
+		t.Errorf("Name = %q, want %q", prompt.Name, "RAMP_IDE")
+	}
+	if prompt.Question != "Which IDE?" {
+		t.Errorf("Question = %q, want %q", prompt.Question, "Which IDE?")
+	}
+	if prompt.Default != "vscode" {
+		t.Errorf("Default = %q, want %q", prompt.Default, "vscode")
+	}
+	if len(prompt.Options) != 2 {
+		t.Fatalf("got %d options, want 2", len(prompt.Options))
+	}
+}

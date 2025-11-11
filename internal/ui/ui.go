@@ -195,3 +195,8 @@ func RunCommandWithProgressQuiet(cmd *exec.Cmd, message string) error {
 
 	return err
 }
+
+// Package-level warning function for standalone warnings
+func Warning(message string) {
+	fmt.Printf("⚠️  %s\n", message)
+}
