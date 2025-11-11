@@ -52,6 +52,7 @@ Ramp is a sophisticated CLI tool for managing multi-repository development workf
 **Purpose**: Create a new feature branch with git worktrees for all configured repositories.
 **How it works**:
 - Auto-installs the project if repositories aren't cloned yet (calls `ramp install` internally)
+- Auto-prompts for local config if prompts are defined in `ramp.yaml` (calls `EnsureLocalConfig()` internally)
 - Auto-refreshes repositories that have `auto_refresh` enabled (defaults to true if not specified)
 - Creates a `trees/<feature-name>/` directory structure for isolated feature development
 - For each configured repository:
@@ -62,6 +63,7 @@ Ramp is a sophisticated CLI tool for managing multi-repository development workf
     - If local branch exists: uses existing local branch
     - If only remote branch exists: creates local tracking branch
     - If neither exists: creates new branch from default branch
+  - Processes `env_files` configuration to copy and template environment files into the worktree
 - Allocates a unique port number for the feature (stored in `.ramp/port_allocations.json`)
 - Runs optional setup script with environment variables:
   - `RAMP_PROJECT_DIR`: absolute path to project root
@@ -79,6 +81,17 @@ Ramp is a sophisticated CLI tool for managing multi-repository development workf
   - Always prepends `origin/` to remote branch reference
 - Supports `--refresh` flag to force refresh all repositories before creating feature (overrides auto_refresh config)
 - Supports `--no-refresh` flag to skip refresh for all repositories (overrides auto_refresh config)
+
+#### `ramp config`
+**Purpose**: Manage local preferences defined in project's `prompts` configuration.
+**How it works**:
+- Without flags: Interactively prompts user to set/update preferences
+- `--show`: Displays current local preference values from `.ramp/local.yaml`
+- `--reset`: Deletes local preferences file (will re-prompt on next `ramp up`)
+- Preferences are stored in `.ramp/local.yaml` (gitignored)
+- Preference values become environment variables (e.g., `RAMP_IDE`, `RAMP_DATABASE`)
+- Available in setup/cleanup scripts and env_files templating
+- Enables IDE-agnostic and tool-agnostic team workflows
 
 #### `ramp down <feature-name>`
 **Purpose**: Clean up a feature branch by removing worktrees, branches, and allocated resources.
@@ -182,6 +195,7 @@ The application uses the Cobra CLI framework with commands organized in `cmd/`:
 - `cmd/root.go` - Main command definition, CLI entry point, and global flag handling
 - `cmd/init.go` - Repository initialization logic with auto-initialization support
 - `cmd/up.go` - Feature branch and worktree creation with smart branch handling
+- `cmd/config.go` - Local preference management for IDE-agnostic workflows
 - `cmd/down.go` - Feature cleanup with safety checks and confirmation prompts
 - `cmd/prune.go` - Batch cleanup of merged features with single confirmation prompt
 - `cmd/refresh.go` - Source repository synchronization
@@ -193,18 +207,25 @@ The application uses the Cobra CLI framework with commands organized in `cmd/`:
 ### Core Internal Packages
 
 #### `internal/config/`
-**Purpose**: Configuration file parsing and project discovery.
+**Purpose**: Configuration file parsing, project discovery, and local preferences management.
 **Key Types**:
 - `Config` - Main configuration structure mapping YAML to Go structs
-- `Repo` - Repository configuration with git URL, path, and default branch
+- `Repo` - Repository configuration with git URL, path, default branch, and env_files
+- `EnvFile` - Environment file configuration with source, destination, and variable replacements
+- `Prompt` - Interactive prompt definition for collecting team preferences
+- `PromptOption` - Individual option for a prompt (value and label)
+- `LocalConfig` - Local user preferences stored in `.ramp/local.yaml`
 - `Command` - Custom command definitions with name and script path
 
 **Key Functions**:
 - `FindRampProject(startDir)` - Recursively searches up directory tree for `.ramp/ramp.yaml`
 - `LoadConfig(projectDir)` - Parses YAML configuration file and validates structure
 - `SaveConfig(cfg, projectDir)` - Writes Config to ramp.yaml with custom formatting and spacing
+- `LoadLocalConfig(projectDir)` - Loads local preferences from `.ramp/local.yaml`
+- `SaveLocalConfig(localCfg, projectDir)` - Saves local preferences to `.ramp/local.yaml`
 - `GetRepos()` - Returns map of repository name to configuration
 - `GenerateEnvVarName(repoName)` - Converts repo names to valid environment variable names
+- `HasPrompts()` - Checks if configuration defines interactive prompts
 
 #### `internal/scaffold/`
 **Purpose**: Project scaffolding and template generation for ramp init.
@@ -220,6 +241,21 @@ The application uses the Cobra CLI framework with commands organized in `cmd/`:
 - `GenerateCleanupScript(projectDir, repos)` - Creates cleanup.sh with repo env vars
 - `GenerateSampleCommand(projectDir, name, repos)` - Creates custom command scripts (e.g., doctor.sh)
 - `extractRepoName(gitURL)` - Extracts repository name from git URL for naming
+
+#### `internal/envfile/`
+**Purpose**: Environment file copying and templating for feature worktrees.
+**Key Functions**:
+- `ProcessEnvFiles(repoName, envFiles, sourceDir, destDir, envVars)` - Processes all env_files for a repository
+- `processEnvFile(envFile, sourceDir, destDir, envVars)` - Copies and templates a single env file
+- `replaceVariables(content, replacements, envVars)` - Performs variable substitution in file content
+- `expandEnvVars(value, envVars)` - Expands environment variable references (e.g., `${RAMP_PORT}`)
+
+**How it works**:
+- Reads source file from repository or parent directories (supports `../configs/` patterns)
+- Performs string replacement for configured keys (exact matching)
+- Expands environment variable references in replacement values
+- Writes templated content to worktree destination
+- Supports both simple copying (no replacements) and advanced templating
 
 #### `internal/git/`
 **Purpose**: Git operations and worktree management.
@@ -358,9 +394,26 @@ repos:                               # Array of repository configurations
   - path: repos                      # Local directory path (relative to project root)
     git: git@github.com:owner/repo.git  # Git clone URL
     auto_refresh: true               # Optional: auto-refresh before 'ramp up' (default: true)
+    env_files:                       # Optional: environment file copying and templating
+      - .env.example                 # Simple: copy as-is
+      - source: ../configs/app.env   # Advanced: copy with variable substitution
+        dest: .env
+        replace:
+          PORT: "${RAMP_PORT}"
+          APP_NAME: "myapp-${RAMP_WORKTREE_NAME}"
   - path: repos
     git: https://github.com/owner/other-repo.git
     auto_refresh: true               # Optional: auto-refresh before 'ramp up' (default: true)
+
+prompts:                             # Optional: interactive prompts for team preferences
+  - name: RAMP_IDE                   # Environment variable name
+    question: "Which IDE do you use?"
+    options:
+      - value: vscode
+        label: Visual Studio Code
+      - value: vim
+        label: Vim/Neovim
+    default: vscode                  # Must match an option value
 
 setup: scripts/setup.sh              # Optional: script to run after 'ramp up'
 cleanup: scripts/cleanup.sh          # Optional: script to run during 'ramp down'
@@ -382,11 +435,15 @@ commands:                            # Optional: custom commands for 'ramp run'
 project-root/
 ├── .ramp/
 │   ├── ramp.yaml                    # Main configuration file
+│   ├── local.yaml                   # Local preferences (gitignored)
 │   ├── port_allocations.json       # Auto-generated port tracking
 │   └── scripts/                     # Optional setup/cleanup/command scripts
 │       ├── setup.sh
 │       ├── cleanup.sh
 │       └── custom-command.sh
+├── configs/                         # Optional: shared env file templates
+│   ├── app.env
+│   └── shared.env
 ├── repos/                           # Source repository clones
 │   ├── repo-name/                   # Cloned repositories
 │   └── other-repo/
@@ -400,11 +457,17 @@ project-root/
 ### Environment Variables for Scripts
 All setup, cleanup, and custom command scripts receive these environment variables:
 
+**Standard Variables:**
 - `RAMP_PROJECT_DIR` - Absolute path to project root directory
 - `RAMP_TREES_DIR` - Absolute path to current feature's trees directory
 - `RAMP_WORKTREE_NAME` - Name of the current feature
 - `RAMP_PORT` - Allocated port number for this feature (if port management enabled)
 - `RAMP_REPO_PATH_<REPO_NAME>` - Absolute path to each repository's source directory
+
+**Prompt Variables (if configured):**
+- Custom environment variables from `prompts` configuration (e.g., `RAMP_IDE`, `RAMP_DATABASE`)
+- Values stored in `.ramp/local.yaml` and loaded automatically
+- Available in scripts and env_files templating
 
 Repository names are converted to valid environment variable names by:
 1. Converting to uppercase

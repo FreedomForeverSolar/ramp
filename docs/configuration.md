@@ -13,12 +13,48 @@ repos:
   - path: repos
     git: git@github.com:org/frontend.git
     auto_refresh: true
+    env_files:
+      - .env.example                        # Simple: copy as-is
+      - source: ../configs/frontend.env     # Advanced: copy with templating
+        dest: .env
+        replace:
+          PORT: "${RAMP_PORT}"
+          API_URL: "http://localhost:${RAMP_PORT}1"
   - path: repos
     git: https://github.com/org/api.git
     auto_refresh: true
+    env_files:
+      - source: ../configs/api.env
+        dest: .env
+        replace:
+          PORT: "${RAMP_PORT}1"
   - path: repos
     git: git@github.com:org/shared-library.git
     auto_refresh: false
+
+# Optional: Interactive prompts for team preferences
+prompts:
+  - name: RAMP_IDE
+    question: "Which IDE do you use?"
+    options:
+      - value: vscode
+        label: Visual Studio Code
+      - value: intellij
+        label: IntelliJ IDEA
+      - value: vim
+        label: Vim/Neovim
+      - value: none
+        label: None
+    default: vscode
+
+  - name: RAMP_DATABASE
+    question: "Which database for local development?"
+    options:
+      - value: postgres
+        label: PostgreSQL
+      - value: mysql
+        label: MySQL
+    default: postgres
 
 # Optional: Scripts to run during lifecycle events
 setup: scripts/setup.sh
@@ -103,6 +139,77 @@ You can override this setting per-command:
 ramp up my-feature --refresh      # Force refresh all repos
 ramp up my-feature --no-refresh   # Skip refresh for all repos
 ```
+
+#### `env_files` (optional)
+
+Automatically copy and template environment files when creating feature worktrees. Supports both simple copying and advanced templating with variable substitution.
+
+**Simple Syntax** - Copy file as-is:
+```yaml
+repos:
+  - path: repos
+    git: git@github.com:org/app.git
+    env_files:
+      - .env.example     # Copies .env.example → .env.example
+      - .env.local       # Copies .env.local → .env.local
+```
+
+**Advanced Syntax** - Copy with templating:
+```yaml
+repos:
+  - path: repos
+    git: git@github.com:org/app.git
+    env_files:
+      - source: .env.example         # Copy from source repo
+        dest: .env                   # Save to worktree
+      - source: ../configs/app.env   # Can reference files outside repo
+        dest: .env.production
+        replace:                     # Template variable substitution
+          PORT: "${RAMP_PORT}"
+          API_PORT: "${RAMP_PORT}1"
+          APP_NAME: "myapp-${RAMP_WORKTREE_NAME}"
+          DATABASE_URL: "${RAMP_DATABASE_URL}"
+```
+
+**How it works:**
+1. `source` - Path to file relative to source repository root (can use `../` to reference parent directories)
+2. `dest` - Where to copy file in feature worktree (relative to worktree root)
+3. `replace` - Key-value pairs for variable substitution (optional)
+   - Keys are replaced with values using exact string matching
+   - Values can reference any Ramp environment variables (`RAMP_PORT`, `RAMP_WORKTREE_NAME`, etc.)
+   - Values can also reference custom prompt variables (see `prompts` section)
+
+**Common Use Cases:**
+```yaml
+env_files:
+  # Development configuration
+  - source: .env.example
+    dest: .env
+    replace:
+      PORT: "${RAMP_PORT}"
+      NODE_ENV: "development"
+
+  # Team-specific settings
+  - source: ../configs/shared.env
+    dest: .env.shared
+    replace:
+      IDE: "${RAMP_IDE}"              # From prompts
+      DATABASE: "${RAMP_DATABASE}"    # From prompts
+
+  # Multi-service port allocation
+  - source: docker-compose.env
+    dest: .env
+    replace:
+      FRONTEND_PORT: "${RAMP_PORT}"
+      API_PORT: "${RAMP_PORT}1"
+      DB_PORT: "${RAMP_PORT}2"
+```
+
+**Best Practices:**
+- Store template files outside repos in `../configs/` to keep them centralized
+- Use `${RAMP_PORT}` and derivatives (`${RAMP_PORT}1`, `${RAMP_PORT}2`) for multi-service setups
+- Reference custom prompt variables for team-specific configurations
+- Keep sensitive values in templated files, not committed `.env` files
 
 ### `setup` (optional)
 
@@ -218,6 +325,181 @@ commands:
     command: scripts/open.sh          # Open in browser/editor
 ```
 
+### `prompts` (optional)
+
+Define interactive prompts to collect team member preferences. Ramp will prompt once per project and store responses in `.ramp/local.yaml` (which is gitignored). These values become environment variables available in scripts and env_files.
+
+**Why use prompts?**
+- IDE-agnostic development (VSCode, IntelliJ, Vim, etc.)
+- Database preferences (PostgreSQL, MySQL, SQLite)
+- Runtime versions (Node 18 vs 20, Python 3.11 vs 3.12)
+- Personal tooling choices without committing to repo
+
+Each prompt has:
+
+#### `name` (required)
+
+Environment variable name. Must start with `RAMP_` prefix and use uppercase with underscores.
+
+```yaml
+prompts:
+  - name: RAMP_IDE          # Available as ${RAMP_IDE}
+  - name: RAMP_DATABASE     # Available as ${RAMP_DATABASE}
+  - name: RAMP_NODE_VERSION # Available as ${RAMP_NODE_VERSION}
+```
+
+#### `question` (required)
+
+Question text shown to user during prompt.
+
+```yaml
+prompts:
+  - name: RAMP_IDE
+    question: "Which IDE do you use?"
+```
+
+#### `options` (required)
+
+Array of choices. Each option has `value` (stored value) and `label` (display text).
+
+```yaml
+prompts:
+  - name: RAMP_IDE
+    question: "Which IDE do you use?"
+    options:
+      - value: vscode
+        label: Visual Studio Code
+      - value: intellij
+        label: IntelliJ IDEA
+      - value: vim
+        label: Vim/Neovim
+      - value: none
+        label: None (Terminal only)
+```
+
+#### `default` (required)
+
+Default value (must match one of the option values).
+
+```yaml
+prompts:
+  - name: RAMP_IDE
+    question: "Which IDE do you use?"
+    options:
+      - value: vscode
+        label: Visual Studio Code
+      - value: vim
+        label: Vim
+    default: vscode  # Must match an option value
+```
+
+**Complete Example:**
+```yaml
+prompts:
+  - name: RAMP_IDE
+    question: "Which IDE do you use for development?"
+    options:
+      - value: vscode
+        label: Visual Studio Code
+      - value: intellij
+        label: IntelliJ IDEA
+      - value: vim
+        label: Vim/Neovim
+      - value: none
+        label: None
+    default: vscode
+
+  - name: RAMP_DATABASE
+    question: "Which database for local development?"
+    options:
+      - value: postgres
+        label: PostgreSQL
+      - value: mysql
+        label: MySQL
+      - value: sqlite
+        label: SQLite
+    default: postgres
+
+  - name: RAMP_NODE_VERSION
+    question: "Which Node.js version?"
+    options:
+      - value: "18"
+        label: Node 18 LTS
+      - value: "20"
+        label: Node 20 LTS
+      - value: "22"
+        label: Node 22
+    default: "20"
+```
+
+**Using Prompt Values:**
+
+In scripts:
+```bash
+#!/bin/bash
+# .ramp/scripts/setup.sh
+
+# Use prompt values as environment variables
+echo "Setting up environment for $RAMP_IDE"
+
+if [ "$RAMP_DATABASE" = "postgres" ]; then
+  docker run -d -p "$RAMP_PORT:5432" postgres
+elif [ "$RAMP_DATABASE" = "mysql" ]; then
+  docker run -d -p "$RAMP_PORT:3306" mysql
+fi
+
+# Open IDE if configured
+if [ "$RAMP_IDE" = "vscode" ]; then
+  code "$RAMP_TREES_DIR"
+elif [ "$RAMP_IDE" = "intellij" ]; then
+  idea "$RAMP_TREES_DIR"
+fi
+```
+
+In env_files:
+```yaml
+repos:
+  - path: repos
+    git: git@github.com:org/app.git
+    env_files:
+      - source: .env.example
+        dest: .env
+        replace:
+          DATABASE_TYPE: "${RAMP_DATABASE}"
+          NODE_VERSION: "${RAMP_NODE_VERSION}"
+          IDE: "${RAMP_IDE}"
+```
+
+**Managing Preferences:**
+
+Use the `ramp config` command to manage local preferences:
+
+```bash
+# View current preferences
+ramp config --show
+
+# Re-configure interactively
+ramp config
+
+# Reset to defaults (will re-prompt)
+ramp config --reset
+```
+
+Local preferences are stored in `.ramp/local.yaml`:
+```yaml
+preferences:
+  RAMP_IDE: vscode
+  RAMP_DATABASE: postgres
+  RAMP_NODE_VERSION: "20"
+```
+
+**Important Notes:**
+- Prompts appear **once per team member** when they first run `ramp up`
+- Responses are stored in `.ramp/local.yaml` (gitignored by default)
+- Team members can change preferences anytime with `ramp config`
+- Prompt variable names must start with `RAMP_` prefix
+- All prompt values are available as environment variables
+
 ## Environment Variables
 
 All scripts (setup, cleanup, custom commands) receive these environment variables:
@@ -275,6 +557,7 @@ docker run -p "$RAMP_PORT:5432" postgres
 my-project/
 ├── .ramp/
 │   ├── ramp.yaml                # This configuration file
+│   ├── local.yaml               # Local preferences (gitignored)
 │   ├── port_allocations.json    # Auto-generated (DO NOT EDIT)
 │   └── scripts/                 # Your scripts
 │       ├── setup.sh
@@ -282,6 +565,10 @@ my-project/
 │       ├── dev.sh
 │       ├── test.sh
 │       └── doctor.sh
+├── configs/                     # Optional: Shared env templates
+│   ├── frontend.env
+│   ├── api.env
+│   └── shared.env
 ├── repos/                       # Source repositories (path from config)
 │   ├── frontend/
 │   ├── api-server/
