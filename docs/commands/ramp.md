@@ -24,6 +24,7 @@ commands to manage repositories and create feature branches.
 
 ### SEE ALSO
 
+* [ramp config](ramp_config.md)	 - Configure local preferences for this project
 * [ramp down](ramp_down.md)	 - Clean up a feature branch by removing worktrees and branches
 * [ramp init](ramp_init.md)	 - Initialize a new ramp project with interactive setup
 * [ramp install](ramp_install.md)	 - Clone all configured repositories from ramp.yaml
