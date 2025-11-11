@@ -62,6 +62,11 @@ func runCustomCommand(commandName, featureName string) error {
 		return err
 	}
 
+	// Auto-prompt for local config if needed
+	if err := EnsureLocalConfig(projectDir, cfg); err != nil {
+		return fmt.Errorf("failed to configure local preferences: %w", err)
+	}
+
 	// Find the command in the configuration
 	command := cfg.GetCommand(commandName)
 	if command == nil {
@@ -147,6 +152,15 @@ func runCommandWithEnv(projectDir, treesDir, commandScript string) error {
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", envVarName, repoPath))
 	}
 
+	// Add local config environment variables
+	localEnvVars, err := GetLocalEnvVars(projectDir)
+	if err != nil {
+		return fmt.Errorf("failed to load local env vars: %w", err)
+	}
+	for key, value := range localEnvVars {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", key, value))
+	}
+
 	return cmd.Run()
 }
 
@@ -179,6 +193,15 @@ func runCommandInSource(projectDir, commandScript string) error {
 		envVarName := config.GenerateEnvVarName(name)
 		repoPath := repo.GetRepoPath(projectDir)
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", envVarName, repoPath))
+	}
+
+	// Add local config environment variables
+	localEnvVars, err := GetLocalEnvVars(projectDir)
+	if err != nil {
+		return fmt.Errorf("failed to load local env vars: %w", err)
+	}
+	for key, value := range localEnvVars {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", key, value))
 	}
 
 	return cmd.Run()
