@@ -328,6 +328,7 @@ func printSuccessMessage(projectDir string, data scaffold.ProjectData) {
 	fmt.Println("✅ Project initialized successfully!")
 	fmt.Println()
 	fmt.Println("📁 Created structure:")
+	fmt.Println("   .gitignore")
 	fmt.Println("   .ramp/")
 	fmt.Println("   ├── ramp.yaml")
 	if data.IncludeSetup || data.IncludeCleanup || len(data.SampleCommands) > 0 {
