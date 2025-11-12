@@ -427,7 +427,15 @@ func runUp(featureName, prefix, target string) error {
 				sourceRepoDir := repo.GetRepoPath(projectDir)
 				worktreeDir := state.WorktreeDir
 
-				if err := envfile.ProcessEnvFiles(name, repo.EnvFiles, sourceRepoDir, worktreeDir, envVars); err != nil {
+				// Determine shouldRefresh for env scripts (same logic as repo refresh)
+				shouldRefreshEnvScripts := false
+				if refreshFlag {
+					shouldRefreshEnvScripts = true
+				} else if !noRefreshFlag {
+					shouldRefreshEnvScripts = repo.ShouldAutoRefresh()
+				}
+
+				if err := envfile.ProcessEnvFiles(name, repo.EnvFiles, sourceRepoDir, worktreeDir, envVars, shouldRefreshEnvScripts); err != nil {
 					progress.Error(fmt.Sprintf("Failed to process env files for %s", name))
 					// Rollback all successful operations
 					if rollbackErr := rollbackUp(projectDir, treesDir, featureName, states, progress); rollbackErr != nil {
