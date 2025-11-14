@@ -1,11 +1,15 @@
 package envfile
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"ramp/internal/config"
 	"ramp/internal/ui"
@@ -13,13 +17,23 @@ import (
 
 // ProcessEnvFiles processes all env file configurations for a repository
 // It copies files from source repo to worktree and performs variable replacements
-func ProcessEnvFiles(repoName string, envFiles []config.EnvFile, sourceRepoDir string, worktreeDir string, envVars map[string]string) error {
+// shouldRefresh controls whether to bypass cache for script execution
+func ProcessEnvFiles(repoName string, envFiles []config.EnvFile, sourceRepoDir string, worktreeDir string, envVars map[string]string, shouldRefresh bool) error {
 	if len(envFiles) == 0 {
 		return nil
 	}
 
+	// Determine project directory from sourceRepoDir (assume it's projectDir/repos/repoName)
+	projectDir := filepath.Join(sourceRepoDir, "..", "..")
+
+	return ProcessEnvFilesWithProjectDir(repoName, envFiles, sourceRepoDir, worktreeDir, envVars, shouldRefresh, projectDir)
+}
+
+// ProcessEnvFilesWithProjectDir is the internal version that accepts an explicit projectDir
+// This is useful for testing
+func ProcessEnvFilesWithProjectDir(repoName string, envFiles []config.EnvFile, sourceRepoDir string, worktreeDir string, envVars map[string]string, shouldRefresh bool, projectDir string) error {
 	for _, envFile := range envFiles {
-		if err := processEnvFile(repoName, envFile, sourceRepoDir, worktreeDir, envVars); err != nil {
+		if err := processEnvFile(repoName, envFile, sourceRepoDir, worktreeDir, envVars, shouldRefresh, projectDir); err != nil {
 			return err
 		}
 	}
@@ -28,21 +42,19 @@ func ProcessEnvFiles(repoName string, envFiles []config.EnvFile, sourceRepoDir s
 }
 
 // processEnvFile processes a single env file configuration
-func processEnvFile(repoName string, envFile config.EnvFile, sourceRepoDir string, worktreeDir string, envVars map[string]string) error {
+func processEnvFile(repoName string, envFile config.EnvFile, sourceRepoDir string, worktreeDir string, envVars map[string]string, shouldRefresh bool, projectDir string) error {
 	// Resolve source path (relative to source repo directory)
 	sourcePath := filepath.Join(sourceRepoDir, envFile.Source)
 
-	// Check if source file exists
-	if _, err := os.Stat(sourcePath); os.IsNotExist(err) {
-		// Warn but don't fail
-		ui.Warning(fmt.Sprintf("Source env file not found for %s: %s", repoName, sourcePath))
-		return nil
-	}
-
-	// Read source file
-	content, err := os.ReadFile(sourcePath)
+	// Get content from either file or script
+	content, err := getContent(sourcePath, envFile.Cache, envVars, shouldRefresh, projectDir)
 	if err != nil {
-		return fmt.Errorf("failed to read source env file %s: %w", sourcePath, err)
+		// Check if it's a missing file
+		if os.IsNotExist(err) {
+			ui.Warning(fmt.Sprintf("Source env file not found for %s: %s", repoName, sourcePath))
+			return nil
+		}
+		return err
 	}
 
 	contentStr := string(content)
@@ -71,6 +83,134 @@ func processEnvFile(repoName string, envFile config.EnvFile, sourceRepoDir strin
 	}
 
 	return nil
+}
+
+// getContent retrieves content from either a regular file or an executable script
+func getContent(sourcePath string, cacheTTL string, envVars map[string]string, shouldRefresh bool, projectDir string) ([]byte, error) {
+	// Check if source exists
+	info, err := os.Stat(sourcePath)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check if it's executable
+	if isExecutable(info) {
+		return executeScript(sourcePath, cacheTTL, envVars, shouldRefresh, projectDir)
+	}
+
+	// Regular file - read it
+	return os.ReadFile(sourcePath)
+}
+
+// isExecutable checks if a file has execute permissions
+func isExecutable(info os.FileInfo) bool {
+	return info.Mode()&0111 != 0
+}
+
+// executeScript runs an executable script and returns its output
+// Handles caching if cacheTTL is set
+func executeScript(scriptPath string, cacheTTL string, envVars map[string]string, shouldRefresh bool, projectDir string) ([]byte, error) {
+	// Check cache if TTL is specified and refresh is not forced
+	if cacheTTL != "" && !shouldRefresh {
+		cacheContent, cacheHit := checkCache(scriptPath, cacheTTL, projectDir)
+		if cacheHit {
+			return cacheContent, nil
+		}
+	}
+
+	// Execute the script
+	cmd := exec.Command(scriptPath)
+
+	// Set environment variables
+	cmd.Env = buildScriptEnv(envVars)
+
+	// Capture output
+	output, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, fmt.Errorf("script %s failed with exit code %d: %s", scriptPath, exitErr.ExitCode(), string(exitErr.Stderr))
+		}
+		return nil, fmt.Errorf("failed to execute script %s: %w", scriptPath, err)
+	}
+
+	// Cache output if TTL is specified
+	if cacheTTL != "" {
+		if err := cacheOutput(scriptPath, output, projectDir); err != nil {
+			// Log warning but don't fail
+			ui.Warning(fmt.Sprintf("Failed to cache script output: %v", err))
+		}
+	}
+
+	return output, nil
+}
+
+// checkCache checks if a valid cache exists for a script
+// Returns (content, true) if cache hit, (nil, false) if cache miss
+func checkCache(scriptPath string, cacheTTL string, projectDir string) ([]byte, bool) {
+	cachePath := getCachePath(scriptPath, projectDir)
+
+	// Check if cache file exists
+	info, err := os.Stat(cachePath)
+	if err != nil {
+		return nil, false
+	}
+
+	// Parse TTL duration
+	duration, err := time.ParseDuration(cacheTTL)
+	if err != nil {
+		// Invalid TTL format, treat as no cache
+		return nil, false
+	}
+
+	// Check if cache is still valid
+	if time.Since(info.ModTime()) > duration {
+		// Cache expired
+		return nil, false
+	}
+
+	// Read cache content
+	content, err := os.ReadFile(cachePath)
+	if err != nil {
+		return nil, false
+	}
+
+	return content, true
+}
+
+// cacheOutput saves script output to cache
+func cacheOutput(scriptPath string, output []byte, projectDir string) error {
+	cachePath := getCachePath(scriptPath, projectDir)
+
+	// Create cache directory
+	cacheDir := filepath.Dir(cachePath)
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		return err
+	}
+
+	// Write cache file
+	return os.WriteFile(cachePath, output, 0644)
+}
+
+// getCachePath generates a cache file path for a script
+func getCachePath(scriptPath string, projectDir string) string {
+	// Generate a hash of the script path for the cache key
+	hash := sha256.Sum256([]byte(scriptPath))
+	cacheKey := hex.EncodeToString(hash[:8])
+
+	return filepath.Join(projectDir, ".ramp", "cache", "env_files", cacheKey+".cache")
+}
+
+// buildScriptEnv builds the environment variable array for script execution
+func buildScriptEnv(envVars map[string]string) []string {
+	// Start with current environment
+	env := os.Environ()
+
+	// Add/override with RAMP variables
+	for key, value := range envVars {
+		env = append(env, fmt.Sprintf("%s=%s", key, value))
+	}
+
+	return env
 }
 
 // replaceExplicitKeys replaces only the specified keys with their replacement values
