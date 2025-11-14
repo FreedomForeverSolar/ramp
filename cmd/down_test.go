@@ -572,3 +572,164 @@ func TestDownOrphanedWorktree(t *testing.T) {
 		t.Error("feature directory should not exist after cleanup")
 	}
 }
+
+// TestDownAutoDetectFromWorkingDir tests auto-detection of feature from working directory
+func TestDownAutoDetectFromWorkingDir(t *testing.T) {
+	tp := NewTestProject(t)
+	repo1 := tp.InitRepo("repo1")
+
+	cleanup := tp.ChangeToProjectDir()
+	defer cleanup()
+
+	// Create a feature
+	err := runUp("auto-detect-down", "", "")
+	if err != nil {
+		t.Fatalf("runUp() error = %v", err)
+	}
+
+	// Verify feature was created
+	if !tp.FeatureExists("auto-detect-down") {
+		t.Fatal("feature was not created")
+	}
+
+	// Change to the feature's directory (trees/auto-detect-down/repo1/)
+	featureRepoDir := filepath.Join(tp.Dir, "trees", "auto-detect-down", "repo1")
+	originalDir, _ := os.Getwd()
+	defer os.Chdir(originalDir)
+
+	if err := os.Chdir(featureRepoDir); err != nil {
+		t.Fatalf("Failed to change to feature directory: %v", err)
+	}
+
+	// Run down without specifying feature name (should auto-detect)
+	err = runDown("")
+	if err != nil {
+		t.Fatalf("runDown() with auto-detect error = %v", err)
+	}
+
+	// Verify feature was cleaned up
+	if tp.FeatureExists("auto-detect-down") {
+		t.Error("feature directory should be removed")
+	}
+
+	if repo1.BranchExists(t, "feature/auto-detect-down") {
+		t.Error("branch should be deleted")
+	}
+}
+
+// TestDownAutoDetectFromNestedPath tests auto-detection from deep nested path
+func TestDownAutoDetectFromNestedPath(t *testing.T) {
+	tp := NewTestProject(t)
+	repo1 := tp.InitRepo("repo1")
+
+	cleanup := tp.ChangeToProjectDir()
+	defer cleanup()
+
+	// Create a feature
+	err := runUp("nested-down", "", "")
+	if err != nil {
+		t.Fatalf("runUp() error = %v", err)
+	}
+
+	// Create a deep nested directory structure
+	deepDir := filepath.Join(tp.Dir, "trees", "nested-down", "repo1", "src", "components")
+	if err := os.MkdirAll(deepDir, 0755); err != nil {
+		t.Fatalf("Failed to create nested directory: %v", err)
+	}
+
+	// Change to the nested directory
+	originalDir, _ := os.Getwd()
+	defer os.Chdir(originalDir)
+
+	if err := os.Chdir(deepDir); err != nil {
+		t.Fatalf("Failed to change to nested directory: %v", err)
+	}
+
+	// Run down without specifying feature name (should auto-detect from nested path)
+	err = runDown("")
+	if err != nil {
+		t.Fatalf("runDown() with auto-detect from nested path error = %v", err)
+	}
+
+	// Verify feature was cleaned up
+	if tp.FeatureExists("nested-down") {
+		t.Error("feature directory should be removed")
+	}
+
+	if repo1.BranchExists(t, "feature/nested-down") {
+		t.Error("branch should be deleted")
+	}
+}
+
+// TestDownAutoDetectFailsOutsideTrees tests error when auto-detect can't find feature
+func TestDownAutoDetectFailsOutsideTrees(t *testing.T) {
+	tp := NewTestProject(t)
+	tp.InitRepo("repo1")
+
+	cleanup := tp.ChangeToProjectDir()
+	defer cleanup()
+
+	// Stay in project root (not in trees/)
+	// Try to run down without feature name - should fail with helpful error
+	err := runDown("")
+	if err == nil {
+		t.Fatal("runDown() should fail when not in trees directory and no feature name provided")
+	}
+
+	expectedMsg := "no feature name provided and could not auto-detect from current directory"
+	if err.Error() != expectedMsg {
+		t.Errorf("error = %q, want %q", err.Error(), expectedMsg)
+	}
+}
+
+// TestDownAutoDetectWithExplicitNameOverridesDetection tests that explicit feature name takes precedence
+func TestDownAutoDetectWithExplicitNameOverridesDetection(t *testing.T) {
+	tp := NewTestProject(t)
+	repo1 := tp.InitRepo("repo1")
+
+	cleanup := tp.ChangeToProjectDir()
+	defer cleanup()
+
+	// Create two features
+	err := runUp("feature-a", "", "")
+	if err != nil {
+		t.Fatalf("runUp() feature-a error = %v", err)
+	}
+
+	err = runUp("feature-b", "", "")
+	if err != nil {
+		t.Fatalf("runUp() feature-b error = %v", err)
+	}
+
+	// Change to feature-a's directory
+	featureADir := filepath.Join(tp.Dir, "trees", "feature-a", "repo1")
+	originalDir, _ := os.Getwd()
+	defer os.Chdir(originalDir)
+
+	if err := os.Chdir(featureADir); err != nil {
+		t.Fatalf("Failed to change to feature-a directory: %v", err)
+	}
+
+	// Explicitly specify feature-b (should override auto-detection of feature-a)
+	err = runDown("feature-b")
+	if err != nil {
+		t.Fatalf("runDown() with explicit name error = %v", err)
+	}
+
+	// Verify feature-b was deleted (not feature-a)
+	if tp.FeatureExists("feature-b") {
+		t.Error("feature-b should be deleted")
+	}
+
+	if !tp.FeatureExists("feature-a") {
+		t.Error("feature-a should still exist (we were in its directory)")
+	}
+
+	if !repo1.BranchExists(t, "feature/feature-a") {
+		t.Error("feature-a branch should still exist")
+	}
+
+	if repo1.BranchExists(t, "feature/feature-b") {
+		t.Error("feature-b branch should be deleted")
+	}
+}

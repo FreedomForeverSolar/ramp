@@ -417,6 +417,137 @@ exit 0
 	// captured but not displayed to the user
 }
 
+// TestRunCommandAutoDetectFromWorkingDir tests auto-detection of feature from working directory
+func TestRunCommandAutoDetectFromWorkingDir(t *testing.T) {
+	tp := NewTestProject(t)
+	tp.InitRepo("repo1")
+
+	// Create a test command
+	scriptPath := filepath.Join(tp.RampDir, "scripts", "test-cmd.sh")
+	scriptContent := `#!/bin/bash
+echo "Feature: $RAMP_WORKTREE_NAME"
+exit 0
+`
+	os.WriteFile(scriptPath, []byte(scriptContent), 0755)
+
+	tp.Config.Commands = []*config.Command{
+		{Name: "test", Command: "scripts/test-cmd.sh"},
+	}
+	if err := config.SaveConfig(tp.Config, tp.Dir); err != nil {
+		t.Fatalf("failed to save config: %v", err)
+	}
+
+	cleanup := tp.ChangeToProjectDir()
+	defer cleanup()
+
+	// Create a feature
+	err := runUp("auto-detect-test", "", "")
+	if err != nil {
+		t.Fatalf("runUp() error = %v", err)
+	}
+
+	// Change to the feature's directory (trees/auto-detect-test/repo1/)
+	featureRepoDir := filepath.Join(tp.Dir, "trees", "auto-detect-test", "repo1")
+	originalDir, _ := os.Getwd()
+	defer os.Chdir(originalDir)
+
+	if err := os.Chdir(featureRepoDir); err != nil {
+		t.Fatalf("Failed to change to feature directory: %v", err)
+	}
+
+	// Run command without specifying feature name (should auto-detect)
+	err = runCustomCommand("test", "")
+	if err != nil {
+		t.Fatalf("runCustomCommand() with auto-detect error = %v", err)
+	}
+}
+
+// TestRunCommandAutoDetectFromNestedPath tests auto-detection from deep nested path
+func TestRunCommandAutoDetectFromNestedPath(t *testing.T) {
+	tp := NewTestProject(t)
+	tp.InitRepo("repo1")
+
+	// Create a test command
+	scriptPath := filepath.Join(tp.RampDir, "scripts", "test-cmd.sh")
+	scriptContent := `#!/bin/bash
+echo "Feature: $RAMP_WORKTREE_NAME"
+exit 0
+`
+	os.WriteFile(scriptPath, []byte(scriptContent), 0755)
+
+	tp.Config.Commands = []*config.Command{
+		{Name: "test", Command: "scripts/test-cmd.sh"},
+	}
+	if err := config.SaveConfig(tp.Config, tp.Dir); err != nil {
+		t.Fatalf("failed to save config: %v", err)
+	}
+
+	cleanup := tp.ChangeToProjectDir()
+	defer cleanup()
+
+	// Create a feature
+	err := runUp("nested-test", "", "")
+	if err != nil {
+		t.Fatalf("runUp() error = %v", err)
+	}
+
+	// Create a deep nested directory structure
+	deepDir := filepath.Join(tp.Dir, "trees", "nested-test", "repo1", "src", "components")
+	if err := os.MkdirAll(deepDir, 0755); err != nil {
+		t.Fatalf("Failed to create nested directory: %v", err)
+	}
+
+	// Change to the nested directory
+	originalDir, _ := os.Getwd()
+	defer os.Chdir(originalDir)
+
+	if err := os.Chdir(deepDir); err != nil {
+		t.Fatalf("Failed to change to nested directory: %v", err)
+	}
+
+	// Run command without specifying feature name (should auto-detect from nested path)
+	err = runCustomCommand("test", "")
+	if err != nil {
+		t.Fatalf("runCustomCommand() with auto-detect from nested path error = %v", err)
+	}
+}
+
+// TestRunCommandAutoDetectFailsOutsideTrees tests that auto-detect returns source mode when not in trees
+func TestRunCommandAutoDetectFailsOutsideTrees(t *testing.T) {
+	tp := NewTestProject(t)
+	tp.InitRepo("repo1")
+
+	// Create a command that verifies source mode
+	scriptPath := filepath.Join(tp.RampDir, "scripts", "source-check.sh")
+	scriptContent := `#!/bin/bash
+# In source mode, RAMP_WORKTREE_NAME should not be set
+if [ -n "$RAMP_WORKTREE_NAME" ]; then
+  echo "Should be in source mode"
+  exit 1
+fi
+echo "Running in source mode (as expected)"
+exit 0
+`
+	os.WriteFile(scriptPath, []byte(scriptContent), 0755)
+
+	tp.Config.Commands = []*config.Command{
+		{Name: "source-check", Command: "scripts/source-check.sh"},
+	}
+	if err := config.SaveConfig(tp.Config, tp.Dir); err != nil {
+		t.Fatalf("failed to save config: %v", err)
+	}
+
+	cleanup := tp.ChangeToProjectDir()
+	defer cleanup()
+
+	// Stay in project root (not in trees/)
+	// Run command without feature name - should run in source mode
+	err := runCustomCommand("source-check", "")
+	if err != nil {
+		t.Fatalf("runCustomCommand() should run in source mode when not in trees: %v", err)
+	}
+}
+
 // TestRunCommandOutputWithErrorExitCode tests that the workaround pattern
 // (tracking EXIT_CODE and exiting with error) still works correctly
 func TestRunCommandOutputWithErrorExitCode(t *testing.T) {
