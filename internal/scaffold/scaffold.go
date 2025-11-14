@@ -78,16 +78,25 @@ func CreateDirectoryStructure(projectDir string) error {
 	return nil
 }
 
-// CreateGitignore creates a .gitignore file in the .ramp directory
+// CreateGitignore creates a .gitignore file at the project root
 func CreateGitignore(projectDir string) error {
-	gitignorePath := filepath.Join(projectDir, ".ramp", ".gitignore")
+	gitignorePath := filepath.Join(projectDir, ".gitignore")
 
 	// Content for .gitignore
-	content := `# Local preferences (not committed to git)
-local.yaml
+	content := `# Ramp-managed directories and files
+# These are auto-generated and should not be committed to git
+
+# Source repository clones
+repos/
+
+# Feature worktrees
+trees/
+
+# Local preferences (not committed to git)
+.ramp/local.yaml
 
 # Port allocations (not committed to git)
-port_allocations.json
+.ramp/port_allocations.json
 `
 
 	if err := os.WriteFile(gitignorePath, []byte(content), 0644); err != nil {
