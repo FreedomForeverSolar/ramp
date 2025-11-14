@@ -13,6 +13,7 @@ import (
 type EnvFile struct {
 	Source  string            `yaml:"source"`
 	Dest    string            `yaml:"dest"`
+	Cache   string            `yaml:"cache,omitempty"`
 	Replace map[string]string `yaml:"replace,omitempty"`
 }
 
@@ -254,13 +255,16 @@ func SaveConfig(cfg *Config, projectDir string) error {
 			if len(repo.EnvFiles) > 0 {
 				yamlBuilder.WriteString("    env_files:\n")
 				for _, envFile := range repo.EnvFiles {
-					// Simple syntax if source and dest are the same and no replacements
-					if envFile.Source == envFile.Dest && len(envFile.Replace) == 0 {
+					// Simple syntax if source and dest are the same, no cache, and no replacements
+					if envFile.Source == envFile.Dest && envFile.Cache == "" && len(envFile.Replace) == 0 {
 						yamlBuilder.WriteString(fmt.Sprintf("      - %s\n", envFile.Source))
 					} else {
 						// Full object syntax
 						yamlBuilder.WriteString(fmt.Sprintf("      - source: %s\n", envFile.Source))
 						yamlBuilder.WriteString(fmt.Sprintf("        dest: %s\n", envFile.Dest))
+						if envFile.Cache != "" {
+							yamlBuilder.WriteString(fmt.Sprintf("        cache: %s\n", envFile.Cache))
+						}
 						if len(envFile.Replace) > 0 {
 							yamlBuilder.WriteString("        replace:\n")
 							for key, value := range envFile.Replace {
