@@ -714,5 +714,13 @@ func buildEnvVars(projectDir, treesDir, featureName string, allocatedPort int, c
 		envVars[envVarName] = repoPath
 	}
 
+	// Add local config environment variables (from prompts)
+	localEnvVars, err := GetLocalEnvVars(projectDir)
+	if err == nil {
+		for key, value := range localEnvVars {
+			envVars[key] = value
+		}
+	}
+
 	return envVars
 }
