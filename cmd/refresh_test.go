@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"ramp/internal/config"
 	"ramp/internal/ui"
 )
 
@@ -465,6 +466,147 @@ func TestStashesAreSharedAcrossWorktrees(t *testing.T) {
 
 	t.Log("✓ CONFIRMED: Git stashes are shared across all worktrees")
 	t.Log("  This means a 'git stash pop' in source repo would apply worktree's stash!")
+}
+
+// TestRefreshRepositoriesParallel tests the parallel refresh function directly
+func TestRefreshRepositoriesParallel(t *testing.T) {
+	t.Run("successful parallel refresh", func(t *testing.T) {
+		tp := NewTestProject(t)
+		repo1 := tp.InitRepo("repo1")
+		repo2 := tp.InitRepo("repo2")
+
+		// Push updates to both repos
+		for _, repo := range []*TestRepo{repo1, repo2} {
+			tempClone := filepath.Join(t.TempDir(), repo.Name+"-clone")
+			runGitCmd(t, tempClone, "clone", repo.RemoteDir, ".")
+			runGitCmd(t, tempClone, "config", "user.email", "test@test.com")
+			runGitCmd(t, tempClone, "config", "user.name", "Test")
+			runGitCmd(t, tempClone, "config", "commit.gpgsign", "false")
+			runGitCmd(t, tempClone, "checkout", "main")
+
+			updateFile := filepath.Join(tempClone, "update.txt")
+			os.WriteFile(updateFile, []byte("update"), 0644)
+			runGitCmd(t, tempClone, "add", ".")
+			runGitCmd(t, tempClone, "commit", "-m", "update")
+			runGitCmd(t, tempClone, "push", "origin", "main")
+		}
+
+		// Load config and call RefreshRepositoriesParallel directly
+		cfg, err := config.LoadConfig(tp.Dir)
+		if err != nil {
+			t.Fatalf("Failed to load config: %v", err)
+		}
+
+		progress := ui.NewProgress()
+		results := RefreshRepositoriesParallel(tp.Dir, cfg.GetRepos(), progress)
+
+		// Verify we got results for both repos
+		if len(results) != 2 {
+			t.Errorf("Expected 2 results, got %d", len(results))
+		}
+
+		// Verify both succeeded
+		successCount := 0
+		for _, result := range results {
+			if result.status == "success" {
+				successCount++
+			}
+		}
+
+		if successCount != 2 {
+			t.Errorf("Expected 2 successful refreshes, got %d", successCount)
+		}
+	})
+
+	t.Run("mixed success and failure", func(t *testing.T) {
+		tp := NewTestProject(t)
+		repo1 := tp.InitRepo("repo1")
+		repo2 := tp.InitRepo("repo2")
+
+		// Push update to only repo1
+		tempClone := filepath.Join(t.TempDir(), "clone")
+		runGitCmd(t, tempClone, "clone", repo1.RemoteDir, ".")
+		runGitCmd(t, tempClone, "config", "user.email", "test@test.com")
+		runGitCmd(t, tempClone, "config", "user.name", "Test")
+		runGitCmd(t, tempClone, "config", "commit.gpgsign", "false")
+		runGitCmd(t, tempClone, "checkout", "main")
+
+		updateFile := filepath.Join(tempClone, "update.txt")
+		os.WriteFile(updateFile, []byte("update"), 0644)
+		runGitCmd(t, tempClone, "add", ".")
+		runGitCmd(t, tempClone, "commit", "-m", "update")
+		runGitCmd(t, tempClone, "push", "origin", "main")
+
+		// Create a local-only branch in repo2 (no remote tracking)
+		runGitCmd(t, repo2.SourceDir, "checkout", "-b", "local-only")
+
+		// Load config and call RefreshRepositoriesParallel
+		cfg, err := config.LoadConfig(tp.Dir)
+		if err != nil {
+			t.Fatalf("Failed to load config: %v", err)
+		}
+
+		progress := ui.NewProgress()
+		results := RefreshRepositoriesParallel(tp.Dir, cfg.GetRepos(), progress)
+
+		// Verify we got results for both repos
+		if len(results) != 2 {
+			t.Errorf("Expected 2 results, got %d", len(results))
+		}
+
+		// Find results by name
+		var repo1Result, repo2Result *refreshResult
+		for i := range results {
+			if results[i].name == "repo1" {
+				repo1Result = &results[i]
+			} else if results[i].name == "repo2" {
+				repo2Result = &results[i]
+			}
+		}
+
+		// Verify repo1 succeeded
+		if repo1Result == nil {
+			t.Error("Missing result for repo1")
+		} else if repo1Result.status != "success" {
+			t.Errorf("repo1 should succeed, got status: %s", repo1Result.status)
+		}
+
+		// Verify repo2 was skipped (no remote tracking)
+		if repo2Result == nil {
+			t.Error("Missing result for repo2")
+		} else if repo2Result.status != "skipped" {
+			t.Errorf("repo2 should be skipped, got status: %s", repo2Result.status)
+		}
+	})
+
+	t.Run("non-git directory", func(t *testing.T) {
+		tp := NewTestProject(t)
+		repo1 := tp.InitRepo("repo1")
+
+		// Remove .git to make it non-git
+		os.RemoveAll(filepath.Join(repo1.SourceDir, ".git"))
+
+		// Load config
+		cfg, err := config.LoadConfig(tp.Dir)
+		if err != nil {
+			t.Fatalf("Failed to load config: %v", err)
+		}
+
+		progress := ui.NewProgress()
+		results := RefreshRepositoriesParallel(tp.Dir, cfg.GetRepos(), progress)
+
+		// Verify we got a warning for the non-git repo
+		if len(results) != 1 {
+			t.Errorf("Expected 1 result, got %d", len(results))
+		}
+
+		if results[0].status != "warning" {
+			t.Errorf("Expected warning status for non-git dir, got: %s", results[0].status)
+		}
+		if !strings.Contains(results[0].message, "not a git repository") {
+			t.Errorf("Expected 'not a git repository' message, got: %s", results[0].message)
+		}
+	})
 }
 
 // Helper function to run git and get output (for tests)
