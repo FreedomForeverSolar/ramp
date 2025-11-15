@@ -462,12 +462,25 @@ auto_update:
   enabled: true      # Set to false to disable auto-update
   check_interval: 24h  # How often to check (e.g., 12h, 6h, 30m)
 ```
-- Auto-created with defaults on first run
+- Auto-created with defaults on first run (only for Homebrew installs)
 - User-editable YAML file for persistent configuration
 - Auto-disabled if not installed via Homebrew (checks for `/Cellar/ramp/` in binary path)
 
+**Manual Install Behavior**:
+When ramp is installed manually (not via Homebrew):
+- Auto-update is **completely disabled** - no background processes spawn
+- Settings file is **never created** (since auto-update won't run anyway)
+- Version shows as "dev" instead of semantic version (e.g., "1.2.3")
+- Zero overhead - behaves as if auto-update doesn't exist
+- Detection: checks if binary path contains `/Cellar/ramp/` or `/opt/homebrew/`
+- Examples of manual install paths:
+  - `/usr/local/bin/ramp` - installed via `./install.sh`
+  - `/usr/bin/ramp` - system-wide manual install
+  - `./ramp` - local build via `go build`
+  - `/home/user/bin/ramp` - user directory install
+
 **Files**:
-- `~/.ramp/settings.yaml` - User settings (auto-created with defaults)
+- `~/.ramp/settings.yaml` - User settings (auto-created only for Homebrew installs)
 - `~/.ramp/update_check.json` - Cache file (last check time, versions)
 - `~/.ramp/update.lock` - Lock file (prevents concurrent updates)
 - `~/.ramp/update.log` - Debug log (errors, update history)
@@ -480,8 +493,8 @@ auto_update:
 
 **Testing**:
 - Full test coverage with TDD approach
-- Unit tests: version comparison, cache, locks, settings, brew parsing
-- 33 tests total covering all auto-update functionality
+- Unit tests: version comparison, cache, locks, settings, brew parsing, manual install detection
+- 37 tests total covering all auto-update functionality (including 4 manual install tests)
 - Integration testing via manual Homebrew testing
 
 ### Configuration Schema
