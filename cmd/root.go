@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"ramp/internal/autoupdate"
 	"ramp/internal/ui"
 )
 
@@ -30,6 +31,11 @@ commands to manage repositories and create feature branches.`,
 }
 
 func Execute() {
+	// Spawn background update checker (fire and forget)
+	if autoupdate.IsAutoUpdateEnabled() {
+		autoupdate.SpawnBackgroundChecker()
+	}
+
 	err := rootCmd.Execute()
 	if err != nil {
 		os.Exit(1)
