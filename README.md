@@ -38,6 +38,23 @@ go build -o ramp .
 sudo ./install.sh
 ```
 
+### Auto-Updates
+
+**Homebrew installs automatically stay up-to-date** 🎉
+
+When installed via Homebrew, ramp automatically updates itself in the background whenever new versions are released. Updates happen silently while you work—you'll always have the latest features and fixes without lifting a finger.
+
+**Configuration** (`~/.ramp/settings.yaml`):
+```yaml
+auto_update:
+  enabled: true      # Set to false to disable
+  check_interval: 24h  # How often to check (12h, 6h, etc.)
+```
+
+The settings file is auto-created on first run. Edit it anytime to customize auto-update behavior.
+
+**Manual installs** (from source or pre-built binaries) don't auto-update—you'll need to manually pull updates or reinstall when you want to upgrade.
+
 ### Try the Demo
 
 ```bash
