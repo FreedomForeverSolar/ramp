@@ -272,6 +272,19 @@ func TestIsMerged(t *testing.T) {
 			want:     true,
 		},
 		{
+			name:     "brand new feature at tip (all repos at merge point)",
+			statuses: []featureWorktreeStatus{{aheadCount: 0, behindCount: 0, isMerged: true}},
+			want:     false,
+		},
+		{
+			name: "merged feature in multi-repo (one at merge point, one behind)",
+			statuses: []featureWorktreeStatus{
+				{aheadCount: 0, behindCount: 0, isMerged: true},
+				{aheadCount: 0, behindCount: 2, isMerged: true},
+			},
+			want: true,
+		},
+		{
 			name:     "not merged yet",
 			statuses: []featureWorktreeStatus{{aheadCount: 2, behindCount: 0, isMerged: false}},
 			want:     false,

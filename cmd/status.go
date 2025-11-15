@@ -437,14 +437,26 @@ func needsAttention(statuses []featureWorktreeStatus) bool {
 }
 
 func isMerged(statuses []featureWorktreeStatus) bool {
+	anyBehind := false
+
 	for _, status := range statuses {
-		// Must have had commits (was ahead) and now merged
-		if status.aheadCount == 0 && status.isMerged && status.behindCount > 0 && !status.hasUncommitted {
-			continue
+		// Has pending work - not merged
+		if status.hasUncommitted || status.aheadCount > 0 {
+			return false
 		}
-		return false
+		// Not merged according to git
+		if !status.isMerged {
+			return false
+		}
+		// Track if any repo is behind default
+		if status.behindCount > 0 {
+			anyBehind = true
+		}
 	}
-	return true
+
+	// All repos are merged and clean, AND at least one is behind default
+	// This distinguishes merged features from brand new features at tip
+	return anyBehind
 }
 
 func isClean(statuses []featureWorktreeStatus) bool {
