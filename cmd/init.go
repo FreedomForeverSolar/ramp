@@ -20,7 +20,10 @@ var initCmd = &cobra.Command{
 files and directory structure through an interactive setup process.
 
 This is similar to 'npm init' - it will guide you through creating a
-.ramp/ramp.yaml configuration file and optional setup scripts.
+.ramp/ramp.yaml configuration file, .gitignore file, and optional setup scripts.
+
+The .gitignore file is automatically created with entries for ramp-managed files:
+repos/, trees/, .ramp/local.yaml, and .ramp/port_allocations.json.
 
 After initialization, use 'ramp install' to clone the configured repositories.`,
 	Run: func(cmd *cobra.Command, args []string) {
@@ -328,6 +331,7 @@ func printSuccessMessage(projectDir string, data scaffold.ProjectData) {
 	fmt.Println("✅ Project initialized successfully!")
 	fmt.Println()
 	fmt.Println("📁 Created structure:")
+	fmt.Println("   .gitignore")
 	fmt.Println("   .ramp/")
 	fmt.Println("   ├── ramp.yaml")
 	if data.IncludeSetup || data.IncludeCleanup || len(data.SampleCommands) > 0 {

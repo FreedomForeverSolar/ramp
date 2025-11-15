@@ -62,10 +62,13 @@ Ramp creates isolated workspaces for each feature using git worktrees:
 
 ```
 my-project/
-├── repos/              # Main repository clones
+├── .gitignore          # Auto-generated (ignores repos/, trees/, local config)
+├── .ramp/
+│   └── ramp.yaml       # Configuration
+├── repos/              # Main repository clones (gitignored)
 │   ├── frontend/
 │   └── api/
-└── trees/              # Feature workspaces (where you work)
+└── trees/              # Feature workspaces (gitignored, where you work)
     ├── feature-a/
     │   ├── frontend/   # Worktree on branch feature/feature-a
     │   └── api/        # Worktree on branch feature/feature-a
