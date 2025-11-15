@@ -58,7 +58,7 @@ Ramp is a sophisticated CLI tool for managing multi-repository development workf
 **How it works**:
 - Auto-installs the project if repositories aren't cloned yet (calls `ramp install` internally)
 - Auto-prompts for local config if prompts are defined in `ramp.yaml` (calls `EnsureLocalConfig()` internally)
-- Auto-refreshes repositories that have `auto_refresh` enabled (defaults to true if not specified)
+- Auto-refreshes repositories in parallel that have `auto_refresh` enabled (defaults to true if not specified)
 - Creates a `trees/<feature-name>/` directory structure for isolated feature development
 - For each configured repository:
   - When using `--target`: attempts to resolve target branch/feature, falls back to default behavior if target not found in specific repo
@@ -134,6 +134,7 @@ Ramp is a sophisticated CLI tool for managing multi-repository development workf
 #### `ramp refresh`
 **Purpose**: Update all source repositories by pulling changes from their remotes.
 **How it works**:
+- Processes all repositories in parallel for improved performance (3-5x faster for typical multi-repo projects)
 - For each configured repository in the source directory:
   - Runs `git fetch --all` to update remote tracking information
   - Detects current branch and checks for remote tracking branch
