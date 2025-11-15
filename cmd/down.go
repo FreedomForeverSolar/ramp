@@ -121,14 +121,17 @@ func runDown(featureName string) error {
 		if !featureExists {
 			return fmt.Errorf("feature '%s' not found (trees directory does not exist)", featureName)
 		}
+	}
 
-		progress := ui.NewProgress()
+	// Create a single progress instance for the entire cleanup operation
+	progress := ui.NewProgress()
+
+	// Show warning if trees directory is missing (orphaned worktree scenario)
+	if !treesDirExists {
 		progress.Warning(fmt.Sprintf("Trees directory for feature '%s' not found - cleaning up orphaned worktrees", featureName))
 	}
 
-	progress := ui.NewProgress()
 	progress.Start(fmt.Sprintf("Cleaning up feature '%s' for project '%s'", featureName, cfg.Name))
-	progress.Success(fmt.Sprintf("Cleaning up feature '%s' for project '%s'", featureName, cfg.Name))
 
 	// Check for uncommitted changes only if directory exists
 	if treesDirExists {
