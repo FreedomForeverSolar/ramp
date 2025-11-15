@@ -98,9 +98,10 @@ Ramp is a sophisticated CLI tool for managing multi-repository development workf
 - Available in setup/cleanup scripts and env_files templating
 - Enables IDE-agnostic and tool-agnostic team workflows
 
-#### `ramp down <feature-name>`
+#### `ramp down [feature-name]`
 **Purpose**: Clean up a feature branch by removing worktrees, branches, and allocated resources.
 **How it works**:
+- If no feature name provided, attempts to auto-detect from current working directory
 - Checks for uncommitted changes across all worktrees and prompts for confirmation if found
 - Runs optional cleanup script (if configured) before removal
 - For each repository:
@@ -231,6 +232,7 @@ The application uses the Cobra CLI framework with commands organized in `cmd/`:
 - `GetRepos()` - Returns map of repository name to configuration
 - `GenerateEnvVarName(repoName)` - Converts repo names to valid environment variable names
 - `HasPrompts()` - Checks if configuration defines interactive prompts
+- `DetectFeatureFromWorkingDir(projectDir)` - Auto-detects feature name from current working directory by checking if inside `trees/<feature-name>/`
 
 #### `internal/scaffold/`
 **Purpose**: Project scaffolding and template generation for ramp init.
