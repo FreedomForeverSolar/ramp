@@ -26,14 +26,27 @@ func DetectFeatureFromWorkingDir(projectDir string) (string, error) {
 		return "", err
 	}
 
-	// Convert both to absolute paths for comparison
+	// Convert both to absolute paths and resolve symlinks for comparison
 	absProjectDir, err := filepath.Abs(projectDir)
 	if err != nil {
 		// If we can't resolve the project dir, we're probably not in it
 		return "", nil
 	}
 
+	// Resolve symlinks to handle macOS /var/folders -> /private/var/folders
+	absProjectDir, err = filepath.EvalSymlinks(absProjectDir)
+	if err != nil {
+		// If we can't evaluate symlinks, we're probably not in it
+		return "", nil
+	}
+
 	absWd, err := filepath.Abs(wd)
+	if err != nil {
+		return "", err
+	}
+
+	// Resolve symlinks for working directory too
+	absWd, err = filepath.EvalSymlinks(absWd)
 	if err != nil {
 		return "", err
 	}
