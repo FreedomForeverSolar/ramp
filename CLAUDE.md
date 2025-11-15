@@ -31,6 +31,11 @@ Ramp is a sophisticated CLI tool for managing multi-repository development workf
   - Doctor command for environment checks (defaults to Yes)
   - Clone repositories now (defaults to Yes)
 - Creates directory structure: `.ramp/scripts/`, `repos/`, `trees/`
+- Creates `.gitignore` at project root with entries for ramp-managed files:
+  - `repos/` (source repository clones)
+  - `trees/` (feature worktrees)
+  - `.ramp/local.yaml` (local preferences)
+  - `.ramp/port_allocations.json` (port allocations)
 - Generates `ramp.yaml` with proper formatting and `auto_refresh: true` for all repos
 - Generates sample scripts with actual repository environment variable names
 - Optionally calls `ramp install` to clone repos immediately
@@ -93,9 +98,10 @@ Ramp is a sophisticated CLI tool for managing multi-repository development workf
 - Available in setup/cleanup scripts and env_files templating
 - Enables IDE-agnostic and tool-agnostic team workflows
 
-#### `ramp down <feature-name>`
+#### `ramp down [feature-name]`
 **Purpose**: Clean up a feature branch by removing worktrees, branches, and allocated resources.
 **How it works**:
+- If no feature name provided, attempts to auto-detect from current working directory
 - Checks for uncommitted changes across all worktrees and prompts for confirmation if found
 - Runs optional cleanup script (if configured) before removal
 - For each repository:
@@ -226,6 +232,7 @@ The application uses the Cobra CLI framework with commands organized in `cmd/`:
 - `GetRepos()` - Returns map of repository name to configuration
 - `GenerateEnvVarName(repoName)` - Converts repo names to valid environment variable names
 - `HasPrompts()` - Checks if configuration defines interactive prompts
+- `DetectFeatureFromWorkingDir(projectDir)` - Auto-detects feature name from current working directory by checking if inside `trees/<feature-name>/`
 
 #### `internal/scaffold/`
 **Purpose**: Project scaffolding and template generation for ramp init.
@@ -243,19 +250,46 @@ The application uses the Cobra CLI framework with commands organized in `cmd/`:
 - `extractRepoName(gitURL)` - Extracts repository name from git URL for naming
 
 #### `internal/envfile/`
-**Purpose**: Environment file copying and templating for feature worktrees.
+**Purpose**: Environment file copying and templating for feature worktrees, with support for executable scripts and caching.
+
 **Key Functions**:
-- `ProcessEnvFiles(repoName, envFiles, sourceDir, destDir, envVars)` - Processes all env_files for a repository
-- `processEnvFile(envFile, sourceDir, destDir, envVars)` - Copies and templates a single env file
-- `replaceVariables(content, replacements, envVars)` - Performs variable substitution in file content
-- `expandEnvVars(value, envVars)` - Expands environment variable references (e.g., `${RAMP_PORT}`)
+- `ProcessEnvFiles(repoName, envFiles, sourceDir, destDir, envVars, shouldRefresh)` - Processes all env_files for a repository
+- `ProcessEnvFilesWithProjectDir(...)` - Internal version with explicit projectDir (useful for testing)
+- `processEnvFile(...)` - Processes a single env file (file or script)
+- `getContent(sourcePath, cacheTTL, envVars, shouldRefresh, projectDir)` - Gets content from file or script
+- `isExecutable(info)` - Checks if file has execute permissions
+- `executeScript(scriptPath, cacheTTL, envVars, shouldRefresh, projectDir)` - Executes script and caches output
+- `checkCache(scriptPath, cacheTTL, projectDir)` - Checks if valid cache exists
+- `cacheOutput(scriptPath, output, projectDir)` - Saves script output to cache
+- `buildScriptEnv(envVars)` - Builds environment variables for script execution
+- `replaceExplicitKeys(content, replacements, envVars)` - Performs explicit key replacements
+- `replaceEnvVars(content, envVars)` - Expands ${VARIABLE_NAME} patterns
 
 **How it works**:
-- Reads source file from repository or parent directories (supports `../configs/` patterns)
-- Performs string replacement for configured keys (exact matching)
-- Expands environment variable references in replacement values
-- Writes templated content to worktree destination
-- Supports both simple copying (no replacements) and advanced templating
+1. **Source Detection**: Auto-detects whether source is a regular file or executable script
+   - Regular files (no execute permission): Read directly
+   - Executable scripts: Execute and capture stdout
+2. **Script Execution** (if source is executable):
+   - Passes all RAMP environment variables to script
+   - Captures stdout as the env file content
+   - Returns detailed error messages on script failure
+3. **Caching** (optional, for scripts only):
+   - If `cache` field specified (e.g., "24h", "1h", "30m"), caches script output
+   - Cache stored in `.ramp/cache/env_files/<hash>.cache`
+   - Cache key is SHA256 hash of script path
+   - Respects `--refresh` and `--no-refresh` flags
+   - Respects `auto_refresh` config per repository
+4. **Variable Replacement** (after content retrieval):
+   - If `replace` map specified: only replaces those keys
+   - If no `replace` map: auto-replaces all ${RAMP_*} variables
+   - Replacements happen on destination file (after script execution)
+5. **Destination**: Writes final content to worktree destination
+
+**Common Patterns**:
+- **Static files**: Simple copy with variable replacement
+- **Secret manager integration**: Script fetches secrets, output cached for TTL
+- **Merge pattern**: Script combines .env.example + secrets, replacements applied after
+- **Dynamic generation**: Script uses RAMP vars to generate environment-specific content
 
 #### `internal/git/`
 **Purpose**: Git operations and worktree management.
@@ -401,6 +435,11 @@ repos:                               # Array of repository configurations
         replace:
           PORT: "${RAMP_PORT}"
           APP_NAME: "myapp-${RAMP_WORKTREE_NAME}"
+      - source: scripts/fetch-secrets.sh  # Script: execute and use output
+        dest: .env.secrets
+        cache: 24h                   # Cache script output for 24 hours
+        replace:
+          PORT: "${RAMP_PORT}"       # Replacements applied after script execution
   - path: repos
     git: https://github.com/owner/other-repo.git
     auto_refresh: true               # Optional: auto-refresh before 'ramp up' (default: true)
@@ -433,6 +472,7 @@ commands:                            # Optional: custom commands for 'ramp run'
 ### Directory Structure
 ```
 project-root/
+├── .gitignore                       # Auto-generated by ramp init
 ├── .ramp/
 │   ├── ramp.yaml                    # Main configuration file
 │   ├── local.yaml                   # Local preferences (gitignored)
@@ -444,10 +484,10 @@ project-root/
 ├── configs/                         # Optional: shared env file templates
 │   ├── app.env
 │   └── shared.env
-├── repos/                           # Source repository clones
+├── repos/                           # Source repository clones (gitignored)
 │   ├── repo-name/                   # Cloned repositories
 │   └── other-repo/
-└── trees/                           # Feature worktrees
+└── trees/                           # Feature worktrees (gitignored)
     ├── feature-name/                # Individual feature directories
     │   ├── repo-name/               # Worktree for each repository
     │   └── other-repo/
@@ -518,6 +558,271 @@ Comprehensive progress reporting with two modes:
 - Use `git stash push -m "descriptive message"` to clearly identify stashes
 - Check `git stash list` before popping to ensure you're applying the correct stash
 - Consider using commits or branches instead of stashes for longer-lived work
+
+## Environment Files with Script Execution
+
+Ramp supports using executable scripts as sources for environment files, enabling integration with secret managers and dynamic configuration generation.
+
+### Basic Concepts
+
+**Source Types**:
+- **Regular files**: Copied as-is (requires read permission only)
+- **Executable scripts**: Executed, stdout captured as content (requires execute permission)
+
+**Detection**: Automatic based on file execute bit (`chmod +x`)
+
+**Caching**: Optional TTL-based caching for script outputs (reduces API calls to secret managers)
+
+**Refresh Control**: Respects `--refresh`, `--no-refresh` flags and `auto_refresh` config
+
+### Example 1: AWS Secrets Manager Integration
+
+**Configuration** (`.ramp/ramp.yaml`):
+```yaml
+repos:
+  - path: repos
+    git: git@github.com:org/app.git
+    env_files:
+      - source: scripts/fetch-aws-secrets.sh
+        dest: .env
+        cache: 24h
+        replace:
+          PORT: "${RAMP_PORT}"
+          APP_NAME: "myapp-${RAMP_WORKTREE_NAME}"
+```
+
+**Script** (`.ramp/scripts/fetch-aws-secrets.sh`):
+```bash
+#!/bin/bash
+# Fetches secrets from AWS Secrets Manager
+# Uses AWS CLI (assumes AWS credentials configured)
+
+aws secretsmanager get-secret-value \
+    --secret-id "myapp/${RAMP_ENV:-dev}-secrets" \
+    --query SecretString \
+    --output text
+```
+
+**How it works**:
+1. Script executes on first `ramp up` (or when cache expires)
+2. Output cached for 24 hours in `.ramp/cache/env_files/`
+3. Cached content written to worktree's `.env`
+4. `PORT` and `APP_NAME` replaced with dynamic values
+5. Subsequent `ramp up` uses cache (no AWS call) unless `--refresh` specified
+
+### Example 2: Merging .env.example with Secrets
+
+**Problem**: You want non-sensitive defaults from `.env.example` plus sensitive keys from a secret manager.
+
+**Configuration**:
+```yaml
+repos:
+  - path: repos
+    git: git@github.com:org/app.git
+    env_files:
+      - source: scripts/merge-env.sh
+        dest: .env
+        cache: 12h
+        replace:
+          PORT: "${RAMP_PORT}"
+```
+
+**Script** (`.ramp/scripts/merge-env.sh`):
+```bash
+#!/bin/bash
+# Merge .env.example with secrets
+
+# Start with non-sensitive defaults
+cat "${RAMP_REPO_PATH_APP}/.env.example"
+
+echo ""
+echo "# Secrets from AWS"
+
+# Append secrets (parsed from JSON)
+aws secretsmanager get-secret-value \
+    --secret-id "myapp/dev-secrets" \
+    --query SecretString \
+    --output text | \
+    jq -r 'to_entries[] | "\(.key)=\(.value)"'
+```
+
+**Result** (worktree `.env`):
+```
+# From .env.example
+DEBUG=true
+LOG_LEVEL=info
+PORT=4000  # Replaced by ramp
+
+# Secrets from AWS
+DATABASE_URL=postgres://...
+API_KEY=sk_live_...
+JWT_SECRET=...
+```
+
+### Example 3: Environment-Specific Configuration
+
+**Use Case**: Different secrets per environment (dev/staging/prod)
+
+**Configuration** (`.ramp/ramp.yaml`):
+```yaml
+prompts:
+  - name: RAMP_ENV
+    question: "Which environment?"
+    options:
+      - value: dev
+        label: Development
+      - value: staging
+        label: Staging
+      - value: prod
+        label: Production
+    default: dev
+
+repos:
+  - path: repos
+    git: git@github.com:org/app.git
+    env_files:
+      - source: scripts/fetch-env-secrets.sh
+        dest: .env
+        cache: 1h  # Shorter cache for production
+```
+
+**Script** (`.ramp/scripts/fetch-env-secrets.sh`):
+```bash
+#!/bin/bash
+# Uses RAMP_ENV to fetch environment-specific secrets
+
+SECRET_ID="myapp/${RAMP_ENV}-secrets"
+
+echo "Fetching secrets for: ${RAMP_ENV}" >&2  # Logged to stderr (not captured)
+
+aws secretsmanager get-secret-value \
+    --secret-id "$SECRET_ID" \
+    --query SecretString \
+    --output text
+```
+
+**Workflow**:
+1. User runs `ramp config` (or prompted on first `ramp up`)
+2. Selects environment (e.g., "dev")
+3. Preference saved to `.ramp/local.yaml` (gitignored)
+4. Script receives `RAMP_ENV=dev` and fetches appropriate secrets
+
+### Example 4: Multiple Secret Sources
+
+**Configuration**:
+```yaml
+repos:
+  - path: repos
+    git: git@github.com:org/app.git
+    env_files:
+      # Base configuration
+      - source: .env.example
+        dest: .env
+
+      # Database credentials from Secrets Manager
+      - source: scripts/fetch-db-secrets.sh
+        dest: .env.database
+        cache: 24h
+
+      # API keys from Vault
+      - source: scripts/fetch-api-keys.sh
+        dest: .env.api
+        cache: 12h
+```
+
+**Result**: Three separate env files in worktree, each sourced differently
+
+### Refresh Behavior
+
+**Cache Refresh Rules**:
+
+| Flag | `cache` Field | Behavior |
+|------|---------------|----------|
+| `--refresh` | Any | Always execute script (ignore cache) |
+| `--no-refresh` | Any | Use cache if exists (ignore TTL) |
+| None | `24h` | Use cache if < 24h old, else execute |
+| None | Not set | Always execute (no caching) |
+
+**Examples**:
+```bash
+# Force refresh (re-fetch secrets)
+ramp up my-feature --refresh
+
+# Use cache even if expired (faster, but stale)
+ramp up my-feature --no-refresh
+
+# Respect auto_refresh config and cache TTL (default)
+ramp up my-feature
+```
+
+### Security Best Practices
+
+1. **Script Permissions**: Only make scripts executable if they should run
+   ```bash
+   chmod +x .ramp/scripts/fetch-secrets.sh  # Will execute
+   chmod 644 .ramp/scripts/template.env     # Will copy as-is
+   ```
+
+2. **Never Commit Secrets**: Use scripts to fetch, not hardcode
+   ```yaml
+   # ✅ Good - fetches secrets at runtime
+   - source: scripts/fetch-secrets.sh
+
+   # ❌ Bad - secrets in git
+   - source: .env.production
+   ```
+
+3. **Cache Location**: Add to `.gitignore`
+   ```
+   .ramp/cache/
+   .ramp/local.yaml
+   ```
+
+4. **Authentication**: Scripts inherit shell environment
+   - AWS CLI: Uses `~/.aws/credentials` or environment variables
+   - Vault: Uses `VAULT_TOKEN` environment variable
+   - GCP: Uses `gcloud auth` credentials
+
+5. **Error Handling**: Scripts should exit with non-zero on failure
+   ```bash
+   #!/bin/bash
+   set -e  # Exit on any error
+
+   aws secretsmanager get-secret-value ... || {
+       echo "Failed to fetch secrets" >&2
+       exit 1
+   }
+   ```
+
+### Troubleshooting
+
+**Script not executing (copied as text)**:
+```bash
+# Check execute permission
+ls -l .ramp/scripts/fetch-secrets.sh
+
+# Should show: -rwxr-xr-x (note the 'x' bits)
+# If not: chmod +x .ramp/scripts/fetch-secrets.sh
+```
+
+**Cache not working**:
+- Check `.ramp/cache/env_files/` directory exists
+- Verify `cache` field format (e.g., "24h", "1h", "30m")
+- Use `--refresh` to force bypass cache
+
+**Script fails silently**:
+- Check script output: run manually
+  ```bash
+  cd .ramp/scripts
+  ./fetch-secrets.sh
+  ```
+- Check stderr output (script errors shown to user)
+- Verify RAMP environment variables available:
+  ```bash
+  #!/bin/bash
+  echo "RAMP_PORT=${RAMP_PORT}" >&2
+  echo "RAMP_ENV=${RAMP_ENV}" >&2
+  ```
 
 ## Testing Infrastructure
 

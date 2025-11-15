@@ -37,6 +37,59 @@ func TestCreateDirectoryStructure(t *testing.T) {
 	}
 }
 
+// TestCreateGitignore tests .gitignore creation at project root
+func TestCreateGitignore(t *testing.T) {
+	tempDir := t.TempDir()
+	CreateDirectoryStructure(tempDir)
+
+	err := CreateGitignore(tempDir)
+	if err != nil {
+		t.Fatalf("CreateGitignore() error = %v", err)
+	}
+
+	// Verify .gitignore exists at root
+	gitignorePath := filepath.Join(tempDir, ".gitignore")
+	if _, err := os.Stat(gitignorePath); os.IsNotExist(err) {
+		t.Fatalf(".gitignore was not created at project root")
+	}
+
+	// Read and verify content
+	content, err := os.ReadFile(gitignorePath)
+	if err != nil {
+		t.Fatalf("failed to read .gitignore: %v", err)
+	}
+
+	contentStr := string(content)
+
+	// Verify all expected entries are present
+	expectedEntries := []string{
+		"repos/",
+		"trees/",
+		".ramp/local.yaml",
+		".ramp/port_allocations.json",
+	}
+
+	for _, entry := range expectedEntries {
+		if !strings.Contains(contentStr, entry) {
+			t.Errorf(".gitignore missing expected entry: %s", entry)
+		}
+	}
+
+	// Verify it's a regular file with appropriate permissions
+	info, err := os.Stat(gitignorePath)
+	if err != nil {
+		t.Fatalf("failed to stat .gitignore: %v", err)
+	}
+
+	if info.Mode().Perm()&0400 == 0 {
+		t.Error(".gitignore is not readable")
+	}
+
+	if info.Mode().Perm()&0200 == 0 {
+		t.Error(".gitignore is not writable")
+	}
+}
+
 // TestExtractRepoName tests repository name extraction
 func TestExtractRepoName(t *testing.T) {
 	tests := []struct {

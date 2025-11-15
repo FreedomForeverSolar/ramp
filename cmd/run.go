@@ -21,11 +21,13 @@ var runCmd = &cobra.Command{
 If a feature name is provided, the command is executed from within that
 feature's trees directory with access to feature-specific environment variables.
 
-If no feature name is provided, the command is executed from the source
-directory with access to source repository paths.
+If no feature name is provided, ramp will attempt to auto-detect the feature
+based on your current working directory. If not in a feature tree, the command
+is executed from the source directory with access to source repository paths.
 
 Example:
   ramp run open my-feature    # Run 'open' command for 'my-feature'
+  ramp run open               # Auto-detect feature from current directory
   ramp run deploy             # Run 'deploy' command against source repos`,
 	Args: cobra.RangeArgs(1, 2),
 	Run: func(cmd *cobra.Command, args []string) {
@@ -78,7 +80,19 @@ func runCustomCommand(commandName, featureName string) error {
 		return fmt.Errorf("auto-installation failed: %w", err)
 	}
 
-	// If no feature name provided, run against source directory
+	// Auto-detect feature name if not provided
+	if featureName == "" {
+		detected, err := config.DetectFeatureFromWorkingDir(projectDir)
+		if err != nil {
+			return fmt.Errorf("failed to detect feature from working directory: %w", err)
+		}
+		if detected != "" {
+			featureName = detected
+			fmt.Printf("Auto-detected feature: %s\n", featureName)
+		}
+	}
+
+	// If no feature name provided (and not auto-detected), run against source directory
 	if featureName == "" {
 		fmt.Printf("Running command '%s' against source repositories\n", commandName)
 

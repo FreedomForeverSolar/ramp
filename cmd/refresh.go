@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"sync"
 
 	"github.com/spf13/cobra"
 
@@ -60,13 +61,114 @@ func runRefresh() error {
 	progress.Start(fmt.Sprintf("Refreshing repositories for project '%s'", cfg.Name))
 
 	repos := cfg.GetRepos()
-	for name, repo := range repos {
-		repoDir := repo.GetRepoPath(projectDir)
-		RefreshRepository(repoDir, name, progress)
+
+	// Refresh all repositories in parallel
+	results := RefreshRepositoriesParallel(projectDir, repos, progress)
+
+	// Display results
+	for _, result := range results {
+		switch result.status {
+		case "success":
+			progress.Info(fmt.Sprintf("%s: ✅ %s", result.name, result.message))
+		case "warning":
+			progress.Warning(fmt.Sprintf("%s: %s", result.name, result.message))
+		case "skipped":
+			progress.Info(fmt.Sprintf("%s: %s", result.name, result.message))
+		}
 	}
 
 	progress.Success("Refresh complete!")
 	return nil
+}
+
+// refreshResult holds the result of refreshing a repository
+type refreshResult struct {
+	name    string
+	status  string // "success", "warning", or "skipped"
+	message string
+}
+
+// RefreshRepositoriesParallel refreshes multiple repositories concurrently
+func RefreshRepositoriesParallel(projectDir string, repos map[string]*config.Repo, progress *ui.ProgressUI) []refreshResult {
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	results := make([]refreshResult, 0, len(repos))
+
+	for name, repo := range repos {
+		wg.Add(1)
+		go func(repoName string, r *config.Repo) {
+			defer wg.Done()
+
+			repoDir := r.GetRepoPath(projectDir)
+			result := refreshResult{name: repoName}
+
+			// Check if it's a git repo
+			if !git.IsGitRepo(repoDir) {
+				result.status = "warning"
+				result.message = "not a git repository, skipping"
+				mu.Lock()
+				results = append(results, result)
+				mu.Unlock()
+				return
+			}
+
+			// Get current branch
+			currentBranch, err := git.GetCurrentBranch(repoDir)
+			if err != nil {
+				result.status = "warning"
+				result.message = fmt.Sprintf("failed to get current branch: %v", err)
+				mu.Lock()
+				results = append(results, result)
+				mu.Unlock()
+				return
+			}
+
+			// Fetch all remotes
+			if err := git.FetchAllQuiet(repoDir); err != nil {
+				result.status = "warning"
+				result.message = fmt.Sprintf("fetch failed: %v", err)
+				mu.Lock()
+				results = append(results, result)
+				mu.Unlock()
+				return
+			}
+
+			// Check if current branch has a remote tracking branch
+			hasRemote, err := git.HasRemoteTrackingBranch(repoDir)
+			if err != nil {
+				result.status = "warning"
+				result.message = fmt.Sprintf("failed to check remote tracking branch: %v", err)
+				mu.Lock()
+				results = append(results, result)
+				mu.Unlock()
+				return
+			}
+
+			if hasRemote {
+				// Pull changes
+				if err := git.PullQuiet(repoDir); err != nil {
+					result.status = "warning"
+					result.message = fmt.Sprintf("pull failed: %v", err)
+					mu.Lock()
+					results = append(results, result)
+					mu.Unlock()
+					return
+				}
+				result.status = "success"
+				result.message = "updated"
+			} else {
+				result.status = "skipped"
+				result.message = fmt.Sprintf("branch %s has no remote tracking branch, skipped pull", currentBranch)
+			}
+
+			mu.Lock()
+			results = append(results, result)
+			mu.Unlock()
+		}(name, repo)
+	}
+
+	wg.Wait()
+	return results
 }
 
 // RefreshRepository refreshes a single repository by fetching and pulling changes

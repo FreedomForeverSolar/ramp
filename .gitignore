@@ -5,3 +5,5 @@ ramp
 demo/**/source/
 demo/**/trees/
 demo/**/.ramp/port_allocations.json
+demo/**/.ramp/cache/
+demo/**/.ramp/local.yaml

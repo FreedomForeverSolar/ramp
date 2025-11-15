@@ -196,8 +196,9 @@ func runUp(featureName, prefix, target string) error {
 	if shouldRefreshRepos {
 		progress.Start("Auto-refreshing repositories before creating feature")
 
+		// Filter repos that should be refreshed
+		reposToRefresh := make(map[string]*config.Repo)
 		for name, repo := range repos {
-			// Determine if this specific repo should be refreshed
 			shouldRefreshThisRepo := false
 			if refreshFlag {
 				// --refresh: force refresh all repos
@@ -208,10 +209,26 @@ func runUp(featureName, prefix, target string) error {
 			}
 
 			if shouldRefreshThisRepo {
-				repoDir := repo.GetRepoPath(projectDir)
-				RefreshRepository(repoDir, name, progress)
+				reposToRefresh[name] = repo
 			} else {
 				progress.Info(fmt.Sprintf("%s: auto-refresh disabled, skipping", name))
+			}
+		}
+
+		// Refresh all selected repositories in parallel
+		if len(reposToRefresh) > 0 {
+			results := RefreshRepositoriesParallel(projectDir, reposToRefresh, progress)
+
+			// Display results
+			for _, result := range results {
+				switch result.status {
+				case "success":
+					progress.Info(fmt.Sprintf("%s: ✅ %s", result.name, result.message))
+				case "warning":
+					progress.Warning(fmt.Sprintf("%s: %s", result.name, result.message))
+				case "skipped":
+					progress.Info(fmt.Sprintf("%s: %s", result.name, result.message))
+				}
 			}
 		}
 
@@ -427,7 +444,15 @@ func runUp(featureName, prefix, target string) error {
 				sourceRepoDir := repo.GetRepoPath(projectDir)
 				worktreeDir := state.WorktreeDir
 
-				if err := envfile.ProcessEnvFiles(name, repo.EnvFiles, sourceRepoDir, worktreeDir, envVars); err != nil {
+				// Determine shouldRefresh for env scripts (same logic as repo refresh)
+				shouldRefreshEnvScripts := false
+				if refreshFlag {
+					shouldRefreshEnvScripts = true
+				} else if !noRefreshFlag {
+					shouldRefreshEnvScripts = repo.ShouldAutoRefresh()
+				}
+
+				if err := envfile.ProcessEnvFiles(name, repo.EnvFiles, sourceRepoDir, worktreeDir, envVars, shouldRefreshEnvScripts); err != nil {
 					progress.Error(fmt.Sprintf("Failed to process env files for %s", name))
 					// Rollback all successful operations
 					if rollbackErr := rollbackUp(projectDir, treesDir, featureName, states, progress); rollbackErr != nil {
@@ -687,6 +712,14 @@ func buildEnvVars(projectDir, treesDir, featureName string, allocatedPort int, c
 		envVarName := config.GenerateEnvVarName(name)
 		repoPath := repo.GetRepoPath(projectDir)
 		envVars[envVarName] = repoPath
+	}
+
+	// Add local config environment variables (from prompts)
+	localEnvVars, err := GetLocalEnvVars(projectDir)
+	if err == nil {
+		for key, value := range localEnvVars {
+			envVars[key] = value
+		}
 	}
 
 	return envVars

@@ -17,16 +17,22 @@ import (
 )
 
 var downCmd = &cobra.Command{
-	Use:   "down <feature-name>",
+	Use:   "down [feature-name]",
 	Short: "Clean up a feature branch by removing worktrees and branches",
 	Long: `Clean up a feature branch by:
 1. Running the cleanup script (if configured)
 2. Removing worktree directories from trees/<feature-name>/
 3. Removing the feature branches that were created
-4. Prompting for confirmation if there are uncommitted changes`,
-	Args: cobra.ExactArgs(1),
+4. Prompting for confirmation if there are uncommitted changes
+
+If no feature name is provided, ramp will attempt to auto-detect the feature
+based on your current working directory.`,
+	Args: cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		featureName := strings.TrimRight(args[0], "/")
+		featureName := ""
+		if len(args) > 0 {
+			featureName = strings.TrimRight(args[0], "/")
+		}
 		if err := runDown(featureName); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
@@ -62,6 +68,20 @@ func runDown(featureName string) error {
 	// Auto-prompt for local config if needed
 	if err := EnsureLocalConfig(projectDir, cfg); err != nil {
 		return fmt.Errorf("failed to configure local preferences: %w", err)
+	}
+
+	// Auto-detect feature name if not provided
+	if featureName == "" {
+		detected, err := config.DetectFeatureFromWorkingDir(projectDir)
+		if err != nil {
+			return fmt.Errorf("failed to detect feature from working directory: %w", err)
+		}
+		if detected != "" {
+			featureName = detected
+			fmt.Printf("Auto-detected feature: %s\n", featureName)
+		} else {
+			return fmt.Errorf("no feature name provided and could not auto-detect from current directory")
+		}
 	}
 
 	// Get config prefix for fallback when branch detection fails
@@ -101,14 +121,17 @@ func runDown(featureName string) error {
 		if !featureExists {
 			return fmt.Errorf("feature '%s' not found (trees directory does not exist)", featureName)
 		}
+	}
 
-		progress := ui.NewProgress()
+	// Create a single progress instance for the entire cleanup operation
+	progress := ui.NewProgress()
+
+	// Show warning if trees directory is missing (orphaned worktree scenario)
+	if !treesDirExists {
 		progress.Warning(fmt.Sprintf("Trees directory for feature '%s' not found - cleaning up orphaned worktrees", featureName))
 	}
 
-	progress := ui.NewProgress()
 	progress.Start(fmt.Sprintf("Cleaning up feature '%s' for project '%s'", featureName, cfg.Name))
-	progress.Success(fmt.Sprintf("Cleaning up feature '%s' for project '%s'", featureName, cfg.Name))
 
 	// Check for uncommitted changes only if directory exists
 	if treesDirExists {
