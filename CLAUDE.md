@@ -198,7 +198,7 @@ Ramp is a sophisticated CLI tool for managing multi-repository development workf
 
 ### Command Structure
 The application uses the Cobra CLI framework with commands organized in `cmd/`:
-- `cmd/root.go` - Main command definition, CLI entry point, and global flag handling
+- `cmd/root.go` - Main command definition, CLI entry point, global flag handling, and auto-update trigger
 - `cmd/init.go` - Repository initialization logic with auto-initialization support
 - `cmd/up.go` - Feature branch and worktree creation with smart branch handling
 - `cmd/config.go` - Local preference management for IDE-agnostic workflows
@@ -209,6 +209,7 @@ The application uses the Cobra CLI framework with commands organized in `cmd/`:
 - `cmd/run.go` - Custom command execution with environment context
 - `cmd/status.go` - Project and repository status display with comprehensive information and feature worktree listing
 - `cmd/version.go` - Version display command
+- `cmd/internal.go` - Hidden internal command for background update checking (`__internal_update_check`)
 
 ### Core Internal Packages
 
@@ -418,6 +419,58 @@ progress.Success("Processing complete")
 **Detection pattern:**
 Look for: `for ... range repos` combined with git operations that might create spinners.
 If found, ensure quiet versions are being used.
+
+#### `internal/autoupdate/`
+**Purpose**: Automatic CLI self-update via Homebrew in the background.
+**Key Types**:
+- `UpdateCache` - Cached update check information with timestamps and versions
+- `UpdateLock` - Exclusive file lock to prevent concurrent updates
+- `BrewInfo` - JSON structure for parsing `brew info` output
+
+**Key Functions**:
+- `SpawnBackgroundChecker()` - Spawns detached background process for update checking
+- `RunBackgroundCheck(currentVersion)` - Main orchestration function for check and upgrade
+- `IsAutoUpdateEnabled()` - Checks if auto-update should run (Homebrew install + not disabled)
+- `GetBrewInfo()` - Fetches latest version and tap name from Homebrew
+- `RunBrewUpdate(tap)` - Updates specified Homebrew tap
+- `RunBrewUpgrade()` - Upgrades ramp package via Homebrew
+- `LoadCache(cachePath)` / `SaveCache(cachePath, cache)` - Cache persistence
+- `ShouldCheck(cache, interval)` - Rate limiting based on last check time
+- `AcquireLock(lockPath)` / `Release()` - File locking for concurrency control
+- `IsNewer(latest, current)` - Semantic version comparison
+
+**How it works**:
+1. On every command execution, `Execute()` in `cmd/root.go` calls `SpawnBackgroundChecker()`
+2. Background process spawns via `__internal_update_check` hidden command
+3. Background process acquires lock file (`~/.ramp/update.lock`) to prevent concurrent checks
+4. Checks cache (`~/.ramp/update_check.json`) - exits if checked within interval (default: 24h)
+5. Runs `brew update <tap>` to refresh Homebrew tap
+6. Runs `brew info ramp --json=v2` to get latest version
+7. Compares versions using semantic versioning
+8. If newer version available, runs `brew upgrade ramp`
+9. Updates cache with new timestamp and versions
+10. All output logged to `~/.ramp/update.log`
+
+**Configuration**:
+- `RAMP_AUTO_UPDATE=false` - Disables auto-update completely
+- `RAMP_UPDATE_CHECK_INTERVAL=12h` - Custom check interval (default: 24h)
+- Auto-disabled if not installed via Homebrew (checks for `/Cellar/ramp/` in binary path)
+
+**Files**:
+- `~/.ramp/update_check.json` - Cache file (last check time, versions)
+- `~/.ramp/update.lock` - Lock file (prevents concurrent updates)
+- `~/.ramp/update.log` - Debug log (errors, update history)
+
+**Performance**:
+- Spawning background process: ~5ms (non-blocking)
+- Zero impact on user commands
+- Background check (if cache fresh): ~2ms then exits
+- Background check (if update needed): ~40-60s (user never waits)
+
+**Testing**:
+- Full test coverage with TDD approach (version comparison, cache, locks, brew parsing)
+- Unit tests for all functions
+- Integration testing via manual Homebrew testing
 
 ### Configuration Schema
 Projects require a `.ramp/ramp.yaml` file with complete configuration:
