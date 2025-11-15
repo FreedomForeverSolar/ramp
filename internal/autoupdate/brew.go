@@ -36,24 +36,23 @@ func IsHomebrewInstall() bool {
 	return isHomebrewPath(exePath)
 }
 
-// isAutoUpdateEnabled checks if auto-update is enabled based on environment and install method.
-func isAutoUpdateEnabled(binaryPath string) bool {
-	// Check if explicitly disabled
-	if env := os.Getenv("RAMP_AUTO_UPDATE"); env == "false" || env == "0" {
-		return false
-	}
-
-	// Only enable for Homebrew installs
-	return isHomebrewPath(binaryPath)
-}
-
 // IsAutoUpdateEnabled checks if auto-update should be enabled.
+// Checks settings file and Homebrew install status.
 func IsAutoUpdateEnabled() bool {
-	exePath, err := os.Executable()
-	if err != nil {
+	// Only enable for Homebrew installs
+	if !IsHomebrewInstall() {
 		return false
 	}
-	return isAutoUpdateEnabled(exePath)
+
+	// Load settings to check if enabled
+	settingsPath := getSettingsPath()
+	settings, err := EnsureSettings(settingsPath)
+	if err != nil {
+		// If we can't load settings, default to enabled
+		return true
+	}
+
+	return settings.AutoUpdate.Enabled
 }
 
 // parseBrewInfo parses the JSON output from `brew info --json=v2`.
@@ -135,14 +134,4 @@ func getLockPath() string {
 func getLogPath() string {
 	dir, _ := getRampDir()
 	return filepath.Join(dir, "update.log")
-}
-
-// getCheckInterval returns the configured check interval.
-func getCheckInterval() time.Duration {
-	if env := os.Getenv("RAMP_UPDATE_CHECK_INTERVAL"); env != "" {
-		if duration, err := time.ParseDuration(env); err == nil {
-			return duration
-		}
-	}
-	return 24 * time.Hour // Default: 24 hours
 }

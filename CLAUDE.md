@@ -423,6 +423,8 @@ If found, ensure quiet versions are being used.
 #### `internal/autoupdate/`
 **Purpose**: Automatic CLI self-update via Homebrew in the background.
 **Key Types**:
+- `Settings` - User's ramp settings with auto-update configuration
+- `AutoUpdateSettings` - Auto-update configuration (enabled, check interval)
 - `UpdateCache` - Cached update check information with timestamps and versions
 - `UpdateLock` - Exclusive file lock to prevent concurrent updates
 - `BrewInfo` - JSON structure for parsing `brew info` output
@@ -430,7 +432,9 @@ If found, ensure quiet versions are being used.
 **Key Functions**:
 - `SpawnBackgroundChecker()` - Spawns detached background process for update checking
 - `RunBackgroundCheck(currentVersion)` - Main orchestration function for check and upgrade
-- `IsAutoUpdateEnabled()` - Checks if auto-update should run (Homebrew install + not disabled)
+- `IsAutoUpdateEnabled()` - Checks if auto-update should run (Homebrew install + settings file)
+- `LoadSettings(path)` / `SaveSettings(path, settings)` - Settings file persistence
+- `EnsureSettings(path)` - Loads or creates settings file with defaults
 - `GetBrewInfo()` - Fetches latest version and tap name from Homebrew
 - `RunBrewUpdate(tap)` - Updates specified Homebrew tap
 - `RunBrewUpgrade()` - Upgrades ramp package via Homebrew
@@ -442,21 +446,28 @@ If found, ensure quiet versions are being used.
 **How it works**:
 1. On every command execution, `Execute()` in `cmd/root.go` calls `SpawnBackgroundChecker()`
 2. Background process spawns via `__internal_update_check` hidden command
-3. Background process acquires lock file (`~/.ramp/update.lock`) to prevent concurrent checks
-4. Checks cache (`~/.ramp/update_check.json`) - exits if checked within interval (default: 24h)
-5. Runs `brew update <tap>` to refresh Homebrew tap
-6. Runs `brew info ramp --json=v2` to get latest version
-7. Compares versions using semantic versioning
-8. If newer version available, runs `brew upgrade ramp`
-9. Updates cache with new timestamp and versions
-10. All output logged to `~/.ramp/update.log`
+3. Background process loads settings from `~/.ramp/settings.yaml` (creates with defaults if missing)
+4. Background process acquires lock file (`~/.ramp/update.lock`) to prevent concurrent checks
+5. Checks cache (`~/.ramp/update_check.json`) - exits if checked within interval (from settings, default: 24h)
+6. Runs `brew update <tap>` to refresh Homebrew tap
+7. Runs `brew info ramp --json=v2` to get latest version
+8. Compares versions using semantic versioning
+9. If newer version available, runs `brew upgrade ramp`
+10. Updates cache with new timestamp and versions
+11. All output logged to `~/.ramp/update.log`
 
-**Configuration**:
-- `RAMP_AUTO_UPDATE=false` - Disables auto-update completely
-- `RAMP_UPDATE_CHECK_INTERVAL=12h` - Custom check interval (default: 24h)
+**Configuration** (`~/.ramp/settings.yaml`):
+```yaml
+auto_update:
+  enabled: true      # Set to false to disable auto-update
+  check_interval: 24h  # How often to check (e.g., 12h, 6h, 30m)
+```
+- Auto-created with defaults on first run
+- User-editable YAML file for persistent configuration
 - Auto-disabled if not installed via Homebrew (checks for `/Cellar/ramp/` in binary path)
 
 **Files**:
+- `~/.ramp/settings.yaml` - User settings (auto-created with defaults)
 - `~/.ramp/update_check.json` - Cache file (last check time, versions)
 - `~/.ramp/update.lock` - Lock file (prevents concurrent updates)
 - `~/.ramp/update.log` - Debug log (errors, update history)
@@ -468,8 +479,9 @@ If found, ensure quiet versions are being used.
 - Background check (if update needed): ~40-60s (user never waits)
 
 **Testing**:
-- Full test coverage with TDD approach (version comparison, cache, locks, brew parsing)
-- Unit tests for all functions
+- Full test coverage with TDD approach
+- Unit tests: version comparison, cache, locks, settings, brew parsing
+- 33 tests total covering all auto-update functionality
 - Integration testing via manual Homebrew testing
 
 ### Configuration Schema

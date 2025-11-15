@@ -2,7 +2,6 @@ package autoupdate
 
 import (
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -191,110 +190,5 @@ func TestGetLogPath(t *testing.T) {
 	}
 }
 
-func TestGetCheckInterval(t *testing.T) {
-	tests := []struct {
-		name     string
-		envValue string
-		want     string // duration as string for comparison
-	}{
-		{
-			name:     "default when not set",
-			envValue: "",
-			want:     "24h0m0s",
-		},
-		{
-			name:     "custom 12h",
-			envValue: "12h",
-			want:     "12h0m0s",
-		},
-		{
-			name:     "custom 48h",
-			envValue: "48h",
-			want:     "48h0m0s",
-		},
-		{
-			name:     "custom 30m",
-			envValue: "30m",
-			want:     "30m0s",
-		},
-		{
-			name:     "invalid falls back to default",
-			envValue: "invalid",
-			want:     "24h0m0s",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Set env var
-			if tt.envValue != "" {
-				os.Setenv("RAMP_UPDATE_CHECK_INTERVAL", tt.envValue)
-			} else {
-				os.Unsetenv("RAMP_UPDATE_CHECK_INTERVAL")
-			}
-			defer os.Unsetenv("RAMP_UPDATE_CHECK_INTERVAL")
-
-			got := getCheckInterval()
-			if got.String() != tt.want {
-				t.Errorf("getCheckInterval() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestIsAutoUpdateEnabled(t *testing.T) {
-	// Create temp directory for fake Homebrew binary
-	tmpDir := t.TempDir()
-	fakeBinary := filepath.Join(tmpDir, "Cellar", "ramp", "1.0.0", "bin", "ramp")
-	os.MkdirAll(filepath.Dir(fakeBinary), 0755)
-	os.WriteFile(fakeBinary, []byte("fake"), 0755)
-
-	tests := []struct {
-		name         string
-		envValue     string
-		binaryPath   string
-		want         bool
-	}{
-		{
-			name:       "enabled by default with Homebrew install",
-			envValue:   "",
-			binaryPath: fakeBinary,
-			want:       true,
-		},
-		{
-			name:       "explicitly disabled",
-			envValue:   "false",
-			binaryPath: fakeBinary,
-			want:       false,
-		},
-		{
-			name:       "disabled with 0",
-			envValue:   "0",
-			binaryPath: fakeBinary,
-			want:       false,
-		},
-		{
-			name:       "disabled if not Homebrew install",
-			envValue:   "",
-			binaryPath: "/usr/local/bin/ramp",
-			want:       false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Set env var
-			if tt.envValue != "" {
-				os.Setenv("RAMP_AUTO_UPDATE", tt.envValue)
-			} else {
-				os.Unsetenv("RAMP_AUTO_UPDATE")
-			}
-			defer os.Unsetenv("RAMP_AUTO_UPDATE")
-
-			got := isAutoUpdateEnabled(tt.binaryPath)
-			if got != tt.want {
-				t.Errorf("isAutoUpdateEnabled(%q) = %v, want %v", tt.binaryPath, got, tt.want)
-			}
-		})
-	}
-}
+// Note: IsAutoUpdateEnabled() tests are now in settings_test.go
+// since the function behavior depends on the settings file.

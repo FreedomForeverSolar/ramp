@@ -28,7 +28,16 @@ func RunBackgroundCheck(currentVersion string) {
 	}
 	defer lock.Release()
 
-	// STEP 2: Check cache (rate limiting)
+	// STEP 2: Load settings
+	settingsPath := getSettingsPath()
+	settings, err := EnsureSettings(settingsPath)
+	if err != nil {
+		logf("Failed to load settings: %v", err)
+		// Use default settings
+		settings = defaultSettings()
+	}
+
+	// STEP 3: Check cache (rate limiting)
 	cachePath := getCachePath()
 	cache, err := LoadCache(cachePath)
 	if err != nil {
@@ -36,7 +45,7 @@ func RunBackgroundCheck(currentVersion string) {
 		// Continue anyway
 	}
 
-	interval := getCheckInterval()
+	interval := settings.GetCheckIntervalOrDefault()
 	if !ShouldCheck(cache, interval) {
 		logf("Checked recently (%s ago), skipping", time.Since(cache.LastCheck))
 		return
@@ -44,7 +53,7 @@ func RunBackgroundCheck(currentVersion string) {
 
 	logf("Cache is stale or empty, proceeding with check")
 
-	// STEP 3: Get brew info (tap and version)
+	// STEP 4: Get brew info (tap and version)
 	latestVersion, tap, err := GetBrewInfo()
 	if err != nil {
 		logf("Failed to get brew info: %v", err)
@@ -55,7 +64,7 @@ func RunBackgroundCheck(currentVersion string) {
 
 	logf("Latest version from brew: %s (tap: %s)", latestVersion, tap)
 
-	// STEP 4: Update Homebrew tap to get latest formula
+	// STEP 5: Update Homebrew tap to get latest formula
 	logf("Updating Homebrew tap: %s", tap)
 	if err := RunBrewUpdate(tap); err != nil {
 		logf("Failed to update brew tap: %v", err)
@@ -63,7 +72,7 @@ func RunBackgroundCheck(currentVersion string) {
 		return
 	}
 
-	// STEP 5: Get brew info again after tap update
+	// STEP 6: Get brew info again after tap update
 	latestVersion, tap, err = GetBrewInfo()
 	if err != nil {
 		logf("Failed to get brew info after update: %v", err)
@@ -73,7 +82,7 @@ func RunBackgroundCheck(currentVersion string) {
 
 	logf("Latest version after tap update: %s", latestVersion)
 
-	// STEP 6: Compare versions
+	// STEP 7: Compare versions
 	if !IsNewer(latestVersion, currentVersion) {
 		logf("Already on latest version: %s", currentVersion)
 		updateCache(cachePath, currentVersion, latestVersion, time.Now())
@@ -82,7 +91,7 @@ func RunBackgroundCheck(currentVersion string) {
 
 	logf("Update available: %s → %s", currentVersion, latestVersion)
 
-	// STEP 7: Run brew upgrade
+	// STEP 8: Run brew upgrade
 	logf("Running brew upgrade ramp...")
 	if err := RunBrewUpgrade(); err != nil {
 		logf("Brew upgrade failed: %v", err)
