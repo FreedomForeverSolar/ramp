@@ -21,8 +21,8 @@ func TestLoadSettings_FileDoesNotExist(t *testing.T) {
 	if !settings.AutoUpdate.Enabled {
 		t.Error("Default AutoUpdate.Enabled should be true")
 	}
-	if settings.AutoUpdate.CheckInterval != "24h" {
-		t.Errorf("Default CheckInterval = %q, want %q", settings.AutoUpdate.CheckInterval, "24h")
+	if settings.AutoUpdate.CheckInterval != "12h" {
+		t.Errorf("Default CheckInterval = %q, want %q", settings.AutoUpdate.CheckInterval, "12h")
 	}
 }
 
@@ -200,8 +200,8 @@ func TestDefaultSettings(t *testing.T) {
 	if !settings.AutoUpdate.Enabled {
 		t.Error("Default settings should have AutoUpdate.Enabled = true")
 	}
-	if settings.AutoUpdate.CheckInterval != "24h" {
-		t.Errorf("Default CheckInterval = %q, want %q", settings.AutoUpdate.CheckInterval, "24h")
+	if settings.AutoUpdate.CheckInterval != "12h" {
+		t.Errorf("Default CheckInterval = %q, want %q", settings.AutoUpdate.CheckInterval, "12h")
 	}
 }
 
@@ -224,8 +224,8 @@ func TestEnsureSettings_CreatesFileIfMissing(t *testing.T) {
 	if !settings.AutoUpdate.Enabled {
 		t.Error("Default settings should have AutoUpdate.Enabled = true")
 	}
-	if settings.AutoUpdate.CheckInterval != "24h" {
-		t.Errorf("Default CheckInterval = %q, want %q", settings.AutoUpdate.CheckInterval, "24h")
+	if settings.AutoUpdate.CheckInterval != "12h" {
+		t.Errorf("Default CheckInterval = %q, want %q", settings.AutoUpdate.CheckInterval, "12h")
 	}
 }
 
@@ -283,8 +283,8 @@ func TestSettingsYAMLFormat(t *testing.T) {
 	if !strings.Contains(contentStr, "check_interval:") {
 		t.Error("YAML should contain 'check_interval:' key")
 	}
-	if !strings.Contains(contentStr, "24h") {
-		t.Error("YAML should contain default '24h' interval")
+	if !strings.Contains(contentStr, "12h") {
+		t.Error("YAML should contain default '12h' interval")
 	}
 }
 
@@ -310,7 +310,7 @@ func TestGetCheckIntervalOrDefault(t *testing.T) {
 					CheckInterval: "invalid",
 				},
 			},
-			want: 24 * time.Hour,
+			want: 12 * time.Hour,
 		},
 		{
 			name: "empty interval returns default",
@@ -319,7 +319,7 @@ func TestGetCheckIntervalOrDefault(t *testing.T) {
 					CheckInterval: "",
 				},
 			},
-			want: 24 * time.Hour,
+			want: 12 * time.Hour,
 		},
 	}
 

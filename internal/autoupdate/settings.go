@@ -24,7 +24,7 @@ func defaultSettings() Settings {
 	return Settings{
 		AutoUpdate: AutoUpdateSettings{
 			Enabled:       true,
-			CheckInterval: "24h",
+			CheckInterval: "12h",
 		},
 	}
 }
@@ -92,11 +92,11 @@ func (s *Settings) GetCheckInterval() (time.Duration, error) {
 	return time.ParseDuration(s.AutoUpdate.CheckInterval)
 }
 
-// GetCheckIntervalOrDefault returns the check interval or 24h if invalid.
+// GetCheckIntervalOrDefault returns the check interval or 12h if invalid.
 func (s *Settings) GetCheckIntervalOrDefault() time.Duration {
 	duration, err := s.GetCheckInterval()
 	if err != nil {
-		return 24 * time.Hour
+		return 12 * time.Hour
 	}
 	return duration
 }

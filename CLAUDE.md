@@ -448,7 +448,7 @@ If found, ensure quiet versions are being used.
 2. Background process spawns via `__internal_update_check` hidden command
 3. Background process loads settings from `~/.ramp/settings.yaml` (creates with defaults if missing)
 4. Background process acquires lock file (`~/.ramp/update.lock`) to prevent concurrent checks
-5. Checks cache (`~/.ramp/update_check.json`) - exits if checked within interval (from settings, default: 24h)
+5. Checks cache (`~/.ramp/update_check.json`) - exits if checked within interval (from settings, default: 12h)
 6. Runs `brew update <tap>` to refresh Homebrew tap
 7. Runs `brew info ramp --json=v2` to get latest version
 8. Compares versions using semantic versioning
@@ -460,7 +460,7 @@ If found, ensure quiet versions are being used.
 ```yaml
 auto_update:
   enabled: true      # Set to false to disable auto-update
-  check_interval: 24h  # How often to check (e.g., 12h, 6h, 30m)
+  check_interval: 12h  # How often to check (default: 12h, e.g., 6h, 30m, 24h)
 ```
 - Auto-created with defaults on first run (only for Homebrew installs)
 - User-editable YAML file for persistent configuration

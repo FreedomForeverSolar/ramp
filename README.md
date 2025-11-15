@@ -48,7 +48,7 @@ When installed via Homebrew, ramp automatically updates itself in the background
 ```yaml
 auto_update:
   enabled: true      # Set to false to disable
-  check_interval: 24h  # How often to check (12h, 6h, etc.)
+  check_interval: 12h  # How often to check (default: 12h)
 ```
 
 The settings file is auto-created on first run. Edit it anytime to customize auto-update behavior.
