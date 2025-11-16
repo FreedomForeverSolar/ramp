@@ -29,12 +29,13 @@ func SpawnBackgroundChecker() {
 	if err != nil {
 		return // Can't open log file, skip
 	}
-	// Note: Don't close logFile here - background process needs it
 
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 
 	// Start and immediately forget (don't wait)
 	cmd.Start()
+	// Close the file in parent process - child has already inherited the file descriptor
+	logFile.Close()
 	// Note: Intentionally not calling cmd.Wait() - this is fire-and-forget
 }
