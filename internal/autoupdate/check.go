@@ -64,10 +64,10 @@ func RunBackgroundCheck(currentVersion string) {
 
 	logf("Latest version from brew: %s (tap: %s)", latestVersion, tap)
 
-	// STEP 5: Update Homebrew tap to get latest formula
-	logf("Updating Homebrew tap: %s", tap)
-	if err := RunBrewUpdate(tap); err != nil {
-		logf("Failed to update brew tap: %v", err)
+	// STEP 5: Update Homebrew to get latest formula
+	logf("Updating Homebrew taps...")
+	if err := RunBrewUpdate(); err != nil {
+		logf("Failed to update Homebrew: %v", err)
 		updateCache(cachePath, currentVersion, latestVersion, time.Now())
 		return
 	}

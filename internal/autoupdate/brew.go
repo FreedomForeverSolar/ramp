@@ -81,12 +81,12 @@ func GetBrewInfo() (version string, tap string, err error) {
 	return parseBrewInfo(output)
 }
 
-// RunBrewUpdate updates the specified Homebrew tap.
-func RunBrewUpdate(tap string) error {
+// RunBrewUpdate updates all Homebrew taps to get the latest formulas.
+func RunBrewUpdate() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "brew", "update", tap)
+	cmd := exec.CommandContext(ctx, "brew", "update")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("brew update failed: %w\n%s", err, output)
