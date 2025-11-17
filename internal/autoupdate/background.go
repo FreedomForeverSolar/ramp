@@ -1,6 +1,7 @@
 package autoupdate
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"syscall"
@@ -34,7 +35,13 @@ func SpawnBackgroundChecker() {
 	cmd.Stderr = logFile
 
 	// Start and immediately forget (don't wait)
-	cmd.Start()
+	if err := cmd.Start(); err != nil {
+		// Log the error before closing
+		logFile.WriteString(fmt.Sprintf("Failed to spawn background checker: %v\n", err))
+		logFile.Close()
+		return
+	}
+
 	// Close the file in parent process - child has already inherited the file descriptor
 	logFile.Close()
 	// Note: Intentionally not calling cmd.Wait() - this is fire-and-forget
