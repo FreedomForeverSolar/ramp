@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -37,6 +38,13 @@ func Execute() {
 		// Don't spawn when we ARE the background checker
 	} else if autoupdate.IsAutoUpdateEnabled() {
 		autoupdate.SpawnBackgroundChecker()
+	} else {
+		// DEBUG: Log why auto-update is disabled
+		if os.Getenv("RAMP_DEBUG_AUTOUPDATE") == "1" {
+			exePath, _ := os.Executable()
+			fmt.Fprintf(os.Stderr, "DEBUG: Auto-update disabled. Executable: %s, IsHomebrew: %v\n",
+				exePath, autoupdate.IsHomebrewInstall())
+		}
 	}
 
 	err := rootCmd.Execute()
