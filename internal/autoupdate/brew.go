@@ -33,7 +33,15 @@ func IsHomebrewInstall() bool {
 	if err != nil {
 		return false
 	}
-	return isHomebrewPath(exePath)
+
+	// Resolve symlink to get actual path (e.g., /opt/homebrew/bin/ramp -> ../Cellar/ramp/1.3.3/bin/ramp)
+	resolvedPath, err := filepath.EvalSymlinks(exePath)
+	if err != nil {
+		// If we can't resolve, fall back to original path
+		resolvedPath = exePath
+	}
+
+	return isHomebrewPath(resolvedPath)
 }
 
 // IsAutoUpdateEnabled checks if auto-update should be enabled.
