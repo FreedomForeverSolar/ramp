@@ -26,6 +26,11 @@ func SpawnBackgroundChecker() {
 
 	// Redirect output to log file
 	logPath := getLogPath()
+
+	// Ensure parent directory exists
+	dir, _ := getRampDir()
+	os.MkdirAll(dir, 0755)
+
 	logFile, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return // Can't open log file, skip
