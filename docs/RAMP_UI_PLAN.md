@@ -346,6 +346,11 @@ Example config:
 
 ## Distribution
 
+The UI app is distributed **separately from the CLI tool**. Users can have:
+- Just the CLI (current users, power users)
+- Just the UI (GUI-focused users)
+- **Both** (recommended - they complement each other)
+
 ### Homebrew Cask
 
 ```ruby
@@ -368,7 +373,12 @@ Install command:
 brew install --cask ramp-ui
 ```
 
-### GitHub Releases
+Users can update via Homebrew:
+```bash
+brew upgrade ramp-ui
+```
+
+### GitHub Releases (Direct Download)
 
 Use `electron-builder` to create installers for all platforms:
 
@@ -390,12 +400,113 @@ win:
 linux:
   target: AppImage
   category: Development
+publish:
+  provider: github
+  owner: robrichardson13
+  repo: ramp
 ```
 
 Release artifacts:
 - `ramp-ui-1.0.0.dmg` (macOS)
 - `ramp-ui-1.0.0.exe` (Windows installer)
 - `ramp-ui-1.0.0.AppImage` (Linux)
+
+### Installation Methods Comparison
+
+| Method | Update Process |
+|--------|----------------|
+| CLI via Homebrew | Existing `internal/autoupdate` package |
+| CLI manual install | Manual (no auto-update) |
+| **UI via Homebrew Cask** | Homebrew OR Electron auto-updater |
+| **UI via DMG/EXE** | Electron auto-updater |
+
+## Auto-Update Strategy
+
+The UI uses **Electron's built-in auto-updater** (`electron-updater` package), which provides seamless updates for all installation methods.
+
+### Why Electron Auto-Updater?
+
+- ✅ Works for **all** install methods (DMG, Homebrew Cask, Windows installer, AppImage)
+- ✅ In-app notifications ("Update available - Restart to update")
+- ✅ Auto-downloads and installs updates in background
+- ✅ Industry standard (VS Code, Slack, Discord use this)
+- ✅ Independent versioning from CLI tool
+- ✅ No need to duplicate Homebrew-specific update logic
+
+### Implementation
+
+```typescript
+// frontend/src/main/index.ts
+import { autoUpdater } from 'electron-updater';
+
+app.whenReady().then(() => {
+  // Check for updates on startup
+  autoUpdater.checkForUpdatesAndNotify();
+
+  // Check for updates every 4 hours
+  setInterval(() => {
+    autoUpdater.checkForUpdatesAndNotify();
+  }, 4 * 60 * 60 * 1000);
+});
+
+autoUpdater.on('update-available', (info) => {
+  // Show notification to user
+  mainWindow.webContents.send('update-available', info.version);
+});
+
+autoUpdater.on('update-downloaded', () => {
+  // Prompt user to restart
+  dialog.showMessageBox({
+    type: 'info',
+    title: 'Update Ready',
+    message: 'A new version has been downloaded. Restart to apply updates.',
+    buttons: ['Restart', 'Later']
+  }).then((result) => {
+    if (result.response === 0) {
+      autoUpdater.quitAndInstall();
+    }
+  });
+});
+```
+
+### User Settings
+
+Users can control update behavior in the app settings:
+
+```typescript
+// Settings panel options
+{
+  autoUpdate: {
+    enabled: true,              // Check for updates automatically
+    downloadAutomatically: true, // Download in background
+    channel: 'stable'           // stable | beta
+  }
+}
+```
+
+### Update Configuration
+
+```yaml
+# frontend/electron-builder.yml
+publish:
+  provider: github
+  owner: robrichardson13
+  repo: ramp
+  releaseType: release  # or 'draft', 'prerelease'
+```
+
+This configuration allows `electron-updater` to:
+1. Check GitHub Releases for new versions
+2. Download the appropriate installer for user's platform
+3. Verify signatures and checksums
+4. Apply updates seamlessly
+
+### Benefits
+
+- **Separate release cycles**: UI and CLI can version independently
+- **Automatic updates**: Users always have the latest features
+- **Cross-platform**: Same update mechanism for macOS, Windows, Linux
+- **Safe rollbacks**: Users can download previous versions from GitHub if needed
 
 ## Development Workflow
 
@@ -508,13 +619,17 @@ install-ui-deps:
 ### Phase 6: Distribution (Week 6)
 - [ ] Configure electron-builder for all platforms
 - [ ] Set up code signing certificates (macOS/Windows)
+- [ ] Implement Electron auto-updater integration
+- [ ] Configure update channels (stable/beta)
+- [ ] Add update settings to preferences panel
 - [ ] Create GitHub Actions workflow for releases
 - [ ] Test builds on all platforms
+- [ ] Test auto-update flow (download, install, rollback)
 - [ ] Write Homebrew cask formula
 - [ ] Create installation documentation
 - [ ] Update main README with UI download links
 
-**Deliverable:** Downloadable installers, Homebrew installation
+**Deliverable:** Downloadable installers with auto-update support, Homebrew installation
 
 ## Alternative Consideration: CLI JSON Mode
 
@@ -559,8 +674,8 @@ ramp up feat-1 --json  # JSON output with progress updates
    - **Recommendation**: Bundle for simplicity, ensure version compatibility
 2. How to handle multiple Ramp UI instances running?
    - Use different backend ports or single-instance check
-3. Auto-update strategy for the app itself?
-   - Electron has built-in update mechanisms (electron-updater)
+3. ~~Auto-update strategy for the app itself?~~
+   - ✅ **Resolved**: Use Electron's auto-updater (see Auto-Update Strategy section above)
 
 ---
 
