@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -32,8 +33,18 @@ commands to manage repositories and create feature branches.`,
 
 func Execute() {
 	// Spawn background update checker (fire and forget)
-	if autoupdate.IsAutoUpdateEnabled() {
+	// Skip if running the internal update check command to avoid recursive spawning
+	if len(os.Args) > 1 && os.Args[1] == "__internal_update_check" {
+		// Don't spawn when we ARE the background checker
+	} else if autoupdate.IsAutoUpdateEnabled() {
 		autoupdate.SpawnBackgroundChecker()
+	} else {
+		// DEBUG: Log why auto-update is disabled
+		if os.Getenv("RAMP_DEBUG_AUTOUPDATE") == "1" {
+			exePath, _ := os.Executable()
+			fmt.Fprintf(os.Stderr, "DEBUG: Auto-update disabled. Executable: %s, IsHomebrew: %v\n",
+				exePath, autoupdate.IsHomebrewInstall())
+		}
 	}
 
 	err := rootCmd.Execute()

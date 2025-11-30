@@ -194,7 +194,15 @@ func runCommandInSource(projectDir, commandScript string) error {
 	cmd.Stderr = os.Stderr
 
 	// Set up environment variables for source directory execution
-	cmd.Env = append(os.Environ(), fmt.Sprintf("RAMP_PROJECT_DIR=%s", projectDir))
+	// Filter out feature-specific variables that should not be set in source mode
+	baseEnv := []string{}
+	for _, envVar := range os.Environ() {
+		// Exclude RAMP_TREES_DIR and RAMP_WORKTREE_NAME in source mode
+		if !strings.HasPrefix(envVar, "RAMP_TREES_DIR=") && !strings.HasPrefix(envVar, "RAMP_WORKTREE_NAME=") {
+			baseEnv = append(baseEnv, envVar)
+		}
+	}
+	cmd.Env = append(baseEnv, fmt.Sprintf("RAMP_PROJECT_DIR=%s", projectDir))
 
 	// Load config to get repository paths
 	cfg, err := config.LoadConfig(projectDir)

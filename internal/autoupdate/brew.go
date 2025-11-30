@@ -33,7 +33,15 @@ func IsHomebrewInstall() bool {
 	if err != nil {
 		return false
 	}
-	return isHomebrewPath(exePath)
+
+	// Resolve symlink to get actual path (e.g., /opt/homebrew/bin/ramp -> ../Cellar/ramp/1.3.3/bin/ramp)
+	resolvedPath, err := filepath.EvalSymlinks(exePath)
+	if err != nil {
+		// If we can't resolve, fall back to original path
+		resolvedPath = exePath
+	}
+
+	return isHomebrewPath(resolvedPath)
 }
 
 // IsAutoUpdateEnabled checks if auto-update should be enabled.
@@ -81,12 +89,12 @@ func GetBrewInfo() (version string, tap string, err error) {
 	return parseBrewInfo(output)
 }
 
-// RunBrewUpdate updates the specified Homebrew tap.
-func RunBrewUpdate(tap string) error {
+// RunBrewUpdate updates all Homebrew taps to get the latest formulas.
+func RunBrewUpdate() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "brew", "update", tap)
+	cmd := exec.CommandContext(ctx, "brew", "update")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("brew update failed: %w\n%s", err, output)

@@ -1,6 +1,7 @@
 package autoupdate
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"syscall"
@@ -25,6 +26,11 @@ func SpawnBackgroundChecker() {
 
 	// Redirect output to log file
 	logPath := getLogPath()
+
+	// Ensure parent directory exists
+	dir, _ := getRampDir()
+	os.MkdirAll(dir, 0755)
+
 	logFile, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return // Can't open log file, skip
@@ -34,7 +40,13 @@ func SpawnBackgroundChecker() {
 	cmd.Stderr = logFile
 
 	// Start and immediately forget (don't wait)
-	cmd.Start()
+	if err := cmd.Start(); err != nil {
+		// Log the error before closing
+		logFile.WriteString(fmt.Sprintf("Failed to spawn background checker: %v\n", err))
+		logFile.Close()
+		return
+	}
+
 	// Close the file in parent process - child has already inherited the file descriptor
 	logFile.Close()
 	// Note: Intentionally not calling cmd.Wait() - this is fire-and-forget
