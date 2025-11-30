@@ -131,9 +131,7 @@ func runDown(featureName string) error {
 		progress.Warning(fmt.Sprintf("Trees directory for feature '%s' not found - cleaning up orphaned worktrees", featureName))
 	}
 
-	progress.Start(fmt.Sprintf("Cleaning up feature '%s' for project '%s'", featureName, cfg.Name))
-
-	// Check for uncommitted changes only if directory exists
+	// Check for uncommitted changes BEFORE starting spinner (so prompt is visible)
 	if treesDirExists {
 		hasUncommitted, err := checkForUncommittedChanges(cfg, treesDir)
 		if err != nil {
@@ -147,6 +145,8 @@ func runDown(featureName string) error {
 			}
 		}
 	}
+
+	progress.Start(fmt.Sprintf("Cleaning up feature '%s' for project '%s'", featureName, cfg.Name))
 
 	// Run cleanup script if configured and directory exists
 	if cfg.Cleanup != "" && treesDirExists {
@@ -359,6 +359,31 @@ func runCleanupScriptWithProgress(projectDir, treesDir, cleanupScript string, pr
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", key, value))
 	}
 
-	message := fmt.Sprintf("Running cleanup script: %s", cleanupScript)
-	return ui.RunCommandWithProgressQuiet(cmd, message)
+	// Update parent progress instead of creating nested spinner
+	progress.Update(fmt.Sprintf("Running cleanup script: %s", cleanupScript))
+
+	// In verbose mode, show output directly
+	if ui.Verbose {
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		return cmd.Run()
+	}
+
+	// In non-verbose mode, capture output and only show on error
+	var stdout, stderr strings.Builder
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		// Show captured output on error
+		if stdout.Len() > 0 {
+			fmt.Print(stdout.String())
+		}
+		if stderr.Len() > 0 {
+			fmt.Fprint(os.Stderr, stderr.String())
+		}
+		return err
+	}
+
+	return nil
 }
