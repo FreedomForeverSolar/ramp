@@ -10,8 +10,16 @@ import (
 	"github.com/google/uuid"
 )
 
+// getConfigPath is a function variable to allow mocking in tests
+var getConfigPath = getAppConfigPathImpl
+
 // GetAppConfigPath returns the platform-specific config path
 func GetAppConfigPath() (string, error) {
+	return getConfigPath()
+}
+
+// getAppConfigPathImpl is the actual implementation
+func getAppConfigPathImpl() (string, error) {
 	var configDir string
 
 	switch runtime.GOOS {
