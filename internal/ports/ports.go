@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 )
 
 const (
@@ -15,7 +14,7 @@ const (
 )
 
 type PortAllocations struct {
-	allocations map[string]int
+	allocations map[string][]int
 	filePath    string
 	basePort    int
 	maxPorts    int
@@ -30,9 +29,9 @@ func NewPortAllocations(projectDir string, basePort, maxPorts int) (*PortAllocat
 	}
 
 	filePath := filepath.Join(projectDir, ".ramp", PortAllocationsFile)
-	
+
 	pa := &PortAllocations{
-		allocations: make(map[string]int),
+		allocations: make(map[string][]int),
 		filePath:    filePath,
 		basePort:    basePort,
 		maxPorts:    maxPorts,
@@ -61,11 +60,28 @@ func (pa *PortAllocations) load() error {
 		return nil
 	}
 
-	if err := json.Unmarshal(data, &pa.allocations); err != nil {
+	// Try to unmarshal into new format first (map[string][]int)
+	var newFormat map[string][]int
+	if err := json.Unmarshal(data, &newFormat); err == nil {
+		// Successfully parsed as new format
+		pa.allocations = newFormat
+		return nil
+	}
+
+	// Fall back to old format (map[string]int) and migrate
+	var oldFormat map[string]int
+	if err := json.Unmarshal(data, &oldFormat); err != nil {
 		return fmt.Errorf("failed to parse port allocations file: %w", err)
 	}
 
-	return nil
+	// Convert old format to new format
+	pa.allocations = make(map[string][]int)
+	for feature, port := range oldFormat {
+		pa.allocations[feature] = []int{port}
+	}
+
+	// Save in new format for future loads
+	return pa.save()
 }
 
 func (pa *PortAllocations) save() error {
@@ -86,24 +102,25 @@ func (pa *PortAllocations) save() error {
 	return nil
 }
 
-func (pa *PortAllocations) AllocatePort(featureName string) (int, error) {
-	// Check if feature already has a port
-	if port, exists := pa.allocations[featureName]; exists {
-		return port, nil
+func (pa *PortAllocations) AllocatePort(featureName string, count int) ([]int, error) {
+	// Check if feature already has ports
+	if ports, exists := pa.allocations[featureName]; exists {
+		return ports, nil
 	}
 
-	// Find the next available port
-	port := pa.findNextAvailablePort()
-	if port == -1 {
-		return 0, fmt.Errorf("no available ports in range %d-%d", pa.basePort, pa.basePort+pa.maxPorts-1)
+	// Find N consecutive available ports
+	ports := pa.findNextAvailablePorts(count)
+	if len(ports) < count {
+		return nil, fmt.Errorf("insufficient available ports (need %d, found %d) in range %d-%d",
+			count, len(ports), pa.basePort, pa.basePort+pa.maxPorts-1)
 	}
 
-	pa.allocations[featureName] = port
+	pa.allocations[featureName] = ports
 	if err := pa.save(); err != nil {
-		return 0, fmt.Errorf("failed to save port allocation: %w", err)
+		return nil, fmt.Errorf("failed to save port allocation: %w", err)
 	}
 
-	return port, nil
+	return ports, nil
 }
 
 func (pa *PortAllocations) ReleasePort(featureName string) error {
@@ -120,46 +137,44 @@ func (pa *PortAllocations) ReleasePort(featureName string) error {
 	return nil
 }
 
+func (pa *PortAllocations) GetPorts(featureName string) ([]int, bool) {
+	ports, exists := pa.allocations[featureName]
+	return ports, exists
+}
+
 func (pa *PortAllocations) GetPort(featureName string) (int, bool) {
-	port, exists := pa.allocations[featureName]
-	return port, exists
+	ports, exists := pa.allocations[featureName]
+	if !exists || len(ports) == 0 {
+		return 0, false
+	}
+	return ports[0], true
 }
 
-func (pa *PortAllocations) findNextAvailablePort() int {
-	// Get all allocated ports and sort them
-	allocatedPorts := make([]int, 0, len(pa.allocations))
-	for _, port := range pa.allocations {
-		allocatedPorts = append(allocatedPorts, port)
-	}
-	sort.Ints(allocatedPorts)
-
-	// Find the first gap or the next port after all allocated ones
-	for port := pa.basePort; port < pa.basePort+pa.maxPorts; port++ {
-		if !pa.isPortAllocated(port, allocatedPorts) {
-			return port
+func (pa *PortAllocations) findNextAvailablePorts(count int) []int {
+	// Flatten all allocated ports into a map for O(1) lookup
+	allocatedPorts := make(map[int]bool)
+	for _, ports := range pa.allocations {
+		for _, port := range ports {
+			allocatedPorts[port] = true
 		}
 	}
 
-	return -1 // No available ports
-}
-
-func (pa *PortAllocations) isPortAllocated(port int, sortedPorts []int) bool {
-	for _, allocatedPort := range sortedPorts {
-		if allocatedPort == port {
-			return true
-		}
-		if allocatedPort > port {
-			// Since the list is sorted, we can stop here
-			break
+	// Find N consecutive available ports
+	result := make([]int, 0, count)
+	for port := pa.basePort; port < pa.basePort+pa.maxPorts && len(result) < count; port++ {
+		if !allocatedPorts[port] {
+			result = append(result, port)
 		}
 	}
-	return false
+
+	return result
 }
 
-func (pa *PortAllocations) ListAllocations() map[string]int {
-	result := make(map[string]int)
-	for feature, port := range pa.allocations {
-		result[feature] = port
+func (pa *PortAllocations) ListAllocations() map[string][]int {
+	result := make(map[string][]int)
+	for feature, ports := range pa.allocations {
+		// Copy slice to avoid external modifications
+		result[feature] = append([]int{}, ports...)
 	}
 	return result
 }

@@ -402,10 +402,10 @@ func runUp(featureName, prefix, target string) error {
 	}
 	progress.Success(worktreesMessage)
 
-	// Allocate port for this feature only if port configuration is present
-	var allocatedPort int
+	// Allocate ports for this feature only if port configuration is present
+	var allocatedPorts []int
 	if cfg.HasPortConfig() {
-		progress.Update("Allocating port for feature")
+		progress.Update("Allocating ports for feature")
 		portAllocations, err := ports.NewPortAllocations(projectDir, cfg.GetBasePort(), cfg.GetMaxPorts())
 		if err != nil {
 			progress.Error("Failed to initialize port allocations")
@@ -416,27 +416,31 @@ func runUp(featureName, prefix, target string) error {
 			return fmt.Errorf("failed to initialize port allocations: %w", err)
 		}
 
-		allocatedPort, err = portAllocations.AllocatePort(featureName)
+		allocatedPorts, err = portAllocations.AllocatePort(featureName, cfg.GetPortsPerFeature())
 		if err != nil {
-			progress.Error("Failed to allocate port")
+			progress.Error("Failed to allocate ports")
 			// Rollback all successful operations
 			if rollbackErr := rollbackUp(projectDir, treesDir, featureName, states, progress); rollbackErr != nil {
 				return fmt.Errorf("port allocation failed (%v) and rollback failed: %w", err, rollbackErr)
 			}
-			return fmt.Errorf("failed to allocate port for feature: %w", err)
+			return fmt.Errorf("failed to allocate ports for feature: %w", err)
 		}
 
-		// Mark that we allocated a port
+		// Mark that we allocated ports
 		for _, state := range states {
 			state.PortAllocated = true
 		}
-		progress.Success(fmt.Sprintf("Allocated port %d", allocatedPort))
+		if len(allocatedPorts) == 1 {
+			progress.Success(fmt.Sprintf("Allocated port %d", allocatedPorts[0]))
+		} else {
+			progress.Success(fmt.Sprintf("Allocated ports %d-%d", allocatedPorts[0], allocatedPorts[len(allocatedPorts)-1]))
+		}
 	}
 
 	// Process env files for each repository if configured
 	if hasEnvFiles(repos) {
 		progress.Update("Processing environment files")
-		envVars := buildEnvVars(projectDir, treesDir, featureName, allocatedPort, cfg, repos)
+		envVars := buildEnvVars(projectDir, treesDir, featureName, allocatedPorts, cfg, repos)
 
 		for name, repo := range repos {
 			if len(repo.EnvFiles) > 0 {
@@ -646,7 +650,7 @@ func runSetupScriptWithProgress(projectDir, treesDir, setupScript string, progre
 	cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_TREES_DIR=%s", treesDir))
 	cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_WORKTREE_NAME=%s", featureName))
 
-	// Add RAMP_PORT environment variable only if port configuration exists
+	// Add RAMP_PORT environment variables only if port configuration exists
 	cfg, err := config.LoadConfig(projectDir)
 	if err != nil {
 		return fmt.Errorf("failed to load config for env vars: %w", err)
@@ -658,8 +662,8 @@ func runSetupScriptWithProgress(projectDir, treesDir, setupScript string, progre
 			return fmt.Errorf("failed to initialize port allocations for env vars: %w", err)
 		}
 
-		if port, exists := portAllocations.GetPort(featureName); exists {
-			cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_PORT=%d", port))
+		if ports, exists := portAllocations.GetPorts(featureName); exists {
+			setPortEnvVars(cmd, ports)
 		}
 	}
 
@@ -694,7 +698,7 @@ func hasEnvFiles(repos map[string]*config.Repo) bool {
 }
 
 // buildEnvVars builds the environment variables map for env file processing
-func buildEnvVars(projectDir, treesDir, featureName string, allocatedPort int, cfg *config.Config, repos map[string]*config.Repo) map[string]string {
+func buildEnvVars(projectDir, treesDir, featureName string, allocatedPorts []int, cfg *config.Config, repos map[string]*config.Repo) map[string]string {
 	envVars := make(map[string]string)
 
 	// Standard RAMP variables
@@ -702,9 +706,12 @@ func buildEnvVars(projectDir, treesDir, featureName string, allocatedPort int, c
 	envVars["RAMP_TREES_DIR"] = treesDir
 	envVars["RAMP_WORKTREE_NAME"] = featureName
 
-	// Add port if configured
-	if cfg.HasPortConfig() && allocatedPort > 0 {
-		envVars["RAMP_PORT"] = fmt.Sprintf("%d", allocatedPort)
+	// Add port variables if configured
+	if cfg.HasPortConfig() && len(allocatedPorts) > 0 {
+		envVars["RAMP_PORT"] = fmt.Sprintf("%d", allocatedPorts[0])
+		for i, port := range allocatedPorts {
+			envVars[fmt.Sprintf("RAMP_PORT_%d", i+1)] = fmt.Sprintf("%d", port)
+		}
 	}
 
 	// Add repo path variables
