@@ -74,6 +74,7 @@ type Config struct {
 	Commands            []*Command `yaml:"commands,omitempty"`
 	BasePort            int        `yaml:"base_port,omitempty"`
 	MaxPorts            int        `yaml:"max_ports,omitempty"`
+	PortsPerFeature     int        `yaml:"ports_per_feature,omitempty"`
 	Prompts             []*Prompt  `yaml:"prompts,omitempty"`
 }
 
@@ -115,6 +116,13 @@ func (c *Config) GetMaxPorts() int {
 		return 100 // Default max ports
 	}
 	return c.MaxPorts
+}
+
+func (c *Config) GetPortsPerFeature() int {
+	if c.PortsPerFeature <= 0 {
+		return 1 // Default to 1 for backward compatibility
+	}
+	return c.PortsPerFeature
 }
 
 func (c *Config) HasPortConfig() bool {
@@ -289,6 +297,9 @@ func SaveConfig(cfg *Config, projectDir string) error {
 	}
 	if cfg.MaxPorts > 0 {
 		yamlBuilder.WriteString(fmt.Sprintf("max_ports: %d\n", cfg.MaxPorts))
+	}
+	if cfg.PortsPerFeature > 0 {
+		yamlBuilder.WriteString(fmt.Sprintf("ports_per_feature: %d\n", cfg.PortsPerFeature))
 	}
 
 	// Setup and cleanup scripts
