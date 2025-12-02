@@ -112,8 +112,8 @@ func (s *Server) RemoveProject(w http.ResponseWriter, r *http.Request) {
 }
 
 // loadProjectFromPath loads a project from its filesystem path
-func loadProjectFromPath(id, path string, addedAt interface{}) (*Project, error) {
-	cfg, err := config.LoadConfig(filepath.Join(path, ".ramp", "ramp.yaml"))
+func loadProjectFromPath(id, projectPath string, addedAt interface{}) (*Project, error) {
+	cfg, err := config.LoadConfig(projectPath)
 	if err != nil {
 		return nil, err
 	}
@@ -144,16 +144,19 @@ func loadProjectFromPath(id, path string, addedAt interface{}) (*Project, error)
 	}
 
 	// Get existing features (worktrees)
-	features := listExistingFeatures(path)
+	features := listExistingFeatures(projectPath)
 
 	project := &Project{
-		ID:       id,
-		Name:     cfg.Name,
-		Path:     path,
-		Repos:    repos,
-		Features: features,
-		Commands: commands,
-		BasePort: cfg.BasePort,
+		ID:                  id,
+		Name:                cfg.Name,
+		Path:                projectPath,
+		Repos:               repos,
+		Features:            features,
+		Commands:            commands,
+		BasePort:            cfg.BasePort,
+		DefaultBranchPrefix: cfg.DefaultBranchPrefix,
+		HasSetupScript:      cfg.Setup != "",
+		HasCleanupScript:    cfg.Cleanup != "",
 	}
 
 	// Set addedAt if it's a time.Time

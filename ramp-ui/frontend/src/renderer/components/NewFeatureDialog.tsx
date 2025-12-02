@@ -3,15 +3,22 @@ import { useCreateFeature } from '../hooks/useRampAPI';
 
 interface NewFeatureDialogProps {
   projectId: string;
+  defaultBranchPrefix?: string;
   onClose: () => void;
 }
 
 export default function NewFeatureDialog({
   projectId,
+  defaultBranchPrefix,
   onClose,
 }: NewFeatureDialogProps) {
   const [name, setName] = useState('');
   const createFeature = useCreateFeature(projectId);
+
+  // Build the full branch name preview
+  const branchPreview = defaultBranchPrefix
+    ? `${defaultBranchPrefix}${name || '<feature-name>'}`
+    : name || '<feature-name>';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,6 +70,14 @@ export default function NewFeatureDialog({
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                 Use lowercase with hyphens (e.g., my-feature)
               </p>
+              {defaultBranchPrefix && (
+                <div className="mt-2 p-2 bg-gray-100 dark:bg-gray-700 rounded text-xs">
+                  <span className="text-gray-500 dark:text-gray-400">Branch: </span>
+                  <span className="font-mono text-gray-700 dark:text-gray-300">
+                    {branchPreview}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 

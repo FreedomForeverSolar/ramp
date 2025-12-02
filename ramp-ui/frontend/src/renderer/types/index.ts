@@ -9,6 +9,9 @@ export interface Project {
   features: string[];
   commands: Command[];
   basePort?: number;
+  defaultBranchPrefix?: string;
+  hasSetupScript: boolean;
+  hasCleanupScript: boolean;
 }
 
 export interface Repo {

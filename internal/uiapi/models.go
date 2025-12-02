@@ -4,14 +4,17 @@ import "time"
 
 // Project represents a Ramp project in the UI
 type Project struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	Path      string    `json:"path"`
-	AddedAt   time.Time `json:"addedAt"`
-	Repos     []Repo    `json:"repos,omitempty"`
-	Features  []string  `json:"features,omitempty"`
-	Commands  []Command `json:"commands,omitempty"`
-	BasePort  int       `json:"basePort,omitempty"`
+	ID                  string    `json:"id"`
+	Name                string    `json:"name"`
+	Path                string    `json:"path"`
+	AddedAt             time.Time `json:"addedAt"`
+	Repos               []Repo    `json:"repos,omitempty"`
+	Features            []string  `json:"features,omitempty"`
+	Commands            []Command `json:"commands,omitempty"`
+	BasePort            int       `json:"basePort,omitempty"`
+	DefaultBranchPrefix string    `json:"defaultBranchPrefix,omitempty"`
+	HasSetupScript      bool      `json:"hasSetupScript"`
+	HasCleanupScript    bool      `json:"hasCleanupScript"`
 }
 
 // Repo represents a repository in a project
