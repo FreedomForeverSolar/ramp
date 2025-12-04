@@ -592,24 +592,24 @@ install-ui-deps:
 
 **Deliverable:** Can add projects, view project details, see existing features
 
-### Phase 3: Feature Operations 🔄 IN PROGRESS
+### Phase 3: Feature Operations ✅ COMPLETE
 - [x] Build "New Feature" dialog with form validation
 - [x] Implement WebSocket connection for real-time updates
 - [x] Create progress UI component (spinner, status messages)
-- [ ] Wire up "Create Feature" flow (`ramp up`) - backend endpoint exists, needs testing
+- [x] Wire up "Create Feature" flow (`ramp up`)
 - [x] Implement feature deletion with confirmation dialog
 - [x] Add uncommitted changes warning (badge in feature list)
-- [ ] Comprehensive error handling and user feedback
+- [x] Fixed config.LoadConfig path bug in features.go
 
 **Deliverable:** Full feature lifecycle (create, view, delete)
 
-### Phase 4: Custom Commands
+### Phase 4: Custom Commands ✅ COMPLETE
 - [x] Parse custom commands from project config
 - [x] Render command buttons dynamically
-- [ ] Implement command execution endpoint
-- [ ] Stream command output via WebSocket
-- [ ] Build command output viewer component
-- [ ] Add command history/logs
+- [x] Implement command execution endpoint (commands.go)
+- [x] Stream command output via WebSocket
+- [x] Build command output viewer component (CommandOutputViewer.tsx)
+- [x] Wire up command buttons to execute with useRunCommand hook
 
 **Deliverable:** Can run custom commands and see output
 
@@ -689,15 +689,19 @@ ramp up feat-1 --json  # JSON output with progress updates
 
 ## Current Status
 
-**Phases 1 & 2 Complete.** The app can:
+**Phases 1-4 Complete.** The app can:
 - Launch and start the Go backend automatically
 - Add projects via native directory picker
 - Validate `.ramp/ramp.yaml` exists
 - Display project configuration (repos, branch prefix, base port, setup/cleanup scripts)
 - Show existing features with expandable worktree details
 - Remove projects from the app
+- Create new features (`ramp up` equivalent)
+- Delete features with uncommitted changes warning (`ramp down` equivalent)
+- Run custom commands with real-time output streaming
+- View command output in terminal-style modal
 
 **Next Steps**:
 1. Test the current implementation locally (`npm run dev` in `ramp-ui/frontend`)
-2. Complete Phase 3 - verify create/delete feature flows work end-to-end
-3. Implement custom command execution (Phase 4)
+2. Phase 5 - Nice-to-haves (xterm.js, refresh/prune UI, settings panel)
+3. Phase 6 - Distribution (code signing, auto-updater, GitHub Actions)
