@@ -116,6 +116,17 @@ export function useDeleteFeature(projectId: string) {
   });
 }
 
+// Commands
+export function useRunCommand(projectId: string) {
+  return useMutation<SuccessResponse, Error, { name: string; featureName?: string }>({
+    mutationFn: ({ name, featureName }) =>
+      fetchAPI<SuccessResponse>(`/projects/${projectId}/commands/${name}/run`, {
+        method: 'POST',
+        body: JSON.stringify({ featureName }),
+      }),
+  });
+}
+
 // WebSocket hook for real-time updates
 export function useWebSocket(onMessage: (message: unknown) => void) {
   const wsRef = { current: null as WebSocket | null };

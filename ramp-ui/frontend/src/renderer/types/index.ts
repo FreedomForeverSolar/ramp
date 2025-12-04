@@ -54,7 +54,7 @@ export interface SuccessResponse {
 
 // WebSocket Messages
 export interface WSMessage {
-  type: 'progress' | 'error' | 'complete' | 'connected';
+  type: 'progress' | 'error' | 'complete' | 'connected' | 'output';
   operation?: string;
   message: string;
   percentage?: number;

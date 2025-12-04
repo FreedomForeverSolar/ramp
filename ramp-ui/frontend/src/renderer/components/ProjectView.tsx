@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Project, WSMessage } from '../types';
-import { useFeatures, useRemoveProject, useWebSocket } from '../hooks/useRampAPI';
+import { useFeatures, useRemoveProject, useRunCommand, useWebSocket } from '../hooks/useRampAPI';
 import FeatureList from './FeatureList';
 import NewFeatureDialog from './NewFeatureDialog';
+import CommandOutputViewer from './CommandOutputViewer';
 
 interface ProjectViewProps {
   project: Project;
@@ -11,20 +12,37 @@ interface ProjectViewProps {
 export default function ProjectView({ project }: ProjectViewProps) {
   const [showNewFeatureDialog, setShowNewFeatureDialog] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [runningCommand, setRunningCommand] = useState<string | null>(null);
+  const [commandOutput, setCommandOutput] = useState<string[]>([]);
   const { data: featuresData, isLoading: featuresLoading } = useFeatures(project.id);
   const removeProject = useRemoveProject();
+  const runCommand = useRunCommand(project.id);
+
+  // WebSocket message handler
+  const handleWSMessage = useCallback((message: unknown) => {
+    const msg = message as WSMessage;
+    if (msg.operation === 'command') {
+      if (msg.type === 'output') {
+        setCommandOutput((prev) => [...prev, msg.message]);
+      } else if (msg.type === 'complete' || msg.type === 'error') {
+        setRunningCommand(null);
+        if (msg.type === 'error') {
+          setCommandOutput((prev) => [...prev, `Error: ${msg.message}`]);
+        }
+      }
+    } else {
+      // Handle feature operations
+      if (msg.type === 'progress' || msg.type === 'error') {
+        setStatusMessage(msg.message);
+      } else if (msg.type === 'complete') {
+        setStatusMessage(msg.message);
+        setTimeout(() => setStatusMessage(null), 3000);
+      }
+    }
+  }, []);
 
   // WebSocket for real-time updates
-  const { connect, disconnect } = useWebSocket((message) => {
-    const msg = message as WSMessage;
-    if (msg.type === 'progress' || msg.type === 'error') {
-      setStatusMessage(msg.message);
-    } else if (msg.type === 'complete') {
-      setStatusMessage(msg.message);
-      // Clear message after 3 seconds
-      setTimeout(() => setStatusMessage(null), 3000);
-    }
-  });
+  const { connect, disconnect } = useWebSocket(handleWSMessage);
 
   useEffect(() => {
     connect();
@@ -34,6 +52,20 @@ export default function ProjectView({ project }: ProjectViewProps) {
   const handleRemoveProject = async () => {
     if (confirm(`Remove "${project.name}" from Ramp UI?\n\nThis will not delete any files.`)) {
       await removeProject.mutateAsync(project.id);
+    }
+  };
+
+  const handleRunCommand = async (cmdName: string) => {
+    setCommandOutput([]);
+    setRunningCommand(cmdName);
+    try {
+      await runCommand.mutateAsync({ name: cmdName });
+    } catch (error) {
+      setCommandOutput((prev) => [
+        ...prev,
+        `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      ]);
+      setRunningCommand(null);
     }
   };
 
@@ -188,7 +220,9 @@ export default function ProjectView({ project }: ProjectViewProps) {
             {project.commands.map((cmd) => (
               <button
                 key={cmd.name}
-                className="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-md transition-colors"
+                onClick={() => handleRunCommand(cmd.name)}
+                disabled={runningCommand !== null}
+                className="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-md transition-colors disabled:opacity-50"
               >
                 {cmd.name}
               </button>
@@ -203,6 +237,19 @@ export default function ProjectView({ project }: ProjectViewProps) {
           projectId={project.id}
           defaultBranchPrefix={project.defaultBranchPrefix}
           onClose={() => setShowNewFeatureDialog(false)}
+        />
+      )}
+
+      {/* Command Output Viewer */}
+      {(runningCommand !== null || commandOutput.length > 0) && (
+        <CommandOutputViewer
+          commandName={runningCommand || 'Command'}
+          output={commandOutput}
+          isRunning={runningCommand !== null}
+          onClose={() => {
+            setCommandOutput([]);
+            setRunningCommand(null);
+          }}
         />
       )}
     </div>

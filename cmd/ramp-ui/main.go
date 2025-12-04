@@ -41,6 +41,10 @@ func main() {
 	apiRouter.HandleFunc("/projects/{id}/features", server.CreateFeature).Methods("POST")
 	apiRouter.HandleFunc("/projects/{id}/features/{name}", server.DeleteFeature).Methods("DELETE")
 
+	// Command routes
+	apiRouter.HandleFunc("/projects/{id}/commands", server.ListCommands).Methods("GET")
+	apiRouter.HandleFunc("/projects/{id}/commands/{name}/run", server.RunCommand).Methods("POST")
+
 	// Health check
 	router.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

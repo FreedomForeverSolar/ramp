@@ -55,7 +55,7 @@ func (s *Server) CreateFeature(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Load project config
-	cfg, err := config.LoadConfig(filepath.Join(ref.Path, ".ramp", "ramp.yaml"))
+	cfg, err := config.LoadConfig(ref.Path)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Failed to load project config", err.Error())
 		return
@@ -144,7 +144,7 @@ func (s *Server) DeleteFeature(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Load project config
-	cfg, err := config.LoadConfig(filepath.Join(ref.Path, ".ramp", "ramp.yaml"))
+	cfg, err := config.LoadConfig(ref.Path)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Failed to load project config", err.Error())
 		return
