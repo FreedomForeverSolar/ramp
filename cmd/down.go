@@ -296,8 +296,8 @@ func runCleanupScript(projectDir, treesDir, cleanupScript string) error {
 		return fmt.Errorf("failed to initialize port allocations for env vars: %w", err)
 	}
 
-	if port, exists := portAllocations.GetPort(featureName); exists {
-		cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_PORT=%d", port))
+	if ports, exists := portAllocations.GetPorts(featureName); exists {
+		setPortEnvVars(cmd, ports)
 	}
 
 	repos := cfg.GetRepos()
@@ -328,7 +328,7 @@ func runCleanupScriptWithProgress(projectDir, treesDir, cleanupScript string, pr
 	cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_TREES_DIR=%s", treesDir))
 	cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_WORKTREE_NAME=%s", featureName))
 
-	// Add RAMP_PORT environment variable
+	// Add RAMP_PORT environment variables
 	cfg, err := config.LoadConfig(projectDir)
 	if err != nil {
 		return fmt.Errorf("failed to load config for env vars: %w", err)
@@ -339,8 +339,8 @@ func runCleanupScriptWithProgress(projectDir, treesDir, cleanupScript string, pr
 		return fmt.Errorf("failed to initialize port allocations for env vars: %w", err)
 	}
 
-	if port, exists := portAllocations.GetPort(featureName); exists {
-		cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_PORT=%d", port))
+	if ports, exists := portAllocations.GetPorts(featureName); exists {
+		setPortEnvVars(cmd, ports)
 	}
 
 	repos := cfg.GetRepos()

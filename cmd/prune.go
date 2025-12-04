@@ -386,13 +386,13 @@ func createCleanupCommand(projectDir, treesDir, featureName, scriptPath string) 
 	cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_TREES_DIR=%s", treesDir))
 	cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_WORKTREE_NAME=%s", featureName))
 
-	// Add RAMP_PORT environment variable
+	// Add RAMP_PORT environment variables
 	cfg, err := config.LoadConfig(projectDir)
 	if err == nil {
 		portAllocations, err := ports.NewPortAllocations(projectDir, cfg.GetBasePort(), cfg.GetMaxPorts())
 		if err == nil {
-			if port, exists := portAllocations.GetPort(featureName); exists {
-				cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_PORT=%d", port))
+			if ports, exists := portAllocations.GetPorts(featureName); exists {
+				setPortEnvVars(cmd, ports)
 			}
 		}
 

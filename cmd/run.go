@@ -155,8 +155,8 @@ func runCommandWithEnv(projectDir, treesDir, commandScript string) error {
 		return fmt.Errorf("failed to initialize port allocations for env vars: %w", err)
 	}
 
-	if port, exists := portAllocations.GetPort(featureName); exists {
-		cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_PORT=%d", port))
+	if ports, exists := portAllocations.GetPorts(featureName); exists {
+		setPortEnvVars(cmd, ports)
 	}
 
 	repos := cfg.GetRepos()
