@@ -160,9 +160,9 @@ func runCommandWithEnv(projectDir, treesDir, commandScript string) error {
 	}
 
 	repos := cfg.GetRepos()
-	for name, repo := range repos {
+	for name := range repos {
 		envVarName := config.GenerateEnvVarName(name)
-		repoPath := repo.GetRepoPath(projectDir)
+		repoPath := filepath.Join(treesDir, name)
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", envVarName, repoPath))
 	}
 
