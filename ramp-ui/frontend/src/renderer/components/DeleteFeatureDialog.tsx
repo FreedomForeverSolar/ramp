@@ -1,33 +1,29 @@
 import { useState, useCallback } from 'react';
-import { useCreateFeature, useWebSocket } from '../hooks/useRampAPI';
+import { useDeleteFeature, useWebSocket } from '../hooks/useRampAPI';
 import { WSMessage } from '../types';
 
-interface NewFeatureDialogProps {
+interface DeleteFeatureDialogProps {
   projectId: string;
-  defaultBranchPrefix?: string;
+  featureName: string;
+  hasUncommittedChanges: boolean;
   onClose: () => void;
 }
 
-export default function NewFeatureDialog({
+export default function DeleteFeatureDialog({
   projectId,
-  defaultBranchPrefix,
+  featureName,
+  hasUncommittedChanges,
   onClose,
-}: NewFeatureDialogProps) {
-  const [name, setName] = useState('');
-  const [isCreating, setIsCreating] = useState(false);
+}: DeleteFeatureDialogProps) {
+  const [isDeleting, setIsDeleting] = useState(false);
   const [progressMessages, setProgressMessages] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const createFeature = useCreateFeature(projectId);
+  const deleteFeature = useDeleteFeature(projectId);
 
-  // Build the full branch name preview
-  const branchPreview = defaultBranchPrefix
-    ? `${defaultBranchPrefix}${name || '<feature-name>'}`
-    : name || '<feature-name>';
-
-  // Handle WebSocket messages for the "up" operation
+  // Handle WebSocket messages for the "down" operation
   const handleWSMessage = useCallback((message: unknown) => {
     const msg = message as WSMessage;
-    if (msg.operation !== 'up') return;
+    if (msg.operation !== 'down') return;
 
     if (msg.type === 'progress') {
       setProgressMessages(prev => [...prev, msg.message]);
@@ -39,19 +35,16 @@ export default function NewFeatureDialog({
     }
   }, [onClose]);
 
-  // Only subscribe to WebSocket while creating
-  useWebSocket(handleWSMessage, isCreating);
+  // Only subscribe to WebSocket while deleting
+  useWebSocket(handleWSMessage, isDeleting);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim()) return;
-
-    setIsCreating(true);
+  const handleDelete = async () => {
+    setIsDeleting(true);
     setProgressMessages([]);
     setError(null);
 
     try {
-      await createFeature.mutateAsync({ name: name.trim() });
+      await deleteFeature.mutateAsync(featureName);
       // Don't close here - wait for WebSocket 'complete' message
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
@@ -61,25 +54,20 @@ export default function NewFeatureDialog({
   const handleRetry = () => {
     setError(null);
     setProgressMessages([]);
-    setIsCreating(true);
-    createFeature.mutateAsync({ name: name.trim() }).catch(err => {
+    setIsDeleting(true);
+    deleteFeature.mutateAsync(featureName).catch(err => {
       setError(err instanceof Error ? err.message : 'Unknown error');
     });
   };
 
-  const handleCancel = () => {
-    // Allow closing even during creation (operation will continue in background)
-    onClose();
-  };
-
-  // Progress view (shown during creation)
+  // Progress view (shown during deletion)
   const renderProgressView = () => (
     <div className="p-6">
       <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-        Creating "{name}"
+        Deleting "{featureName}"
       </h2>
       <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-        Setting up feature worktrees...
+        Removing worktrees and cleaning up...
       </p>
 
       <div className="mt-4 space-y-2 max-h-64 overflow-y-auto">
@@ -136,7 +124,7 @@ export default function NewFeatureDialog({
               Try Again
             </button>
             <button
-              onClick={handleCancel}
+              onClick={onClose}
               className="px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 rounded-md transition-colors"
             >
               Cancel
@@ -147,48 +135,36 @@ export default function NewFeatureDialog({
     </div>
   );
 
-  // Form view (initial state)
-  const renderFormView = () => (
-    <form onSubmit={handleSubmit}>
-      <div className="p-6">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-          New Feature
-        </h2>
-        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          Create a new feature branch and worktrees across all repos.
-        </p>
+  // Confirm view (initial state)
+  const renderConfirmView = () => (
+    <div className="p-6">
+      <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+        Delete Feature
+      </h2>
+      <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+        Delete "<span className="font-medium text-gray-900 dark:text-white">{featureName}</span>"?
+      </p>
+      <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+        This will remove all worktrees for this feature.
+      </p>
 
-        <div className="mt-4">
-          <label
-            htmlFor="feature-name"
-            className="block text-sm font-medium text-gray-700 dark:text-gray-300"
-          >
-            Feature name
-          </label>
-          <input
-            type="text"
-            id="feature-name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g., user-authentication"
-            className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-            autoFocus
-          />
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            Use lowercase with hyphens (e.g., my-feature)
+      {hasUncommittedChanges && (
+        <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
+          <div className="flex items-center gap-2">
+            <svg className="w-5 h-5 text-yellow-600 dark:text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
+              This feature has uncommitted changes
+            </p>
+          </div>
+          <p className="mt-1 text-sm text-yellow-700 dark:text-yellow-300 ml-7">
+            Any unsaved work will be lost.
           </p>
-          {defaultBranchPrefix && (
-            <div className="mt-2 p-2 bg-gray-100 dark:bg-gray-700 rounded text-xs">
-              <span className="text-gray-500 dark:text-gray-400">Branch: </span>
-              <span className="font-mono text-gray-700 dark:text-gray-300">
-                {branchPreview}
-              </span>
-            </div>
-          )}
         </div>
-      </div>
+      )}
 
-      <div className="px-6 py-4 bg-gray-50 dark:bg-gray-700/50 rounded-b-lg flex justify-end gap-3">
+      <div className="mt-6 flex justify-end gap-3">
         <button
           type="button"
           onClick={onClose}
@@ -197,14 +173,13 @@ export default function NewFeatureDialog({
           Cancel
         </button>
         <button
-          type="submit"
-          disabled={!name.trim() || createFeature.isPending}
-          className="px-4 py-2 text-sm font-medium text-white bg-primary-500 hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-colors"
+          onClick={handleDelete}
+          className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors"
         >
-          Create Feature
+          Delete
         </button>
       </div>
-    </form>
+    </div>
   );
 
   return (
@@ -212,12 +187,12 @@ export default function NewFeatureDialog({
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/50"
-        onClick={isCreating ? undefined : onClose}
+        onClick={isDeleting ? undefined : onClose}
       />
 
       {/* Dialog */}
       <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md mx-4">
-        {isCreating ? renderProgressView() : renderFormView()}
+        {isDeleting ? renderProgressView() : renderConfirmView()}
       </div>
     </div>
   );

@@ -3,28 +3,14 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"ramp/internal/config"
-	"ramp/internal/envfile"
-	"ramp/internal/git"
-	"ramp/internal/ports"
+	"ramp/internal/operations"
 	"ramp/internal/ui"
 )
-
-type UpState struct {
-	RepoName         string
-	WorktreeCreated  bool
-	WorktreeDir      string
-	BranchName       string
-	TreesDirCreated  bool
-	PortAllocated    bool
-	SetupRan         bool
-}
 
 var prefixFlag string
 var noPrefixFlag bool
@@ -175,13 +161,10 @@ func runUp(featureName, prefix, target string) error {
 	// Determine if we should refresh based on flags and config
 	shouldRefreshRepos := false
 	if noRefreshFlag {
-		// --no-refresh: skip all refresh operations
 		shouldRefreshRepos = false
 	} else if refreshFlag {
-		// --refresh: force refresh for all repos
 		shouldRefreshRepos = true
 	} else {
-		// No flags: check if any repo has auto_refresh enabled
 		for _, repo := range repos {
 			if repo.ShouldAutoRefresh() {
 				shouldRefreshRepos = true
@@ -190,21 +173,18 @@ func runUp(featureName, prefix, target string) error {
 		}
 	}
 
-	// Create a single progress instance for the entire operation
+	// Create a progress instance for refresh
 	progress := ui.NewProgress()
 
 	if shouldRefreshRepos {
 		progress.Start("Auto-refreshing repositories before creating feature")
 
-		// Filter repos that should be refreshed
 		reposToRefresh := make(map[string]*config.Repo)
 		for name, repo := range repos {
 			shouldRefreshThisRepo := false
 			if refreshFlag {
-				// --refresh: force refresh all repos
 				shouldRefreshThisRepo = true
 			} else {
-				// No --refresh flag: respect repo config
 				shouldRefreshThisRepo = repo.ShouldAutoRefresh()
 			}
 
@@ -215,11 +195,9 @@ func runUp(featureName, prefix, target string) error {
 			}
 		}
 
-		// Refresh all selected repositories in parallel
 		if len(reposToRefresh) > 0 {
 			results := RefreshRepositoriesParallel(projectDir, reposToRefresh, progress)
 
-			// Display results
 			for _, result := range results {
 				switch result.status {
 				case "success":
@@ -233,501 +211,26 @@ func runUp(featureName, prefix, target string) error {
 		}
 
 		progress.Success("Auto-refresh completed")
-
-		// Restart progress for the main feature creation
-		progress.Start(fmt.Sprintf("Creating feature '%s' for project '%s'", featureName, cfg.Name))
-	} else {
-		// No refresh needed, start progress for feature creation
-		progress.Start(fmt.Sprintf("Creating feature '%s' for project '%s'", featureName, cfg.Name))
 	}
 
-	// Determine effective prefix
-	// Priority: --no-prefix flag (empty) > --prefix flag (custom) > config default
-	var effectivePrefix string
-	if noPrefixFlag {
-		// Explicitly no prefix
-		effectivePrefix = ""
-	} else if prefix != "" {
-		// Custom prefix from flag
-		effectivePrefix = prefix
-	} else {
-		// Default from config
-		effectivePrefix = cfg.GetBranchPrefix()
+	// Call operations.Up() with CLI progress reporter
+	result, err := operations.Up(operations.UpOptions{
+		FeatureName:  featureName,
+		ProjectDir:   projectDir,
+		Config:       cfg,
+		Progress:     operations.NewCLIProgressReporter(),
+		Prefix:       prefix,
+		NoPrefix:     noPrefixFlag,
+		Target:       target,
+		ForceRefresh: refreshFlag,
+		SkipRefresh:  noRefreshFlag,
+	})
+
+	if err != nil {
+		return err
 	}
 
-	treesDir := filepath.Join(projectDir, "trees", featureName)
-
-	// Resolve target branch for each repository if target is specified
-	var sourceBranches map[string]string
-	if target != "" {
-		progress.Update("Resolving target branch across repositories")
-		sourceBranches = make(map[string]string)
-		for name, repo := range repos {
-			repoDir := repo.GetRepoPath(projectDir)
-			sourceBranch, err := git.ResolveSourceBranch(repoDir, target, effectivePrefix)
-			if err != nil {
-				// If target doesn't exist in this repo, we'll use default branch (no source specified)
-				progress.Warning(fmt.Sprintf("%s: target '%s' not found, will use default branch", name, target))
-				// Empty string indicates to use default behavior
-				sourceBranches[name] = ""
-			} else {
-				sourceBranches[name] = sourceBranch
-				progress.Info(fmt.Sprintf("%s: resolved target '%s' to source branch '%s'", name, target, sourceBranch))
-			}
-		}
-		progress.Success("Target branch resolution completed")
-	}
-
-	// Phase 1: Validation - check all preconditions before making any changes
-	progress.Start("Validating repositories and checking for conflicts")
-	states := make(map[string]*UpState)
-	branchName := effectivePrefix + featureName
-
-	for name, repo := range repos {
-		repoDir := repo.GetRepoPath(projectDir)
-		worktreeDir := filepath.Join(treesDir, name)
-
-		if !git.IsGitRepo(repoDir) {
-			progress.Error(fmt.Sprintf("Source repo not found at %s even after auto-initialization", repoDir))
-			return fmt.Errorf("source repo not found at %s even after auto-initialization", repoDir)
-		}
-
-		// Check if worktree directory already exists
-		if _, err := os.Stat(worktreeDir); err == nil {
-			progress.Error(fmt.Sprintf("Worktree directory already exists: %s", worktreeDir))
-			return fmt.Errorf("worktree directory already exists: %s", worktreeDir)
-		}
-
-		// Check branch status to provide informative message
-		localExists, err := git.LocalBranchExists(repoDir, branchName)
-		if err != nil {
-			progress.Error(fmt.Sprintf("Failed to check local branch for %s", name))
-			return fmt.Errorf("failed to check local branch for %s: %w", name, err)
-		}
-
-		remoteExists, err := git.RemoteBranchExists(repoDir, branchName)
-		if err != nil {
-			progress.Error(fmt.Sprintf("Failed to check remote branch for %s", name))
-			return fmt.Errorf("failed to check remote branch for %s: %w", name, err)
-		}
-
-		// When using a target, we create new branches, so existing branches are conflicts
-		if target != "" && sourceBranches[name] != "" {
-			if localExists {
-				progress.Error(fmt.Sprintf("Branch %s already exists locally in %s", branchName, name))
-				return fmt.Errorf("branch %s already exists locally in repository %s", branchName, name)
-			}
-			sourceBranch := sourceBranches[name]
-			progress.Info(fmt.Sprintf("%s: will create worktree with new branch %s from %s", name, branchName, sourceBranch))
-		} else if target != "" && sourceBranches[name] == "" {
-			// Target was specified but not found in this repo, use default behavior
-			if localExists {
-				progress.Info(fmt.Sprintf("%s: will create worktree with existing local branch %s", name, branchName))
-			} else if remoteExists {
-				progress.Info(fmt.Sprintf("%s: will create worktree with existing remote branch %s", name, branchName))
-			} else {
-				progress.Info(fmt.Sprintf("%s: will create worktree with new branch %s from default branch", name, branchName))
-			}
-		} else {
-			// Original behavior: use existing branches or create new ones
-			if localExists {
-				progress.Info(fmt.Sprintf("%s: will create worktree with existing local branch %s", name, branchName))
-			} else if remoteExists {
-				progress.Info(fmt.Sprintf("%s: will create worktree with existing remote branch %s", name, branchName))
-			} else {
-				progress.Info(fmt.Sprintf("%s: will create worktree with new branch %s", name, branchName))
-			}
-		}
-
-		states[name] = &UpState{
-			RepoName:        name,
-			WorktreeCreated: false,
-			WorktreeDir:     worktreeDir,
-			BranchName:      branchName,
-			TreesDirCreated: false,
-			PortAllocated:   false,
-			SetupRan:        false,
-		}
-	}
-
-	progress.Success("Validation completed successfully")
-
-	// Phase 2: Execute operations with state tracking
-	progress.Start("Creating trees directory")
-	if err := os.MkdirAll(treesDir, 0755); err != nil {
-		progress.Error("Failed to create trees directory")
-		return fmt.Errorf("failed to create trees directory: %w", err)
-	}
-
-	// Mark that we created the trees directory
-	for _, state := range states {
-		state.TreesDirCreated = true
-	}
-	progress.Success("Trees directory created")
-
-	var worktreesMessage string
-	if len(repos) == 1 {
-		for name := range repos {
-			worktreesMessage = fmt.Sprintf("Created worktree: %s", name)
-		}
-	} else {
-		worktreesMessage = fmt.Sprintf("Created %d worktrees", len(repos))
-	}
-
-	progress.Update("Creating worktrees")
-	for name, repo := range repos {
-		state := states[name]
-		repoDir := repo.GetRepoPath(projectDir)
-
-		var err error
-		if target != "" && sourceBranches[name] != "" {
-			// Use target source branch (quiet version to avoid nested spinners)
-			sourceBranch := sourceBranches[name]
-			err = git.CreateWorktreeFromSourceQuiet(repoDir, state.WorktreeDir, state.BranchName, sourceBranch, name)
-		} else {
-			// Use default behavior (quiet version to avoid nested spinners)
-			err = git.CreateWorktreeQuiet(repoDir, state.WorktreeDir, state.BranchName, name)
-		}
-
-		if err != nil {
-			progress.Error(fmt.Sprintf("Failed to create worktree for %s", name))
-			// Rollback all successful operations
-			if rollbackErr := rollbackUp(projectDir, treesDir, featureName, states, progress); rollbackErr != nil {
-				return fmt.Errorf("worktree creation failed for %s (%v) and rollback failed: %w", name, err, rollbackErr)
-			}
-			return fmt.Errorf("failed to create worktree for %s: %w", name, err)
-		}
-
-		state.WorktreeCreated = true
-	}
-	progress.Success(worktreesMessage)
-
-	// Allocate ports for this feature only if port configuration is present
-	var allocatedPorts []int
-	if cfg.HasPortConfig() {
-		progress.Update("Allocating ports for feature")
-		portAllocations, err := ports.NewPortAllocations(projectDir, cfg.GetBasePort(), cfg.GetMaxPorts())
-		if err != nil {
-			progress.Error("Failed to initialize port allocations")
-			// Rollback all successful operations
-			if rollbackErr := rollbackUp(projectDir, treesDir, featureName, states, progress); rollbackErr != nil {
-				return fmt.Errorf("port allocation initialization failed (%v) and rollback failed: %w", err, rollbackErr)
-			}
-			return fmt.Errorf("failed to initialize port allocations: %w", err)
-		}
-
-		allocatedPorts, err = portAllocations.AllocatePort(featureName, cfg.GetPortsPerFeature())
-		if err != nil {
-			progress.Error("Failed to allocate ports")
-			// Rollback all successful operations
-			if rollbackErr := rollbackUp(projectDir, treesDir, featureName, states, progress); rollbackErr != nil {
-				return fmt.Errorf("port allocation failed (%v) and rollback failed: %w", err, rollbackErr)
-			}
-			return fmt.Errorf("failed to allocate ports for feature: %w", err)
-		}
-
-		// Mark that we allocated ports
-		for _, state := range states {
-			state.PortAllocated = true
-		}
-		if len(allocatedPorts) == 1 {
-			progress.Success(fmt.Sprintf("Allocated port %d", allocatedPorts[0]))
-		} else {
-			progress.Success(fmt.Sprintf("Allocated ports %d-%d", allocatedPorts[0], allocatedPorts[len(allocatedPorts)-1]))
-		}
-	}
-
-	// Process env files for each repository if configured
-	if hasEnvFiles(repos) {
-		progress.Update("Processing environment files")
-		envVars := buildEnvVars(projectDir, treesDir, featureName, allocatedPorts, cfg, repos)
-
-		for name, repo := range repos {
-			if len(repo.EnvFiles) > 0 {
-				state := states[name]
-				sourceRepoDir := repo.GetRepoPath(projectDir)
-				worktreeDir := state.WorktreeDir
-
-				// Determine shouldRefresh for env scripts (same logic as repo refresh)
-				shouldRefreshEnvScripts := false
-				if refreshFlag {
-					shouldRefreshEnvScripts = true
-				} else if !noRefreshFlag {
-					shouldRefreshEnvScripts = repo.ShouldAutoRefresh()
-				}
-
-				if err := envfile.ProcessEnvFiles(name, repo.EnvFiles, sourceRepoDir, worktreeDir, envVars, shouldRefreshEnvScripts); err != nil {
-					progress.Error(fmt.Sprintf("Failed to process env files for %s", name))
-					// Rollback all successful operations
-					if rollbackErr := rollbackUp(projectDir, treesDir, featureName, states, progress); rollbackErr != nil {
-						return fmt.Errorf("env file processing failed for %s (%v) and rollback failed: %w", name, err, rollbackErr)
-					}
-					return fmt.Errorf("failed to process env files for %s: %w", name, err)
-				}
-			}
-		}
-		progress.Success("Environment files processed")
-	}
-
-	// Run setup script if configured
-	if cfg.Setup != "" {
-		progress.Update("Running setup script")
-		if err := runSetupScriptWithProgress(projectDir, treesDir, cfg.Setup, progress); err != nil {
-			progress.Error("Setup script failed")
-			// Mark that setup ran (even if it failed) for rollback purposes
-			for _, state := range states {
-				state.SetupRan = true
-			}
-			// Rollback all successful operations
-			if rollbackErr := rollbackUp(projectDir, treesDir, featureName, states, progress); rollbackErr != nil {
-				return fmt.Errorf("setup script failed (%v) and rollback failed: %w", err, rollbackErr)
-			}
-			return fmt.Errorf("setup script failed: %w", err)
-		}
-
-		// Mark that setup ran successfully
-		for _, state := range states {
-			state.SetupRan = true
-		}
-		progress.Success("Ran setup script")
-	}
-
-	progress.Success(fmt.Sprintf("Feature '%s' created successfully", featureName))
-	fmt.Printf("Feature '%s' created at %s\n", featureName, treesDir)
+	fmt.Printf("Feature '%s' created at %s\n", result.FeatureName, result.TreesDir)
 	return nil
 }
 
-func rollbackUp(projectDir, treesDir, featureName string, states map[string]*UpState, progress *ui.ProgressUI) error {
-	progress.Warning("Rolling back changes due to failure")
-
-	cfg, err := config.LoadConfig(projectDir)
-	if err != nil {
-		progress.Error("Failed to load config during rollback")
-		return fmt.Errorf("failed to load config during rollback: %w", err)
-	}
-
-	repos := cfg.GetRepos()
-
-	// Remove worktrees that were successfully created
-	for name, state := range states {
-		if state.WorktreeCreated {
-			repo := repos[name]
-			repoDir := repo.GetRepoPath(projectDir)
-			progress.Info(fmt.Sprintf("%s: removing worktree", name))
-
-			if err := git.RemoveWorktree(repoDir, state.WorktreeDir); err != nil {
-				progress.Warning(fmt.Sprintf("Failed to remove worktree for %s: %v", name, err))
-				// Continue with other cleanup operations
-			} else {
-				progress.Info(fmt.Sprintf("%s: worktree removed", name))
-			}
-
-			// Also try to delete the branch if it was newly created
-			// We can determine this by checking if it was created during this operation
-			// For safety, we'll only delete if both local and remote don't exist from before
-			localExists, _ := git.LocalBranchExists(repoDir, state.BranchName)
-
-			// If the branch was newly created (which we can infer if it now exists locally
-			// but we detected it didn't exist before), we should clean it up
-			if localExists {
-				progress.Info(fmt.Sprintf("%s: deleting branch %s", name, state.BranchName))
-				if err := git.DeleteBranch(repoDir, state.BranchName); err != nil {
-					progress.Warning(fmt.Sprintf("Failed to delete branch %s for %s: %v", state.BranchName, name, err))
-				} else {
-					progress.Info(fmt.Sprintf("%s: branch %s deleted", name, state.BranchName))
-				}
-			}
-		}
-	}
-
-	// Release port if it was allocated
-	var portAllocated bool
-	for _, state := range states {
-		if state.PortAllocated {
-			portAllocated = true
-			break
-		}
-	}
-
-	if portAllocated {
-		progress.Info("Releasing allocated port")
-		portAllocations, err := ports.NewPortAllocations(projectDir, cfg.GetBasePort(), cfg.GetMaxPorts())
-		if err != nil {
-			progress.Warning(fmt.Sprintf("Failed to initialize port allocations during rollback: %v", err))
-		} else {
-			if err := portAllocations.ReleasePort(featureName); err != nil {
-				progress.Warning(fmt.Sprintf("Failed to release port: %v", err))
-			} else {
-				progress.Info("Port released successfully")
-			}
-		}
-	}
-
-	// Remove trees directory if it was created and is empty or only contains our failed worktree dirs
-	var treesDirCreated bool
-	for _, state := range states {
-		if state.TreesDirCreated {
-			treesDirCreated = true
-			break
-		}
-	}
-
-	if treesDirCreated {
-		progress.Info("Removing trees directory")
-		if err := os.RemoveAll(treesDir); err != nil {
-			progress.Warning(fmt.Sprintf("Failed to remove trees directory: %v", err))
-		} else {
-			progress.Info("Trees directory removed")
-		}
-	}
-
-	progress.Info("Rollback completed")
-	return nil
-}
-
-func runSetupScript(projectDir, treesDir, setupScript string) error {
-	scriptPath := filepath.Join(projectDir, ".ramp", setupScript)
-
-	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
-		return fmt.Errorf("setup script not found: %s", scriptPath)
-	}
-
-	// Extract feature name from treesDir path
-	featureName := filepath.Base(treesDir)
-
-	cmd := exec.Command("/bin/bash", scriptPath)
-	cmd.Dir = treesDir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	// Set up environment variables that the setup script expects
-	cmd.Env = append(os.Environ(), fmt.Sprintf("RAMP_PROJECT_DIR=%s", projectDir))
-	cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_TREES_DIR=%s", treesDir))
-	cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_WORKTREE_NAME=%s", featureName))
-
-	// Add RAMP_PORT environment variable only if port configuration exists
-	cfg, err := config.LoadConfig(projectDir)
-	if err != nil {
-		return fmt.Errorf("failed to load config for env vars: %w", err)
-	}
-
-	if cfg.HasPortConfig() {
-		portAllocations, err := ports.NewPortAllocations(projectDir, cfg.GetBasePort(), cfg.GetMaxPorts())
-		if err != nil {
-			return fmt.Errorf("failed to initialize port allocations for env vars: %w", err)
-		}
-
-		if port, exists := portAllocations.GetPort(featureName); exists {
-			cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_PORT=%d", port))
-		}
-	}
-	
-	repos := cfg.GetRepos()
-	for name, repo := range repos {
-		envVarName := config.GenerateEnvVarName(name)
-		repoPath := repo.GetRepoPath(projectDir)
-		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", envVarName, repoPath))
-	}
-
-	return cmd.Run()
-}
-
-func runSetupScriptWithProgress(projectDir, treesDir, setupScript string, progress *ui.ProgressUI) error {
-	scriptPath := filepath.Join(projectDir, ".ramp", setupScript)
-
-	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
-		return fmt.Errorf("setup script not found: %s", scriptPath)
-	}
-
-	// Extract feature name from treesDir path
-	featureName := filepath.Base(treesDir)
-
-	cmd := exec.Command("/bin/bash", scriptPath)
-	cmd.Dir = treesDir
-
-	// Set up environment variables that the setup script expects
-	cmd.Env = append(os.Environ(), fmt.Sprintf("RAMP_PROJECT_DIR=%s", projectDir))
-	cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_TREES_DIR=%s", treesDir))
-	cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_WORKTREE_NAME=%s", featureName))
-
-	// Add RAMP_PORT environment variables only if port configuration exists
-	cfg, err := config.LoadConfig(projectDir)
-	if err != nil {
-		return fmt.Errorf("failed to load config for env vars: %w", err)
-	}
-
-	if cfg.HasPortConfig() {
-		portAllocations, err := ports.NewPortAllocations(projectDir, cfg.GetBasePort(), cfg.GetMaxPorts())
-		if err != nil {
-			return fmt.Errorf("failed to initialize port allocations for env vars: %w", err)
-		}
-
-		if ports, exists := portAllocations.GetPorts(featureName); exists {
-			setPortEnvVars(cmd, ports)
-		}
-	}
-
-	repos := cfg.GetRepos()
-	for name, repo := range repos {
-		envVarName := config.GenerateEnvVarName(name)
-		repoPath := repo.GetRepoPath(projectDir)
-		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", envVarName, repoPath))
-	}
-
-	// Add local config environment variables
-	localEnvVars, err := GetLocalEnvVars(projectDir)
-	if err != nil {
-		return fmt.Errorf("failed to load local env vars: %w", err)
-	}
-	for key, value := range localEnvVars {
-		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", key, value))
-	}
-
-	message := fmt.Sprintf("Running setup script: %s", setupScript)
-	return ui.RunCommandWithProgressQuiet(cmd, message)
-}
-
-// hasEnvFiles checks if any repository has env_files configured
-func hasEnvFiles(repos map[string]*config.Repo) bool {
-	for _, repo := range repos {
-		if len(repo.EnvFiles) > 0 {
-			return true
-		}
-	}
-	return false
-}
-
-// buildEnvVars builds the environment variables map for env file processing
-func buildEnvVars(projectDir, treesDir, featureName string, allocatedPorts []int, cfg *config.Config, repos map[string]*config.Repo) map[string]string {
-	envVars := make(map[string]string)
-
-	// Standard RAMP variables
-	envVars["RAMP_PROJECT_DIR"] = projectDir
-	envVars["RAMP_TREES_DIR"] = treesDir
-	envVars["RAMP_WORKTREE_NAME"] = featureName
-
-	// Add port variables if configured
-	if cfg.HasPortConfig() && len(allocatedPorts) > 0 {
-		envVars["RAMP_PORT"] = fmt.Sprintf("%d", allocatedPorts[0])
-		for i, port := range allocatedPorts {
-			envVars[fmt.Sprintf("RAMP_PORT_%d", i+1)] = fmt.Sprintf("%d", port)
-		}
-	}
-
-	// Add repo path variables
-	for name, repo := range repos {
-		envVarName := config.GenerateEnvVarName(name)
-		repoPath := repo.GetRepoPath(projectDir)
-		envVars[envVarName] = repoPath
-	}
-
-	// Add local config environment variables (from prompts)
-	localEnvVars, err := GetLocalEnvVars(projectDir)
-	if err == nil {
-		for key, value := range localEnvVars {
-			envVars[key] = value
-		}
-	}
-
-	return envVars
-}

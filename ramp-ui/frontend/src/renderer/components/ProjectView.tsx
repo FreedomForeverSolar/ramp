@@ -1,9 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Project, WSMessage } from '../types';
-import { useFeatures, useRemoveProject, useRunCommand, useWebSocket } from '../hooks/useRampAPI';
+import { useState } from 'react';
+import { Project } from '../types';
+import { useFeatures, useRemoveProject } from '../hooks/useRampAPI';
 import FeatureList from './FeatureList';
 import NewFeatureDialog from './NewFeatureDialog';
-import CommandOutputViewer from './CommandOutputViewer';
 
 interface ProjectViewProps {
   project: Project;
@@ -11,61 +10,12 @@ interface ProjectViewProps {
 
 export default function ProjectView({ project }: ProjectViewProps) {
   const [showNewFeatureDialog, setShowNewFeatureDialog] = useState(false);
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const [runningCommand, setRunningCommand] = useState<string | null>(null);
-  const [commandOutput, setCommandOutput] = useState<string[]>([]);
   const { data: featuresData, isLoading: featuresLoading } = useFeatures(project.id);
   const removeProject = useRemoveProject();
-  const runCommand = useRunCommand(project.id);
-
-  // WebSocket message handler
-  const handleWSMessage = useCallback((message: unknown) => {
-    const msg = message as WSMessage;
-    if (msg.operation === 'command') {
-      if (msg.type === 'output') {
-        setCommandOutput((prev) => [...prev, msg.message]);
-      } else if (msg.type === 'complete' || msg.type === 'error') {
-        setRunningCommand(null);
-        if (msg.type === 'error') {
-          setCommandOutput((prev) => [...prev, `Error: ${msg.message}`]);
-        }
-      }
-    } else {
-      // Handle feature operations
-      if (msg.type === 'progress' || msg.type === 'error') {
-        setStatusMessage(msg.message);
-      } else if (msg.type === 'complete') {
-        setStatusMessage(msg.message);
-        setTimeout(() => setStatusMessage(null), 3000);
-      }
-    }
-  }, []);
-
-  // WebSocket for real-time updates
-  const { connect, disconnect } = useWebSocket(handleWSMessage);
-
-  useEffect(() => {
-    connect();
-    return () => disconnect();
-  }, []);
 
   const handleRemoveProject = async () => {
     if (confirm(`Remove "${project.name}" from Ramp UI?\n\nThis will not delete any files.`)) {
       await removeProject.mutateAsync(project.id);
-    }
-  };
-
-  const handleRunCommand = async (cmdName: string) => {
-    setCommandOutput([]);
-    setRunningCommand(cmdName);
-    try {
-      await runCommand.mutateAsync({ name: cmdName });
-    } catch (error) {
-      setCommandOutput((prev) => [
-        ...prev,
-        `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      ]);
-      setRunningCommand(null);
     }
   };
 
@@ -150,24 +100,6 @@ export default function ProjectView({ project }: ProjectViewProps) {
               </span>
             </div>
           )}
-          <div className="text-sm flex items-center gap-3">
-            {project.hasSetupScript && (
-              <span className="inline-flex items-center text-green-600 dark:text-green-400" title="Has setup script">
-                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-                Setup
-              </span>
-            )}
-            {project.hasCleanupScript && (
-              <span className="inline-flex items-center text-orange-600 dark:text-orange-400" title="Has cleanup script">
-                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-                Cleanup
-              </span>
-            )}
-          </div>
         </div>
 
         {/* Repos summary */}
@@ -187,15 +119,6 @@ export default function ProjectView({ project }: ProjectViewProps) {
             </span>
           ))}
         </div>
-
-        {/* Status message */}
-        {statusMessage && (
-          <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md">
-            <p className="text-sm text-blue-700 dark:text-blue-300">
-              {statusMessage}
-            </p>
-          </div>
-        )}
       </div>
 
       {/* Features */}
@@ -210,46 +133,12 @@ export default function ProjectView({ project }: ProjectViewProps) {
         />
       </div>
 
-      {/* Custom commands */}
-      {project.commands.length > 0 && (
-        <div className="border-t border-gray-200 dark:border-gray-700 p-4">
-          <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-            Quick Actions
-          </h3>
-          <div className="flex flex-wrap gap-2">
-            {project.commands.map((cmd) => (
-              <button
-                key={cmd.name}
-                onClick={() => handleRunCommand(cmd.name)}
-                disabled={runningCommand !== null}
-                className="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-md transition-colors disabled:opacity-50"
-              >
-                {cmd.name}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* New Feature Dialog */}
       {showNewFeatureDialog && (
         <NewFeatureDialog
           projectId={project.id}
           defaultBranchPrefix={project.defaultBranchPrefix}
           onClose={() => setShowNewFeatureDialog(false)}
-        />
-      )}
-
-      {/* Command Output Viewer */}
-      {(runningCommand !== null || commandOutput.length > 0) && (
-        <CommandOutputViewer
-          commandName={runningCommand || 'Command'}
-          output={commandOutput}
-          isRunning={runningCommand !== null}
-          onClose={() => {
-            setCommandOutput([]);
-            setRunningCommand(null);
-          }}
         />
       )}
     </div>

@@ -92,8 +92,8 @@ export default function ProjectList({
                         : 'text-gray-500 dark:text-gray-400'
                     }`}
                   >
-                    {project.features.length} feature
-                    {project.features.length !== 1 ? 's' : ''}
+                    {(project.features?.length ?? 0)} feature
+                    {(project.features?.length ?? 0) !== 1 ? 's' : ''}
                   </div>
                 </button>
               </li>

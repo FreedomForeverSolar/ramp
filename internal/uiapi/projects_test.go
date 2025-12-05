@@ -187,23 +187,6 @@ func TestAddProject_InvalidJSON(t *testing.T) {
 	}
 }
 
-func TestGetProject_NotFound(t *testing.T) {
-	cleanup := setupTestConfig(t)
-	defer cleanup()
-
-	server := NewServer()
-
-	req := httptest.NewRequest(http.MethodGet, "/api/projects/nonexistent", nil)
-	req = mux.SetURLVars(req, map[string]string{"id": "nonexistent"})
-	w := httptest.NewRecorder()
-
-	server.GetProject(w, req)
-
-	if w.Code != http.StatusNotFound {
-		t.Errorf("GetProject() status = %d, want %d", w.Code, http.StatusNotFound)
-	}
-}
-
 func TestRemoveProject(t *testing.T) {
 	cleanup := setupTestConfig(t)
 	defer cleanup()

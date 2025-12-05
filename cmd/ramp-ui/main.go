@@ -33,17 +33,12 @@ func main() {
 	// Project routes
 	apiRouter.HandleFunc("/projects", server.ListProjects).Methods("GET")
 	apiRouter.HandleFunc("/projects", server.AddProject).Methods("POST")
-	apiRouter.HandleFunc("/projects/{id}", server.GetProject).Methods("GET")
 	apiRouter.HandleFunc("/projects/{id}", server.RemoveProject).Methods("DELETE")
 
 	// Feature routes
 	apiRouter.HandleFunc("/projects/{id}/features", server.ListFeatures).Methods("GET")
 	apiRouter.HandleFunc("/projects/{id}/features", server.CreateFeature).Methods("POST")
 	apiRouter.HandleFunc("/projects/{id}/features/{name}", server.DeleteFeature).Methods("DELETE")
-
-	// Command routes
-	apiRouter.HandleFunc("/projects/{id}/commands", server.ListCommands).Methods("GET")
-	apiRouter.HandleFunc("/projects/{id}/commands/{name}/run", server.RunCommand).Methods("POST")
 
 	// Health check
 	router.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {

@@ -7,11 +7,8 @@ export interface Project {
   addedAt: string;
   repos: Repo[];
   features: string[];
-  commands: Command[];
   basePort?: number;
   defaultBranchPrefix?: string;
-  hasSetupScript: boolean;
-  hasCleanupScript: boolean;
 }
 
 export interface Repo {
@@ -19,11 +16,6 @@ export interface Repo {
   path: string;
   git: string;
   autoRefresh: boolean;
-}
-
-export interface Command {
-  name: string;
-  command: string;
 }
 
 export interface Feature {
@@ -40,11 +32,6 @@ export interface ProjectsResponse {
 
 export interface FeaturesResponse {
   features: Feature[];
-}
-
-export interface ErrorResponse {
-  error: string;
-  details?: string;
 }
 
 export interface SuccessResponse {

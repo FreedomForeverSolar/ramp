@@ -8,6 +8,7 @@ import (
 
 	"ramp/internal/config"
 	"ramp/internal/git"
+	"ramp/internal/operations"
 
 	"github.com/gorilla/mux"
 )
@@ -61,70 +62,28 @@ func (s *Server) CreateFeature(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Send progress via WebSocket
-	s.broadcast(WSMessage{
-		Type:      "progress",
-		Operation: "up",
-		Message:   "Starting feature creation...",
+	// Create progress reporter that broadcasts to WebSocket
+	progress := operations.NewWSProgressReporter("up", func(msg interface{}) {
+		s.broadcast(msg)
 	})
 
-	// Create feature directory
-	treesDir := filepath.Join(ref.Path, "trees", req.Name)
-	if err := os.MkdirAll(treesDir, 0755); err != nil {
-		writeError(w, http.StatusInternalServerError, "Failed to create feature directory", err.Error())
+	// Call operations.Up() with WebSocket progress reporter
+	result, err := operations.Up(operations.UpOptions{
+		FeatureName: req.Name,
+		ProjectDir:  ref.Path,
+		Config:      cfg,
+		Progress:    progress,
+	})
+
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to create feature", err.Error())
 		return
 	}
 
-	// Get repos map for name lookup
-	repos := cfg.GetRepos()
-	repoNames := []string{}
-	i := 0
-	total := len(repos)
-
-	// Create worktrees for each repo
-	for repoName, repo := range repos {
-		repoNames = append(repoNames, repoName)
-
-		s.broadcast(WSMessage{
-			Type:       "progress",
-			Operation:  "up",
-			Message:    "Creating worktree for " + repoName + "...",
-			Percentage: (i + 1) * 100 / total,
-		})
-
-		repoPath := filepath.Join(ref.Path, repo.Path, repoName)
-		worktreePath := filepath.Join(treesDir, repoName)
-
-		// Determine branch name
-		branchName := req.Name
-		if cfg.DefaultBranchPrefix != "" {
-			branchName = cfg.DefaultBranchPrefix + req.Name
-		}
-
-		// Create the worktree
-		if err := git.CreateWorktreeQuiet(repoPath, worktreePath, branchName, repoName); err != nil {
-			s.broadcast(WSMessage{
-				Type:      "error",
-				Operation: "up",
-				Message:   "Failed to create worktree for " + repoName + ": " + err.Error(),
-			})
-			writeError(w, http.StatusInternalServerError, "Failed to create worktree", err.Error())
-			return
-		}
-		i++
-	}
-
-	s.broadcast(WSMessage{
-		Type:       "complete",
-		Operation:  "up",
-		Message:    "Feature created successfully",
-		Percentage: 100,
-	})
-
 	// Return the created feature
 	feature := Feature{
-		Name:                  req.Name,
-		Repos:                 repoNames,
+		Name:                  result.FeatureName,
+		Repos:                 result.Repos,
 		HasUncommittedChanges: false,
 	}
 
@@ -150,65 +109,25 @@ func (s *Server) DeleteFeature(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.broadcast(WSMessage{
-		Type:      "progress",
-		Operation: "down",
-		Message:   "Starting feature deletion...",
+	// Create progress reporter that broadcasts to WebSocket
+	progress := operations.NewWSProgressReporter("down", func(msg interface{}) {
+		s.broadcast(msg)
 	})
 
-	treesDir := filepath.Join(ref.Path, "trees", name)
-	repos := cfg.GetRepos()
-	i := 0
-	total := len(repos)
+	// Call operations.Down() with WebSocket progress reporter
+	// Force=true because the UI shows uncommitted changes warnings in the feature list
+	_, err = operations.Down(operations.DownOptions{
+		FeatureName: name,
+		ProjectDir:  ref.Path,
+		Config:      cfg,
+		Progress:    progress,
+		Force:       true,
+	})
 
-	// Remove worktrees for each repo
-	for repoName, repo := range repos {
-		s.broadcast(WSMessage{
-			Type:       "progress",
-			Operation:  "down",
-			Message:    "Removing worktree for " + repoName + "...",
-			Percentage: (i + 1) * 100 / total,
-		})
-
-		repoPath := filepath.Join(ref.Path, repo.Path, repoName)
-		worktreePath := filepath.Join(treesDir, repoName)
-
-		// Check for uncommitted changes
-		hasChanges, _ := git.HasUncommittedChanges(worktreePath)
-		if hasChanges {
-			s.broadcast(WSMessage{
-				Type:      "error",
-				Operation: "down",
-				Message:   "Uncommitted changes in " + repoName,
-			})
-			// Continue anyway for now - in a real implementation, we might want to prompt the user
-		}
-
-		// Remove the worktree
-		if err := git.RemoveWorktreeQuiet(repoPath, worktreePath); err != nil {
-			// Log but continue - the directory might not exist
-			i++
-			continue
-		}
-
-		// Determine branch name and try to delete it
-		branchName := name
-		if cfg.DefaultBranchPrefix != "" {
-			branchName = cfg.DefaultBranchPrefix + name
-		}
-		git.DeleteBranchQuiet(repoPath, branchName)
-		i++
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to delete feature", err.Error())
+		return
 	}
-
-	// Remove the feature directory
-	os.RemoveAll(treesDir)
-
-	s.broadcast(WSMessage{
-		Type:       "complete",
-		Operation:  "down",
-		Message:    "Feature deleted successfully",
-		Percentage: 100,
-	})
 
 	writeJSON(w, http.StatusOK, SuccessResponse{Success: true, Message: "Feature deleted"})
 }

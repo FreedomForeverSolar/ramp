@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Feature } from '../types';
-import { useDeleteFeature } from '../hooks/useRampAPI';
+import DeleteFeatureDialog from './DeleteFeatureDialog';
 
 interface FeatureListProps {
   projectId: string;
@@ -13,13 +13,11 @@ export default function FeatureList({
   features,
   isLoading,
 }: FeatureListProps) {
-  const deleteFeature = useDeleteFeature(projectId);
   const [expandedFeature, setExpandedFeature] = useState<string | null>(null);
+  const [deletingFeature, setDeletingFeature] = useState<Feature | null>(null);
 
-  const handleDelete = async (featureName: string) => {
-    if (confirm(`Delete feature "${featureName}"?\n\nThis will remove all worktrees for this feature.`)) {
-      await deleteFeature.mutateAsync(featureName);
-    }
+  const handleDelete = (feature: Feature) => {
+    setDeletingFeature(feature);
   };
 
   if (isLoading) {
@@ -112,9 +110,8 @@ export default function FeatureList({
               </button>
               <div className="flex items-center gap-1">
                 <button
-                  onClick={() => handleDelete(feature.name)}
-                  disabled={deleteFeature.isPending}
-                  className="p-2 text-gray-500 hover:text-red-500 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-md transition-colors disabled:opacity-50"
+                  onClick={() => handleDelete(feature)}
+                  className="p-2 text-gray-500 hover:text-red-500 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-md transition-colors"
                   title="Delete feature"
                 >
                   <svg
@@ -159,6 +156,16 @@ export default function FeatureList({
           </div>
         );
       })}
+
+      {/* Delete Feature Dialog */}
+      {deletingFeature && (
+        <DeleteFeatureDialog
+          projectId={projectId}
+          featureName={deletingFeature.name}
+          hasUncommittedChanges={deletingFeature.hasUncommittedChanges}
+          onClose={() => setDeletingFeature(null)}
+        />
+      )}
     </div>
   );
 }

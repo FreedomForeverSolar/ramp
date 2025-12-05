@@ -73,31 +73,6 @@ func (s *Server) AddProject(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, project)
 }
 
-// GetProject returns a single project by ID
-func (s *Server) GetProject(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	id := vars["id"]
-
-	ref, err := GetProjectRefByID(id)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "Failed to get project", err.Error())
-		return
-	}
-
-	if ref == nil {
-		writeError(w, http.StatusNotFound, "Project not found", id)
-		return
-	}
-
-	project, err := loadProjectFromPath(ref.ID, ref.Path, ref.AddedAt)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "Failed to load project", err.Error())
-		return
-	}
-
-	writeJSON(w, http.StatusOK, project)
-}
-
 // RemoveProject removes a project from the app config
 func (s *Server) RemoveProject(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
@@ -134,15 +109,6 @@ func loadProjectFromPath(id, projectPath string, addedAt interface{}) (*Project,
 		})
 	}
 
-	// Convert commands
-	commands := make([]Command, 0, len(cfg.Commands))
-	for _, cmd := range cfg.Commands {
-		commands = append(commands, Command{
-			Name:    cmd.Name,
-			Command: cmd.Command,
-		})
-	}
-
 	// Get existing features (worktrees)
 	features := listExistingFeatures(projectPath)
 
@@ -152,11 +118,8 @@ func loadProjectFromPath(id, projectPath string, addedAt interface{}) (*Project,
 		Path:                projectPath,
 		Repos:               repos,
 		Features:            features,
-		Commands:            commands,
 		BasePort:            cfg.BasePort,
 		DefaultBranchPrefix: cfg.DefaultBranchPrefix,
-		HasSetupScript:      cfg.Setup != "",
-		HasCleanupScript:    cfg.Cleanup != "",
 	}
 
 	// Set addedAt if it's a time.Time

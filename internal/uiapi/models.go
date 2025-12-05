@@ -9,12 +9,9 @@ type Project struct {
 	Path                string    `json:"path"`
 	AddedAt             time.Time `json:"addedAt"`
 	Repos               []Repo    `json:"repos,omitempty"`
-	Features            []string  `json:"features,omitempty"`
-	Commands            []Command `json:"commands,omitempty"`
+	Features            []string  `json:"features"`
 	BasePort            int       `json:"basePort,omitempty"`
 	DefaultBranchPrefix string    `json:"defaultBranchPrefix,omitempty"`
-	HasSetupScript      bool      `json:"hasSetupScript"`
-	HasCleanupScript    bool      `json:"hasCleanupScript"`
 }
 
 // Repo represents a repository in a project
@@ -23,12 +20,6 @@ type Repo struct {
 	Path        string `json:"path"`
 	Git         string `json:"git"`
 	AutoRefresh bool   `json:"autoRefresh"`
-}
-
-// Command represents a custom command from the project config
-type Command struct {
-	Name    string `json:"name"`
-	Command string `json:"command"`
 }
 
 // Feature represents a feature/worktree in a project

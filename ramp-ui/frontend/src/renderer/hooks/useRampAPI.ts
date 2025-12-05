@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Project,
@@ -36,14 +37,6 @@ export function useProjects() {
   return useQuery<ProjectsResponse>({
     queryKey: ['projects'],
     queryFn: () => fetchAPI<ProjectsResponse>('/projects'),
-  });
-}
-
-export function useProject(id: string) {
-  return useQuery<Project>({
-    queryKey: ['projects', id],
-    queryFn: () => fetchAPI<Project>(`/projects/${id}`),
-    enabled: !!id,
   });
 }
 
@@ -116,58 +109,60 @@ export function useDeleteFeature(projectId: string) {
   });
 }
 
-// Commands
-export function useRunCommand(projectId: string) {
-  return useMutation<SuccessResponse, Error, { name: string; featureName?: string }>({
-    mutationFn: ({ name, featureName }) =>
-      fetchAPI<SuccessResponse>(`/projects/${projectId}/commands/${name}/run`, {
-        method: 'POST',
-        body: JSON.stringify({ featureName }),
-      }),
-  });
-}
-
 // WebSocket hook for real-time updates
-export function useWebSocket(onMessage: (message: unknown) => void) {
-  const wsRef = { current: null as WebSocket | null };
+export function useWebSocket(
+  onMessage: (message: unknown) => void,
+  enabled: boolean = true
+) {
+  const onMessageRef = useRef(onMessage);
+  onMessageRef.current = onMessage;
 
-  const connect = () => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      return;
-    }
+  useEffect(() => {
+    if (!enabled) return;
 
-    const ws = new WebSocket('ws://localhost:37429/ws/logs');
+    let ws: WebSocket | null = null;
+    let reconnectTimeout: NodeJS.Timeout | null = null;
+    let isMounted = true;
 
-    ws.onopen = () => {
-      console.log('WebSocket connected');
+    const connect = () => {
+      if (!isMounted) return;
+
+      ws = new WebSocket('ws://localhost:37429/ws/logs');
+
+      ws.onopen = () => {
+        console.log('WebSocket connected');
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          onMessageRef.current(message);
+        } catch (e) {
+          console.error('Failed to parse WebSocket message:', e);
+        }
+      };
+
+      ws.onclose = () => {
+        console.log('WebSocket disconnected');
+        // Reconnect after a delay if still mounted
+        if (isMounted) {
+          reconnectTimeout = setTimeout(connect, 2000);
+        }
+      };
+
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+      };
     };
 
-    ws.onmessage = (event) => {
-      try {
-        const message = JSON.parse(event.data);
-        onMessage(message);
-      } catch (e) {
-        console.error('Failed to parse WebSocket message:', e);
+    connect();
+
+    return () => {
+      isMounted = false;
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
       }
+      ws?.close();
     };
-
-    ws.onclose = () => {
-      console.log('WebSocket disconnected');
-      // Reconnect after a delay
-      setTimeout(connect, 2000);
-    };
-
-    ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
-    };
-
-    wsRef.current = ws;
-  };
-
-  const disconnect = () => {
-    wsRef.current?.close();
-    wsRef.current = null;
-  };
-
-  return { connect, disconnect };
+  }, [enabled]);
 }
