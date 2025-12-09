@@ -19,7 +19,8 @@ type DownOptions struct {
 	Progress    ProgressReporter
 
 	// Optional
-	Force bool // Skip uncommitted changes check (already confirmed by caller)
+	Force       bool // Skip uncommitted changes check (already confirmed by caller)
+	AutoInstall bool // Auto-install repos if not present (default: false)
 }
 
 // DownResult contains the results of feature deletion.
@@ -61,6 +62,19 @@ func Down(opts DownOptions) (*DownResult, error) {
 	cfg := opts.Config
 	progress := opts.Progress
 	featureName := opts.FeatureName
+
+	// Auto-install if requested and needed
+	if opts.AutoInstall && !IsProjectInstalled(cfg, projectDir) {
+		progress.Start("Repositories not installed, running auto-installation...")
+		_, err := Install(InstallOptions{
+			ProjectDir: projectDir,
+			Config:     cfg,
+			Progress:   progress,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("auto-installation failed: %w", err)
+		}
+	}
 
 	configPrefix := cfg.GetBranchPrefix()
 	treesDir := filepath.Join(projectDir, "trees", featureName)

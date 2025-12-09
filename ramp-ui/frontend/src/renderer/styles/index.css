@@ -49,6 +49,16 @@ body {
   background: var(--color-text-secondary);
 }
 
+/* Hide scrollbar utility */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
 /* Draggable title bar region for macOS */
 .titlebar-drag-region {
   -webkit-app-region: drag;

@@ -8,6 +8,18 @@ import {
   AddProjectRequest,
   CreateFeatureRequest,
   SuccessResponse,
+  ConfigStatusResponse,
+  ConfigResponse,
+  SaveConfigRequest,
+  CommandsResponse,
+  RunCommandRequest,
+  RunCommandResponse,
+  ToggleFavoriteResponse,
+  SourceReposResponse,
+  OpenTerminalRequest,
+  AppSettingsResponse,
+  SaveAppSettingsRequest,
+  PruneResponse,
 } from '../types';
 
 const API_BASE = 'http://localhost:37429/api';
@@ -69,6 +81,35 @@ export function useRemoveProject() {
   });
 }
 
+export function useReorderProjects() {
+  const queryClient = useQueryClient();
+
+  return useMutation<SuccessResponse, Error, string[]>({
+    mutationFn: (projectIds) =>
+      fetchAPI<SuccessResponse>('/projects/reorder', {
+        method: 'PUT',
+        body: JSON.stringify({ projectIds }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+    },
+  });
+}
+
+export function useToggleFavorite() {
+  const queryClient = useQueryClient();
+
+  return useMutation<ToggleFavoriteResponse, Error, string>({
+    mutationFn: (id) =>
+      fetchAPI<ToggleFavoriteResponse>(`/projects/${id}/favorite`, {
+        method: 'PUT',
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+    },
+  });
+}
+
 // Features
 export function useFeatures(projectId: string) {
   return useQuery<FeaturesResponse>({
@@ -91,6 +132,10 @@ export function useCreateFeature(projectId: string) {
       queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'features'] });
       queryClient.invalidateQueries({ queryKey: ['projects'] });
     },
+    onError: () => {
+      // Invalidate on error to ensure fresh state (operation may have partially completed)
+      queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'features'] });
+    },
   });
 }
 
@@ -106,6 +151,96 @@ export function useDeleteFeature(projectId: string) {
       queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'features'] });
       queryClient.invalidateQueries({ queryKey: ['projects'] });
     },
+    onError: () => {
+      // Invalidate on error to ensure fresh state (operation may have partially completed)
+      queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'features'] });
+    },
+  });
+}
+
+export function usePruneFeatures(projectId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation<PruneResponse, Error, void>({
+    mutationFn: () =>
+      fetchAPI<PruneResponse>(`/projects/${projectId}/features/prune`, {
+        method: 'POST',
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'features'] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+    },
+    onError: () => {
+      // Invalidate on error to ensure fresh state (operation may have partially completed)
+      queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'features'] });
+    },
+  });
+}
+
+// Config (local preferences)
+export function useConfigStatus(projectId: string) {
+  return useQuery<ConfigStatusResponse>({
+    queryKey: ['projects', projectId, 'config', 'status'],
+    queryFn: () => fetchAPI<ConfigStatusResponse>(`/projects/${projectId}/config/status`),
+    enabled: !!projectId,
+  });
+}
+
+export function useConfig(projectId: string) {
+  return useQuery<ConfigResponse>({
+    queryKey: ['projects', projectId, 'config'],
+    queryFn: () => fetchAPI<ConfigResponse>(`/projects/${projectId}/config`),
+    enabled: !!projectId,
+  });
+}
+
+export function useSaveConfig(projectId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation<SuccessResponse, Error, SaveConfigRequest>({
+    mutationFn: (data) =>
+      fetchAPI<SuccessResponse>(`/projects/${projectId}/config`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'config'] });
+      queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'config', 'status'] });
+    },
+  });
+}
+
+export function useResetConfig(projectId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation<SuccessResponse, Error, void>({
+    mutationFn: () =>
+      fetchAPI<SuccessResponse>(`/projects/${projectId}/config`, {
+        method: 'DELETE',
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'config'] });
+      queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'config', 'status'] });
+    },
+  });
+}
+
+// Commands
+export function useCommands(projectId: string) {
+  return useQuery<CommandsResponse>({
+    queryKey: ['projects', projectId, 'commands'],
+    queryFn: () => fetchAPI<CommandsResponse>(`/projects/${projectId}/commands`),
+    enabled: !!projectId,
+  });
+}
+
+export function useRunCommand(projectId: string) {
+  return useMutation<RunCommandResponse, Error, { commandName: string } & RunCommandRequest>({
+    mutationFn: ({ commandName, featureName }) =>
+      fetchAPI<RunCommandResponse>(`/projects/${projectId}/commands/${commandName}/run`, {
+        method: 'POST',
+        body: JSON.stringify({ featureName }),
+      }),
   });
 }
 
@@ -123,6 +258,7 @@ export function useWebSocket(
     let ws: WebSocket | null = null;
     let reconnectTimeout: NodeJS.Timeout | null = null;
     let isMounted = true;
+    let wasConnected = false;
 
     const connect = () => {
       if (!isMounted) return;
@@ -130,10 +266,12 @@ export function useWebSocket(
       ws = new WebSocket('ws://localhost:37429/ws/logs');
 
       ws.onopen = () => {
-        console.log('WebSocket connected');
+        wasConnected = true;
       };
 
       ws.onmessage = (event) => {
+        // Guard against messages arriving after cleanup (React StrictMode)
+        if (!isMounted) return;
         try {
           const message = JSON.parse(event.data);
           onMessageRef.current(message);
@@ -143,15 +281,15 @@ export function useWebSocket(
       };
 
       ws.onclose = () => {
-        console.log('WebSocket disconnected');
-        // Reconnect after a delay if still mounted
-        if (isMounted) {
+        // Only reconnect if we were actually connected and still mounted
+        // (avoids noise from React Strict Mode double-mounting)
+        if (wasConnected && isMounted) {
           reconnectTimeout = setTimeout(connect, 2000);
         }
       };
 
-      ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
+      ws.onerror = () => {
+        // Suppress error logging - onclose handles reconnection
       };
     };
 
@@ -162,7 +300,68 @@ export function useWebSocket(
       if (reconnectTimeout) {
         clearTimeout(reconnectTimeout);
       }
-      ws?.close();
+      // Close WebSocket regardless of state - close() is safe on CONNECTING
+      // and prevents zombie connections in React StrictMode
+      if (ws) {
+        ws.close();
+      }
     };
   }, [enabled]);
+}
+
+// Source Repos
+export function useSourceRepos(projectId: string) {
+  return useQuery<SourceReposResponse>({
+    queryKey: ['projects', projectId, 'source-repos'],
+    queryFn: () => fetchAPI<SourceReposResponse>(`/projects/${projectId}/source-repos`),
+    enabled: !!projectId,
+  });
+}
+
+export function useRefreshSourceRepos(projectId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation<SuccessResponse, Error, void>({
+    mutationFn: () =>
+      fetchAPI<SuccessResponse>(`/projects/${projectId}/source-repos/refresh`, {
+        method: 'POST',
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'source-repos'] });
+    },
+  });
+}
+
+// Terminal
+export function useOpenTerminal() {
+  return useMutation<SuccessResponse, Error, OpenTerminalRequest>({
+    mutationFn: (data) =>
+      fetchAPI<SuccessResponse>('/terminal/open', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+  });
+}
+
+// App Settings
+export function useAppSettings() {
+  return useQuery<AppSettingsResponse>({
+    queryKey: ['settings'],
+    queryFn: () => fetchAPI<AppSettingsResponse>('/settings'),
+  });
+}
+
+export function useSaveAppSettings() {
+  const queryClient = useQueryClient();
+
+  return useMutation<SuccessResponse, Error, SaveAppSettingsRequest>({
+    mutationFn: (data) =>
+      fetchAPI<SuccessResponse>('/settings', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
+    },
+  });
 }

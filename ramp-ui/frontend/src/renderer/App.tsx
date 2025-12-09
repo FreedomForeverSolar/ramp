@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { useProjects } from './hooks/useRampAPI';
+import { useState, useEffect, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useProjects, useAppSettings, useSaveAppSettings } from './hooks/useRampAPI';
 import ProjectList from './components/ProjectList';
 import ProjectView from './components/ProjectView';
 import EmptyState from './components/EmptyState';
@@ -7,15 +8,69 @@ import { Project } from './types';
 
 function App() {
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const hasInitialized = useRef(false);
+  const queryClient = useQueryClient();
   const { data: projectsData, isLoading, error } = useProjects();
+  const { data: settingsData } = useAppSettings();
+  const saveSettings = useSaveAppSettings();
 
   const projects = projectsData?.projects ?? [];
   const selectedProject = projects.find((p: Project) => p.id === selectedProjectId);
 
-  // Auto-select first project if none selected
-  if (!selectedProjectId && projects.length > 0) {
-    setSelectedProjectId(projects[0].id);
-  }
+  // Refresh features when app comes to foreground
+  useEffect(() => {
+    const isFeaturesQuery = (query: { queryKey: unknown }) => {
+      const key = query.queryKey;
+      return Array.isArray(key) && key.length >= 3 && key[0] === 'projects' && key[2] === 'features';
+    };
+
+    const handleFocus = () => {
+      // Skip if already fetching features
+      const alreadyFetching = queryClient.isFetching({ predicate: isFeaturesQuery }) > 0;
+      if (alreadyFetching) return;
+
+      // Refetch all features queries (matches any project's features)
+      queryClient.invalidateQueries({ predicate: isFeaturesQuery });
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        handleFocus();
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [queryClient]);
+
+  // Initialize selection from saved settings (runs once when both data sources are ready)
+  useEffect(() => {
+    if (hasInitialized.current || projects.length === 0) return;
+
+    const lastSelectedId = settingsData?.lastSelectedProjectId;
+    const projectExists = lastSelectedId && projects.some(p => p.id === lastSelectedId);
+
+    if (projectExists) {
+      setSelectedProjectId(lastSelectedId);
+    } else {
+      setSelectedProjectId(projects[0].id);
+    }
+
+    hasInitialized.current = true;
+  }, [projects, settingsData]);
+
+  // Handler that saves selection to settings
+  const handleSelectProject = (projectId: string | null) => {
+    setSelectedProjectId(projectId);
+    if (projectId) {
+      saveSettings.mutate({ lastSelectedProjectId: projectId });
+    }
+  };
 
   return (
     <div className="flex h-screen bg-white dark:bg-gray-900">
@@ -31,7 +86,7 @@ function App() {
           <ProjectList
             projects={projects}
             selectedId={selectedProjectId}
-            onSelect={setSelectedProjectId}
+            onSelect={handleSelectProject}
             isLoading={isLoading}
           />
         </div>

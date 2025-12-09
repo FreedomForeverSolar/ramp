@@ -9,7 +9,6 @@ import (
 
 	"ramp/internal/config"
 	"ramp/internal/operations"
-	"ramp/internal/ui"
 )
 
 var prefixFlag string
@@ -145,85 +144,26 @@ func runUp(featureName, prefix, target string) error {
 		}
 	}
 
-	// Auto-install if needed
-	if err := AutoInstallIfNeeded(projectDir, cfg); err != nil {
-		return fmt.Errorf("auto-installation failed: %w", err)
-	}
-
-	// Auto-prompt for local config if needed
+	// Auto-prompt for local config if needed (CLI-specific, uses interactive prompts)
 	if err := EnsureLocalConfig(projectDir, cfg); err != nil {
 		return fmt.Errorf("failed to configure local preferences: %w", err)
 	}
 
-	// Auto-refresh repositories based on flags and config
-	repos := cfg.GetRepos()
-
-	// Determine if we should refresh based on flags and config
-	shouldRefreshRepos := false
-	if noRefreshFlag {
-		shouldRefreshRepos = false
-	} else if refreshFlag {
-		shouldRefreshRepos = true
-	} else {
-		for _, repo := range repos {
-			if repo.ShouldAutoRefresh() {
-				shouldRefreshRepos = true
-				break
-			}
-		}
-	}
-
-	// Create a progress instance for refresh
-	progress := ui.NewProgress()
-
-	if shouldRefreshRepos {
-		progress.Start("Auto-refreshing repositories before creating feature")
-
-		reposToRefresh := make(map[string]*config.Repo)
-		for name, repo := range repos {
-			shouldRefreshThisRepo := false
-			if refreshFlag {
-				shouldRefreshThisRepo = true
-			} else {
-				shouldRefreshThisRepo = repo.ShouldAutoRefresh()
-			}
-
-			if shouldRefreshThisRepo {
-				reposToRefresh[name] = repo
-			} else {
-				progress.Info(fmt.Sprintf("%s: auto-refresh disabled, skipping", name))
-			}
-		}
-
-		if len(reposToRefresh) > 0 {
-			results := RefreshRepositoriesParallel(projectDir, reposToRefresh, progress)
-
-			for _, result := range results {
-				switch result.status {
-				case "success":
-					progress.Info(fmt.Sprintf("%s: ✅ %s", result.name, result.message))
-				case "warning":
-					progress.Warning(fmt.Sprintf("%s: %s", result.name, result.message))
-				case "skipped":
-					progress.Info(fmt.Sprintf("%s: %s", result.name, result.message))
-				}
-			}
-		}
-
-		progress.Success("Auto-refresh completed")
-	}
-
 	// Call operations.Up() with CLI progress reporter
+	// Auto-refresh respects per-repo config by default (no explicit flag needed)
 	result, err := operations.Up(operations.UpOptions{
-		FeatureName:  featureName,
-		ProjectDir:   projectDir,
-		Config:       cfg,
-		Progress:     operations.NewCLIProgressReporter(),
-		Prefix:       prefix,
-		NoPrefix:     noPrefixFlag,
-		Target:       target,
-		ForceRefresh: refreshFlag,
-		SkipRefresh:  noRefreshFlag,
+		FeatureName: featureName,
+		ProjectDir:  projectDir,
+		Config:      cfg,
+		Progress:    operations.NewCLIProgressReporter(),
+		// Branch configuration
+		Prefix:   prefix,
+		NoPrefix: noPrefixFlag,
+		Target:   target,
+		// Pre-operation behavior
+		AutoInstall:  true,          // CLI always auto-installs if needed
+		ForceRefresh: refreshFlag,   // --refresh forces all repos to refresh
+		SkipRefresh:  noRefreshFlag, // --no-refresh skips all refresh
 	})
 
 	if err != nil {

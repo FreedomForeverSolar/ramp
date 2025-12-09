@@ -5,6 +5,8 @@ export interface Project {
   name: string;
   path: string;
   addedAt: string;
+  order: number;
+  isFavorite: boolean;
   repos: Repo[];
   features: string[];
   basePort?: number;
@@ -18,11 +20,43 @@ export interface Repo {
   autoRefresh: boolean;
 }
 
+// Git diff statistics for uncommitted changes
+export interface DiffStats {
+  filesChanged: number;
+  insertions: number;
+  deletions: number;
+}
+
+// Git status statistics for working directory
+export interface StatusStats {
+  untrackedFiles: number;
+  stagedFiles: number;
+  modifiedFiles: number;
+}
+
+// Detailed status for a single repo worktree
+export interface FeatureWorktreeStatus {
+  repoName: string;
+  branchName: string;
+  hasUncommitted: boolean;
+  diffStats?: DiffStats;
+  statusStats?: StatusStats;
+  aheadCount: number;
+  behindCount: number;
+  isMerged: boolean;
+  error?: string;
+}
+
+// Feature category type
+export type FeatureCategory = 'in_flight' | 'merged' | 'clean';
+
 export interface Feature {
   name: string;
   repos: string[];
   created?: string;
   hasUncommittedChanges: boolean;
+  category: FeatureCategory;
+  worktreeStatuses?: FeatureWorktreeStatus[];
 }
 
 // API Responses
@@ -41,10 +75,33 @@ export interface SuccessResponse {
 
 // WebSocket Messages
 export interface WSMessage {
-  type: 'progress' | 'error' | 'complete' | 'connected' | 'output';
+  type: 'progress' | 'error' | 'complete' | 'connected' | 'output' | 'warning' | 'info';
   operation?: string;
   message: string;
   percentage?: number;
+  target?: string; // Feature name for filtering messages
+  command?: string; // Command name for run operations
+}
+
+// Command types
+export interface Command {
+  name: string;
+  command: string;
+}
+
+export interface CommandsResponse {
+  commands: Command[];
+}
+
+export interface RunCommandRequest {
+  featureName?: string; // Optional - if empty, runs against source
+}
+
+export interface RunCommandResponse {
+  success: boolean;
+  exitCode: number;
+  duration: number; // milliseconds
+  error?: string;
 }
 
 // Request types
@@ -53,5 +110,92 @@ export interface AddProjectRequest {
 }
 
 export interface CreateFeatureRequest {
+  name?: string; // Required unless fromBranch is set (auto-derived)
+  // Optional - branch configuration
+  prefix?: string;
+  noPrefix?: boolean;
+  target?: string;
+  // Optional - pre-operation behavior
+  autoInstall?: boolean;
+  forceRefresh?: boolean;
+  skipRefresh?: boolean;
+  // For "From Branch" flow - when set, name is auto-derived if not provided
+  fromBranch?: string;
+}
+
+// Config types for local preferences
+export interface PromptOption {
+  value: string;
+  label: string;
+}
+
+export interface Prompt {
   name: string;
+  question: string;
+  options: PromptOption[];
+  default?: string;
+}
+
+export interface ConfigStatusResponse {
+  needsConfig: boolean;
+  prompts?: Prompt[];
+}
+
+export interface ConfigResponse {
+  preferences: Record<string, string>;
+}
+
+export interface SaveConfigRequest {
+  preferences: Record<string, string>;
+}
+
+// Project ordering and favorites
+export interface ReorderProjectsRequest {
+  projectIds: string[];
+}
+
+export interface ToggleFavoriteResponse {
+  isFavorite: boolean;
+}
+
+// Source repo types
+export interface SourceRepoStatus {
+  name: string;
+  branch: string;
+  aheadCount: number;
+  behindCount: number;
+  isInstalled: boolean;
+  error?: string;
+}
+
+export interface SourceReposResponse {
+  repos: SourceRepoStatus[];
+}
+
+// Terminal types
+export interface OpenTerminalRequest {
+  path: string;
+}
+
+// App settings types
+export interface AppSettingsResponse {
+  terminalApp: string;
+  lastSelectedProjectId: string;
+}
+
+export interface SaveAppSettingsRequest {
+  terminalApp?: string;
+  lastSelectedProjectId?: string;
+}
+
+// Prune types
+export interface PruneFailure {
+  name: string;
+  error: string;
+}
+
+export interface PruneResponse {
+  pruned: string[];
+  failed: PruneFailure[];
+  message: string;
 }

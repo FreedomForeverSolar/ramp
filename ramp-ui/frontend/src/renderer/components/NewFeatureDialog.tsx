@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useCreateFeature, useWebSocket } from '../hooks/useRampAPI';
 import { WSMessage } from '../types';
 
@@ -14,20 +14,37 @@ export default function NewFeatureDialog({
   onClose,
 }: NewFeatureDialogProps) {
   const [name, setName] = useState('');
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [prefix, setPrefix] = useState(defaultBranchPrefix || '');
+  const [noPrefix, setNoPrefix] = useState(false);
+  const [target, setTarget] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [progressMessages, setProgressMessages] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const createFeature = useCreateFeature(projectId);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll progress messages to bottom
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [progressMessages]);
 
   // Build the full branch name preview
-  const branchPreview = defaultBranchPrefix
-    ? `${defaultBranchPrefix}${name || '<feature-name>'}`
+  const effectivePrefix = noPrefix ? '' : prefix;
+  const branchPreview = effectivePrefix
+    ? `${effectivePrefix}${name || '<feature-name>'}`
     : name || '<feature-name>';
 
   // Handle WebSocket messages for the "up" operation
+  // Filter by both operation AND target (feature name) to prevent cross-contamination
   const handleWSMessage = useCallback((message: unknown) => {
     const msg = message as WSMessage;
     if (msg.operation !== 'up') return;
+    // Only process messages for THIS feature to prevent race conditions
+    // when multiple create operations happen in quick succession
+    if (msg.target && msg.target !== name.trim()) return;
 
     if (msg.type === 'progress') {
       setProgressMessages(prev => [...prev, msg.message]);
@@ -37,7 +54,7 @@ export default function NewFeatureDialog({
     } else if (msg.type === 'error') {
       setError(msg.message);
     }
-  }, [onClose]);
+  }, [onClose, name]);
 
   // Only subscribe to WebSocket while creating
   useWebSocket(handleWSMessage, isCreating);
@@ -51,10 +68,16 @@ export default function NewFeatureDialog({
     setError(null);
 
     try {
-      await createFeature.mutateAsync({ name: name.trim() });
+      await createFeature.mutateAsync({
+        name: name.trim(),
+        prefix: prefix !== defaultBranchPrefix ? prefix : undefined,
+        noPrefix: noPrefix || undefined,
+        target: target.trim() || undefined,
+      });
       // Don't close here - wait for WebSocket 'complete' message
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
+      setIsCreating(false); // Reset to allow form editing and retry
     }
   };
 
@@ -62,8 +85,14 @@ export default function NewFeatureDialog({
     setError(null);
     setProgressMessages([]);
     setIsCreating(true);
-    createFeature.mutateAsync({ name: name.trim() }).catch(err => {
+    createFeature.mutateAsync({
+      name: name.trim(),
+      prefix: prefix !== defaultBranchPrefix ? prefix : undefined,
+      noPrefix: noPrefix || undefined,
+      target: target.trim() || undefined,
+    }).catch(err => {
       setError(err instanceof Error ? err.message : 'Unknown error');
+      setIsCreating(false); // Reset to allow form editing and retry
     });
   };
 
@@ -82,7 +111,7 @@ export default function NewFeatureDialog({
         Setting up feature worktrees...
       </p>
 
-      <div className="mt-4 space-y-2 max-h-64 overflow-y-auto">
+      <div ref={scrollRef} className="mt-4 space-y-2 min-h-24 max-h-64 overflow-y-auto scrollbar-hide">
         {progressMessages.map((msg, i) => (
           <div
             key={i}
@@ -177,15 +206,92 @@ export default function NewFeatureDialog({
           <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
             Use lowercase with hyphens (e.g., my-feature)
           </p>
-          {defaultBranchPrefix && (
-            <div className="mt-2 p-2 bg-gray-100 dark:bg-gray-700 rounded text-xs">
-              <span className="text-gray-500 dark:text-gray-400">Branch: </span>
-              <span className="font-mono text-gray-700 dark:text-gray-300">
-                {branchPreview}
-              </span>
-            </div>
-          )}
+          <div className="mt-2 p-2 bg-gray-100 dark:bg-gray-700 rounded text-xs">
+            <span className="text-gray-500 dark:text-gray-400">Branch: </span>
+            <span className="font-mono text-gray-700 dark:text-gray-300">
+              {branchPreview}
+            </span>
+          </div>
         </div>
+
+        {/* Advanced Options Toggle */}
+        <button
+          type="button"
+          onClick={() => setShowAdvanced(!showAdvanced)}
+          className="mt-4 flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+        >
+          <svg
+            className={`w-4 h-4 transition-transform ${showAdvanced ? 'rotate-90' : ''}`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+          Advanced Options
+        </button>
+
+        {/* Advanced Options */}
+        {showAdvanced && (
+          <div className="mt-3 space-y-4 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+            {/* Target Branch */}
+            <div>
+              <label
+                htmlFor="target-branch"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+              >
+                Source Branch (optional)
+              </label>
+              <input
+                type="text"
+                id="target-branch"
+                value={target}
+                onChange={(e) => setTarget(e.target.value)}
+                placeholder="e.g., main, develop, feature/other"
+                className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
+              />
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Branch to create feature from (defaults to main/master)
+              </p>
+            </div>
+
+            {/* Branch Prefix */}
+            <div>
+              <label
+                htmlFor="branch-prefix"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+              >
+                Branch Prefix
+              </label>
+              <div className="mt-1 flex items-center gap-2">
+                <input
+                  type="text"
+                  id="branch-prefix"
+                  value={prefix}
+                  onChange={(e) => setPrefix(e.target.value)}
+                  disabled={noPrefix}
+                  placeholder="e.g., feature/"
+                  className="block flex-1 px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm disabled:opacity-50"
+                />
+              </div>
+              <div className="mt-2 flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="no-prefix"
+                  checked={noPrefix}
+                  onChange={(e) => setNoPrefix(e.target.checked)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 dark:border-gray-600 rounded"
+                />
+                <label
+                  htmlFor="no-prefix"
+                  className="text-sm text-gray-600 dark:text-gray-400"
+                >
+                  No prefix (use feature name as branch name)
+                </label>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="px-6 py-4 bg-gray-50 dark:bg-gray-700/50 rounded-b-lg flex justify-end gap-3">

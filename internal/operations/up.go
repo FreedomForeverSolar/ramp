@@ -24,9 +24,14 @@ type UpOptions struct {
 	NoPrefix bool   // Explicitly disable prefix
 	Target   string // Source branch/feature to create from
 
-	// Optional - refresh behavior (for env file scripts)
-	ForceRefresh bool // Force refresh for env scripts
-	SkipRefresh  bool // Skip refresh for env scripts
+	// Optional - pre-operation behavior
+	AutoInstall bool // Auto-install repos if not present (default: false)
+
+	// Optional - refresh behavior
+	// By default, operations.Up() respects each repo's auto_refresh config.
+	// Use these flags to override:
+	ForceRefresh bool // Force refresh ALL repos regardless of per-repo config
+	SkipRefresh  bool // Skip refresh for ALL repos regardless of per-repo config
 }
 
 // UpResult contains the results of feature creation.
@@ -56,6 +61,62 @@ func Up(opts UpOptions) (*UpResult, error) {
 	cfg := opts.Config
 	progress := opts.Progress
 	featureName := opts.FeatureName
+
+	// Phase 0a: Auto-install if requested and needed
+	if opts.AutoInstall && !IsProjectInstalled(cfg, projectDir) {
+		progress.Start("Repositories not installed, running auto-installation...")
+		_, err := Install(InstallOptions{
+			ProjectDir: projectDir,
+			Config:     cfg,
+			Progress:   progress,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("auto-installation failed: %w", err)
+		}
+	}
+
+	// Phase 0b: Auto-refresh based on per-repo config (unless SkipRefresh is set)
+	if !opts.SkipRefresh {
+		repos := cfg.GetRepos()
+
+		// Build filter for repos that should be refreshed
+		repoFilter := make(map[string]bool)
+		for name, repo := range repos {
+			shouldRefresh := false
+			if opts.ForceRefresh {
+				// --refresh flag: refresh ALL repos
+				shouldRefresh = true
+			} else {
+				// Default: respect per-repo auto_refresh config
+				shouldRefresh = repo.ShouldAutoRefresh()
+			}
+
+			if shouldRefresh {
+				repoFilter[name] = true
+			}
+		}
+
+		// Only show refresh UI if there are repos to refresh
+		if len(repoFilter) > 0 {
+			progress.Start("Auto-refreshing repositories before creating feature")
+
+			// Log skipped repos
+			for name := range repos {
+				if !repoFilter[name] {
+					progress.Info(fmt.Sprintf("%s: auto-refresh disabled, skipping", name))
+				}
+			}
+
+			RefreshRepositories(RefreshOptions{
+				ProjectDir: projectDir,
+				Config:     cfg,
+				Progress:   progress,
+				RepoFilter: repoFilter,
+			})
+
+			progress.Success("Auto-refresh completed")
+		}
+	}
 
 	progress.Start(fmt.Sprintf("Creating feature '%s' for project '%s'", featureName, cfg.Name))
 

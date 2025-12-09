@@ -15,6 +15,10 @@ type Server struct {
 
 	// WebSocket upgrader
 	upgrader websocket.Upgrader
+
+	// Per-project locks for serializing feature operations
+	// Prevents concurrent create/delete operations from conflicting at git level
+	projectLocks sync.Map // map[projectID]*sync.Mutex
 }
 
 // NewServer creates a new API server
@@ -34,9 +38,11 @@ func NewServer() *Server {
 }
 
 // broadcast sends a message to all connected WebSocket clients
+// Uses full lock (not RLock) because gorilla/websocket WriteJSON is not
+// safe for concurrent calls on the same connection
 func (s *Server) broadcast(message interface{}) {
-	s.wsMutex.RLock()
-	defer s.wsMutex.RUnlock()
+	s.wsMutex.Lock()
+	defer s.wsMutex.Unlock()
 
 	for conn := range s.wsConnections {
 		if err := conn.WriteJSON(message); err != nil {
@@ -44,4 +50,14 @@ func (s *Server) broadcast(message interface{}) {
 			continue
 		}
 	}
+}
+
+// acquireProjectLock acquires a mutex for the given project ID.
+// Returns an unlock function that must be called to release the lock.
+// This serializes feature operations per-project to prevent git conflicts.
+func (s *Server) acquireProjectLock(projectID string) func() {
+	lock, _ := s.projectLocks.LoadOrStore(projectID, &sync.Mutex{})
+	mu := lock.(*sync.Mutex)
+	mu.Lock()
+	return func() { mu.Unlock() }
 }

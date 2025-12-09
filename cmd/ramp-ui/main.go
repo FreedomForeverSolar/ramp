@@ -33,12 +33,36 @@ func main() {
 	// Project routes
 	apiRouter.HandleFunc("/projects", server.ListProjects).Methods("GET")
 	apiRouter.HandleFunc("/projects", server.AddProject).Methods("POST")
+	apiRouter.HandleFunc("/projects/reorder", server.ReorderProjects).Methods("PUT")
 	apiRouter.HandleFunc("/projects/{id}", server.RemoveProject).Methods("DELETE")
+	apiRouter.HandleFunc("/projects/{id}/favorite", server.ToggleFavorite).Methods("PUT")
 
 	// Feature routes
 	apiRouter.HandleFunc("/projects/{id}/features", server.ListFeatures).Methods("GET")
 	apiRouter.HandleFunc("/projects/{id}/features", server.CreateFeature).Methods("POST")
+	apiRouter.HandleFunc("/projects/{id}/features/prune", server.PruneFeatures).Methods("POST")
 	apiRouter.HandleFunc("/projects/{id}/features/{name}", server.DeleteFeature).Methods("DELETE")
+
+	// Config routes (local preferences)
+	apiRouter.HandleFunc("/projects/{id}/config/status", server.GetConfigStatus).Methods("GET")
+	apiRouter.HandleFunc("/projects/{id}/config", server.GetConfig).Methods("GET")
+	apiRouter.HandleFunc("/projects/{id}/config", server.SaveConfig).Methods("POST")
+	apiRouter.HandleFunc("/projects/{id}/config", server.ResetConfig).Methods("DELETE")
+
+	// Command routes
+	apiRouter.HandleFunc("/projects/{id}/commands", server.ListCommands).Methods("GET")
+	apiRouter.HandleFunc("/projects/{id}/commands/{commandName}/run", server.RunCommand).Methods("POST")
+
+	// Source repos routes
+	apiRouter.HandleFunc("/projects/{id}/source-repos", server.GetSourceRepos).Methods("GET")
+	apiRouter.HandleFunc("/projects/{id}/source-repos/refresh", server.RefreshSourceRepos).Methods("POST")
+
+	// Terminal routes
+	apiRouter.HandleFunc("/terminal/open", server.OpenTerminal).Methods("POST")
+
+	// App settings routes
+	apiRouter.HandleFunc("/settings", server.GetAppSettings).Methods("GET")
+	apiRouter.HandleFunc("/settings", server.SaveAppSettings).Methods("POST")
 
 	// Health check
 	router.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {

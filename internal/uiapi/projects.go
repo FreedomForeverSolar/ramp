@@ -22,7 +22,7 @@ func (s *Server) ListProjects(w http.ResponseWriter, r *http.Request) {
 	projects := make([]Project, 0, len(appConfig.Projects))
 
 	for _, ref := range appConfig.Projects {
-		project, err := loadProjectFromPath(ref.ID, ref.Path, ref.AddedAt)
+		project, err := loadProjectFromPath(ref)
 		if err != nil {
 			// Skip projects that can't be loaded (might have been moved/deleted)
 			continue
@@ -55,7 +55,7 @@ func (s *Server) AddProject(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Add to app config
-	id, err := AddProjectToConfig(req.Path)
+	_, err := AddProjectToConfig(req.Path)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Failed to add project", err.Error())
 		return
@@ -63,8 +63,8 @@ func (s *Server) AddProject(w http.ResponseWriter, r *http.Request) {
 
 	// Load and return the project
 	appConfig, _ := LoadAppConfig()
-	var addedAt = appConfig.Projects[len(appConfig.Projects)-1].AddedAt
-	project, err := loadProjectFromPath(id, req.Path, addedAt)
+	ref := appConfig.Projects[len(appConfig.Projects)-1]
+	project, err := loadProjectFromPath(ref)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Failed to load project", err.Error())
 		return
@@ -86,9 +86,44 @@ func (s *Server) RemoveProject(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, SuccessResponse{Success: true, Message: "Project removed"})
 }
 
+// ReorderProjects updates the order of all projects
+func (s *Server) ReorderProjects(w http.ResponseWriter, r *http.Request) {
+	var req ReorderProjectsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body", err.Error())
+		return
+	}
+
+	if len(req.ProjectIDs) == 0 {
+		writeError(w, http.StatusBadRequest, "Project IDs required", "")
+		return
+	}
+
+	if err := ReorderProjects(req.ProjectIDs); err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to reorder projects", err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, SuccessResponse{Success: true, Message: "Projects reordered"})
+}
+
+// ToggleFavorite toggles the favorite status of a project
+func (s *Server) ToggleFavorite(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id := vars["id"]
+
+	newStatus, err := ToggleProjectFavorite(id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to toggle favorite", err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, ToggleFavoriteResponse{IsFavorite: newStatus})
+}
+
 // loadProjectFromPath loads a project from its filesystem path
-func loadProjectFromPath(id, projectPath string, addedAt interface{}) (*Project, error) {
-	cfg, err := config.LoadConfig(projectPath)
+func loadProjectFromPath(ref ProjectRef) (*Project, error) {
+	cfg, err := config.LoadConfig(ref.Path)
 	if err != nil {
 		return nil, err
 	}
@@ -110,23 +145,19 @@ func loadProjectFromPath(id, projectPath string, addedAt interface{}) (*Project,
 	}
 
 	// Get existing features (worktrees)
-	features := listExistingFeatures(projectPath)
+	features := listExistingFeatures(ref.Path)
 
 	project := &Project{
-		ID:                  id,
+		ID:                  ref.ID,
 		Name:                cfg.Name,
-		Path:                projectPath,
+		Path:                ref.Path,
+		AddedAt:             ref.AddedAt,
+		Order:               ref.Order,
+		IsFavorite:          ref.IsFavorite,
 		Repos:               repos,
 		Features:            features,
 		BasePort:            cfg.BasePort,
 		DefaultBranchPrefix: cfg.DefaultBranchPrefix,
-	}
-
-	// Set addedAt if it's a time.Time
-	if t, ok := addedAt.(interface{ IsZero() bool }); ok && !t.IsZero() {
-		if tt, ok := addedAt.(interface{ UTC() interface{} }); ok {
-			_ = tt // Just to suppress unused warning
-		}
 	}
 
 	return project, nil

@@ -1,8 +1,12 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Project } from '../types';
-import { useFeatures, useRemoveProject } from '../hooks/useRampAPI';
+import { useFeatures, useRemoveProject, useConfigStatus, useCommands } from '../hooks/useRampAPI';
 import FeatureList from './FeatureList';
 import NewFeatureDialog from './NewFeatureDialog';
+import FromBranchDialog from './FromBranchDialog';
+import ProjectSettings from './ProjectSettings';
+import ConfigPromptsDialog from './ConfigPromptsDialog';
+import SourceRepoList from './SourceRepoList';
 
 interface ProjectViewProps {
   project: Project;
@@ -10,8 +14,27 @@ interface ProjectViewProps {
 
 export default function ProjectView({ project }: ProjectViewProps) {
   const [showNewFeatureDialog, setShowNewFeatureDialog] = useState(false);
+  const [showFromBranchDialog, setShowFromBranchDialog] = useState(false);
+  const [showConfigDialog, setShowConfigDialog] = useState(false);
+  const [pendingNewFeature, setPendingNewFeature] = useState(false);
+  const [pendingFromBranch, setPendingFromBranch] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const { data: featuresData, isLoading: featuresLoading } = useFeatures(project.id);
+  const { data: commandsData } = useCommands(project.id);
+  const { data: configStatus } = useConfigStatus(project.id);
   const removeProject = useRemoveProject();
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleRemoveProject = async () => {
     if (confirm(`Remove "${project.name}" from Ramp UI?\n\nThis will not delete any files.`)) {
@@ -19,7 +42,47 @@ export default function ProjectView({ project }: ProjectViewProps) {
     }
   };
 
+  const handleNewFeature = () => {
+    // Check if config is needed before allowing feature creation
+    if (configStatus?.needsConfig) {
+      setPendingNewFeature(true);
+      setShowConfigDialog(true);
+    } else {
+      setShowNewFeatureDialog(true);
+    }
+  };
+
+  const handleFromBranch = () => {
+    setShowDropdown(false);
+    // Check if config is needed before allowing feature creation
+    if (configStatus?.needsConfig) {
+      setPendingFromBranch(true);
+      setShowConfigDialog(true);
+    } else {
+      setShowFromBranchDialog(true);
+    }
+  };
+
+  const handleConfigSaved = () => {
+    setShowConfigDialog(false);
+    // If user was trying to create a feature, show the appropriate dialog
+    if (pendingNewFeature) {
+      setPendingNewFeature(false);
+      setShowNewFeatureDialog(true);
+    } else if (pendingFromBranch) {
+      setPendingFromBranch(false);
+      setShowFromBranchDialog(true);
+    }
+  };
+
+  const handleConfigClosed = () => {
+    setShowConfigDialog(false);
+    setPendingNewFeature(false);
+    setPendingFromBranch(false);
+  };
+
   const features = featuresData?.features ?? [];
+  const commands = commandsData?.commands ?? [];
 
   return (
     <div className="h-full flex flex-col">
@@ -35,25 +98,73 @@ export default function ProjectView({ project }: ProjectViewProps) {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowNewFeatureDialog(true)}
-              className="inline-flex items-center px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium rounded-md transition-colors"
-            >
-              <svg
-                className="w-4 h-4 mr-2"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 4v16m8-8H4"
-                />
-              </svg>
-              New Feature
-            </button>
+            {/* Local Preferences cog button */}
+            <ProjectSettings projectId={project.id} />
+
+            {/* Split button for New Feature */}
+            <div className="relative" ref={dropdownRef}>
+              <div className="inline-flex rounded-md shadow-sm">
+                <button
+                  onClick={handleNewFeature}
+                  className="inline-flex items-center px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium rounded-l-md transition-colors"
+                >
+                  <svg
+                    className="w-4 h-4 mr-2"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 4v16m8-8H4"
+                    />
+                  </svg>
+                  New Feature
+                </button>
+                <button
+                  onClick={() => setShowDropdown(!showDropdown)}
+                  className="inline-flex items-center px-2 py-2 bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium rounded-r-md border-l border-primary-400 transition-colors"
+                >
+                  <svg
+                    className={`w-4 h-4 transition-transform ${showDropdown ? 'rotate-180' : ''}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Dropdown menu */}
+              {showDropdown && (
+                <div className="absolute right-0 mt-1 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg ring-1 ring-black ring-opacity-5 z-10">
+                  <div className="py-1">
+                    <button
+                      onClick={handleFromBranch}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+                    >
+                      <svg
+                        className="w-4 h-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"
+                        />
+                      </svg>
+                      From Branch...
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
             <button
               onClick={handleRemoveProject}
               className="p-2 text-gray-500 hover:text-red-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors"
@@ -102,35 +213,32 @@ export default function ProjectView({ project }: ProjectViewProps) {
           )}
         </div>
 
-        {/* Repos summary */}
-        <div className="mt-4 flex flex-wrap gap-2">
-          {project.repos.map((repo) => (
-            <span
-              key={repo.name}
-              className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200"
-              title={`${repo.git}${repo.autoRefresh ? '' : ' (auto-refresh disabled)'}`}
-            >
-              {repo.name}
-              {!repo.autoRefresh && (
-                <svg className="w-3 h-3 ml-1 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-              )}
-            </span>
-          ))}
-        </div>
       </div>
 
-      {/* Features */}
+      {/* Main content area */}
       <div className="flex-1 overflow-auto p-6">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-          Features
-        </h2>
-        <FeatureList
+        {/* Source Repositories */}
+        <SourceRepoList
           projectId={project.id}
+          projectPath={project.path}
+          repoConfigs={project.repos}
+          commands={commands}
           features={features}
-          isLoading={featuresLoading}
         />
+
+        {/* Features */}
+        <div>
+          <h3 className="text-sm font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-3">
+            Features
+          </h3>
+          <FeatureList
+            projectId={project.id}
+            projectPath={project.path}
+            features={features}
+            commands={commands}
+            isLoading={featuresLoading}
+          />
+        </div>
       </div>
 
       {/* New Feature Dialog */}
@@ -139,6 +247,24 @@ export default function ProjectView({ project }: ProjectViewProps) {
           projectId={project.id}
           defaultBranchPrefix={project.defaultBranchPrefix}
           onClose={() => setShowNewFeatureDialog(false)}
+        />
+      )}
+
+      {/* From Branch Dialog */}
+      {showFromBranchDialog && (
+        <FromBranchDialog
+          projectId={project.id}
+          onClose={() => setShowFromBranchDialog(false)}
+        />
+      )}
+
+      {/* Config Prompts Dialog (shown when config is needed) */}
+      {showConfigDialog && configStatus?.prompts && (
+        <ConfigPromptsDialog
+          projectId={project.id}
+          prompts={configStatus.prompts}
+          onClose={handleConfigClosed}
+          onSaved={handleConfigSaved}
         />
       )}
     </div>
