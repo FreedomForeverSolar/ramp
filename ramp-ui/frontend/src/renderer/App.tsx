@@ -17,11 +17,16 @@ function App() {
   const projects = projectsData?.projects ?? [];
   const selectedProject = projects.find((p: Project) => p.id === selectedProjectId);
 
-  // Refresh features when app comes to foreground
+  // Refresh features and source repo status when app comes to foreground
   useEffect(() => {
     const isFeaturesQuery = (query: { queryKey: unknown }) => {
       const key = query.queryKey;
       return Array.isArray(key) && key.length >= 3 && key[0] === 'projects' && key[2] === 'features';
+    };
+
+    const isSourceReposQuery = (query: { queryKey: unknown }) => {
+      const key = query.queryKey;
+      return Array.isArray(key) && key.length >= 3 && key[0] === 'projects' && key[2] === 'source-repos';
     };
 
     const handleFocus = () => {
@@ -31,6 +36,8 @@ function App() {
 
       // Refetch all features queries (matches any project's features)
       queryClient.invalidateQueries({ predicate: isFeaturesQuery });
+      // Also refresh source repo status (triggers git fetch to check behind/ahead)
+      queryClient.invalidateQueries({ predicate: isSourceReposQuery });
     };
 
     const handleVisibilityChange = () => {

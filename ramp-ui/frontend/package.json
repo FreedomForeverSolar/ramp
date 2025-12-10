@@ -6,14 +6,14 @@
   "author": "Ramp Contributors",
   "license": "MIT",
   "scripts": {
-    "dev": "concurrently \"npm run dev:vite\" \"npm run dev:electron\"",
-    "dev:vite": "vite",
-    "dev:electron": "wait-on http://localhost:5173 && electron .",
-    "build": "tsc && vite build",
-    "build:electron": "tsc -p tsconfig.main.json",
-    "package": "npm run build && npm run build:electron && electron-builder",
-    "lint": "eslint src --ext .ts,.tsx",
-    "typecheck": "tsc --noEmit"
+    "dev": "concurrently \"bun run dev:vite\" \"bun run dev:electron\"",
+    "dev:vite": "bunx --bun vite",
+    "dev:electron": "bunx wait-on http://localhost:5173 && electron .",
+    "build": "bun run typecheck && bunx --bun vite build",
+    "build:electron": "bunx tsc -p tsconfig.main.json",
+    "package": "bun run build && bun run build:electron && bunx electron-builder",
+    "lint": "bunx eslint src --ext .ts,.tsx",
+    "typecheck": "bunx tsc --noEmit"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

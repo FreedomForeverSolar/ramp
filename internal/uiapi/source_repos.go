@@ -75,6 +75,9 @@ func (s *Server) GetSourceRepos(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
+			// Fetch from remote to get latest status (like CLI's ramp status does)
+			_ = git.FetchAllQuiet(repoDir)
+
 			// Get current branch
 			branch, err := git.GetCurrentBranch(repoDir)
 			if err != nil {

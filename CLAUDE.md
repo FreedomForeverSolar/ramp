@@ -15,8 +15,8 @@ Ramp is a CLI tool for managing multi-repository development workflows using git
 
 ### Desktop App (ramp-ui)
 - `go build -o ramp-ui/frontend/resources/ramp-server ./cmd/ramp-ui` - Build backend
-- `cd ramp-ui/frontend && npm run dev` - Start dev mode with hot reload
-- `cd ramp-ui/frontend && npm run build && npm run package` - Build distributable
+- `cd ramp-ui/frontend && bun run dev` - Start dev mode with hot reload
+- `cd ramp-ui/frontend && bun run build && bun run package` - Build distributable
 
 ### Key Commands
 - `ramp init` - Interactive project setup (uses huh forms library)
@@ -153,14 +153,16 @@ Shared operation logic used by both CLI and desktop app:
 
 ### `internal/uiapi/`
 REST API and WebSocket handlers for the desktop app:
-- `Server` struct - Manages WebSocket connections and routes
-- `projects.go` - Project CRUD endpoints
-- `features.go` - Feature create/delete (ramp up/down)
+- `Server` struct - Manages WebSocket connections, routes, and per-project locks
+- `projects.go` - Project CRUD, reorder, favorites
+- `features.go` - Feature create/delete/prune (ramp up/down/prune)
 - `commands.go` - Custom command execution endpoints
-- `source_repos.go` - Source repository management and refresh
+- `source_repos.go` - Source repository status and refresh
 - `terminal.go` - Open terminal at project/feature paths
 - `websocket.go` - Real-time progress updates via WebSocket
-- `appconfig.go` - Persistent app configuration
+- `appconfig.go` - Persistent app configuration and settings
+- `config.go` - Project-level local preferences (prompts)
+- `models.go` - API request/response types
 
 ## Environment Variables
 

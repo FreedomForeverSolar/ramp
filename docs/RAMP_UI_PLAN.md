@@ -37,45 +37,66 @@ Users who prefer visual interfaces over command-line tools, making Ramp more acc
 
 ## Directory Structure
 
-**Note:** The actual implementation differs slightly from the original plan. The Go backend is integrated into the main module to reuse `internal/` packages directly.
+**Note:** The Go backend is integrated into the main module to reuse `internal/` packages directly.
 
 ```
 # Go Backend (integrated into main module)
 cmd/ramp-ui/
-└── main.go                 # HTTP server entry point
+└── main.go                 # HTTP server entry point (23 routes)
 
 internal/uiapi/             # API handlers and models
-├── server.go               # Server setup and routing
-├── projects.go             # List/add/remove projects
-├── features.go             # Up/down/list features
-├── websocket.go            # Real-time updates
-├── appconfig.go            # App configuration storage
-├── models.go               # API request/response types
+├── server.go               # Server setup, WebSocket management, per-project locks
+├── projects.go             # Project CRUD, reorder, favorites
+├── features.go             # Feature create/delete/prune with progress streaming
+├── commands.go             # Custom command execution
+├── source_repos.go         # Source repository status and refresh
+├── config.go               # Project-level local preferences (prompts)
+├── terminal.go             # Open terminal, app settings
+├── websocket.go            # Real-time progress broadcasting
+├── appconfig.go            # App configuration storage (platform-specific)
+├── models.go               # API request/response types (19 types)
 ├── utils.go                # Helper functions
 ├── appconfig_test.go       # Tests
 └── projects_test.go        # Tests
+
+internal/operations/        # Shared operation logic (CLI + UI)
+├── interfaces.go           # ProgressReporter, OutputStreamer, ConfirmationHandler
+├── up.go                   # Feature creation logic
+├── down.go                 # Feature deletion logic
+├── refresh.go              # Source repo refresh logic
+├── install.go              # Repository installation logic
+├── run.go                  # Custom command execution logic
+└── prune.go                # Merged feature cleanup logic
 
 # Electron Frontend
 ramp-ui/frontend/
 ├── src/
 │   ├── main/               # Electron main process
 │   │   ├── index.ts        # Main entry, spawns Go backend
-│   │   └── preload.ts      # Preload script for IPC
+│   │   └── preload.ts      # Preload script for IPC (dialog, terminal)
 │   └── renderer/           # React app
 │       ├── App.tsx
 │       ├── components/
-│       │   ├── ProjectList.tsx
-│       │   ├── ProjectView.tsx
-│       │   ├── FeatureList.tsx
-│       │   ├── NewFeatureDialog.tsx
-│       │   └── EmptyState.tsx
+│       │   ├── ProjectList.tsx         # Project sidebar with favorites/reorder
+│       │   ├── ProjectView.tsx         # Main project detail view
+│       │   ├── FeatureList.tsx         # Features with git status visualization
+│       │   ├── NewFeatureDialog.tsx    # Create feature (with from-branch option)
+│       │   ├── FromBranchDialog.tsx    # Create from remote branch
+│       │   ├── DeleteFeatureDialog.tsx # Delete with streaming progress
+│       │   ├── RunCommandDialog.tsx    # Command execution with output
+│       │   ├── SourceRepoList.tsx      # Source repo status and refresh
+│       │   ├── ConfigPromptsDialog.tsx # Project configuration prompts
+│       │   ├── ProjectSettings.tsx     # Project configuration display
+│       │   ├── GlobalSettingsDialog.tsx # App-level settings
+│       │   ├── ProjectCommands.tsx     # Custom command buttons
+│       │   └── EmptyState.tsx          # Welcome screen
 │       ├── hooks/
-│       │   └── useRampAPI.ts
+│       │   └── useRampAPI.ts           # 21 exported hooks for API calls
 │       ├── types/
 │       │   ├── index.ts
 │       │   └── electron.d.ts
 │       └── styles/
-│           └── index.css   # Tailwind CSS
+│           └── index.css               # Tailwind CSS
 ├── resources/              # Backend binary location
 ├── package.json
 ├── tsconfig.json
@@ -112,27 +133,38 @@ ramp-ui/frontend/
 # Project Management
 GET    /api/projects                           # List all projects in app config
 POST   /api/projects                           # Add new project (select directory)
-GET    /api/projects/:id                       # Get project details
 DELETE /api/projects/:id                       # Remove project from app
+PUT    /api/projects/reorder                   # Reorder projects in sidebar
+PUT    /api/projects/:id/favorite              # Toggle project favorite status
 
 # Feature Management
-GET    /api/projects/:id/features              # List features/trees
+GET    /api/projects/:id/features              # List features with git status
 POST   /api/projects/:id/features              # Create feature (ramp up)
 DELETE /api/projects/:id/features/:name        # Delete feature (ramp down)
+POST   /api/projects/:id/features/prune        # Prune merged features
 
 # Custom Commands
 GET    /api/projects/:id/commands              # List custom commands from config
 POST   /api/projects/:id/commands/:name/run    # Execute custom command
 
-# Git Operations
-GET    /api/projects/:id/features/:name/status # Get git status for feature
+# Source Repository Management
+GET    /api/projects/:id/source-repos          # Get source repo status (branch, changes)
+POST   /api/projects/:id/source-repos/refresh  # Refresh source repos (git pull)
 
-# Maintenance
-POST   /api/projects/:id/refresh               # Run ramp refresh
-POST   /api/projects/:id/prune                 # Run ramp prune
+# Project Configuration (Local Preferences)
+GET    /api/projects/:id/config/status         # Check if prompts need answers
+GET    /api/projects/:id/config                # Get saved config preferences
+POST   /api/projects/:id/config                # Save config preferences
+DELETE /api/projects/:id/config                # Reset config to defaults
 
-# Real-time Updates
-WS     /ws/logs                                 # WebSocket for streaming output
+# Terminal & Settings
+POST   /api/terminal/open                      # Open terminal at specified path
+GET    /api/settings                           # Get app settings
+POST   /api/settings                           # Save app settings
+
+# Health & Real-time Updates
+GET    /health                                 # Health check
+WS     /ws/logs                                # WebSocket for streaming output
 ```
 
 ### Example API Responses
@@ -146,7 +178,9 @@ WS     /ws/logs                                 # WebSocket for streaming output
       "name": "my-app",
       "path": "/Users/rob/projects/my-app",
       "repos": [...],
-      "features": [...]
+      "features": [...],
+      "isFavorite": true,
+      "order": 0
     }
   ]
 }
@@ -156,9 +190,30 @@ WS     /ws/logs                                 # WebSocket for streaming output
   "features": [
     {
       "name": "user-auth",
-      "repos": ["frontend", "backend"],
-      "created": "2025-01-15T10:30:00Z",
-      "hasUncommittedChanges": false
+      "status": "in_flight",
+      "worktrees": [
+        {
+          "repo": "frontend",
+          "path": "/Users/rob/projects/my-app/trees/user-auth/frontend",
+          "hasLocalWork": true,
+          "diffStats": { "filesChanged": 3, "insertions": 45, "deletions": 12 },
+          "statusStats": { "untracked": 1, "staged": 2, "modified": 1 },
+          "aheadBehind": { "ahead": 2, "behind": 0 }
+        }
+      ]
+    }
+  ]
+}
+
+// GET /api/projects/:id/source-repos
+{
+  "repos": [
+    {
+      "name": "frontend",
+      "path": "/Users/rob/projects/my-app/repos/frontend",
+      "branch": "main",
+      "hasLocalChanges": false,
+      "aheadBehind": { "ahead": 0, "behind": 3 }
     }
   ]
 }
@@ -524,13 +579,13 @@ go build -o ramp-ui/frontend/resources/ramp-server ./cmd/ramp-ui
 
 # Install frontend dependencies
 cd ramp-ui/frontend
-npm install
+bun install
 
 # Build Electron main process (including preload)
-npm run build:electron
+bun run build:electron
 
 # Start development mode (hot reload)
-npm run dev
+bun run dev
 ```
 
 ### Development Mode
@@ -551,19 +606,19 @@ go build -o ramp-ui/frontend/resources/ramp-server ./cmd/ramp-ui
 
 # Build Electron app
 cd ramp-ui/frontend
-npm run build          # Build renderer (Vite)
-npm run build:electron # Build main process (TypeScript)
-npm run package        # Creates distributable
+bun run build          # Build renderer (Vite)
+bun run build:electron # Build main process (TypeScript)
+bun run package        # Creates distributable
 ```
 
 Potential `Makefile` targets:
 ```makefile
 build-ui:
 	go build -o ramp-ui/frontend/resources/ramp-server ./cmd/ramp-ui
-	cd ramp-ui/frontend && npm run build && npm run build:electron && npm run package
+	cd ramp-ui/frontend && bun run build && bun run build:electron && bun run package
 
 install-ui-deps:
-	cd ramp-ui/frontend && npm install
+	cd ramp-ui/frontend && bun install
 ```
 
 ## Implementation Phases
@@ -613,13 +668,20 @@ install-ui-deps:
 
 **Deliverable:** Can run custom commands and see output
 
-### Phase 5: Nice-to-Haves
+### Phase 5: Polish & Advanced Features ✅ MOSTLY COMPLETE
 - [ ] Integrate xterm.js for embedded terminal
-- [ ] "Open in Terminal" button (opens native terminal at path)
-- [x] Git status visualization (uncommitted changes badge)
-- [ ] Implement refresh operation UI
-- [ ] Implement prune operation UI
-- [ ] Settings panel (theme, update preferences)
+- [x] "Open in Terminal" button (configurable terminal app: Terminal.app, iTerm2, Warp, or custom)
+- [x] Git status visualization (uncommitted changes badge, diff stats, ahead/behind counts)
+- [x] Source repository status view with refresh capability
+- [x] Implement refresh operation UI (refresh source repos)
+- [x] Implement prune operation UI (prune merged features)
+- [x] Global settings dialog (terminal app preference, custom terminal command)
+- [x] Project configuration prompts support (prompts from ramp.yaml)
+- [x] Project reordering via drag-and-drop
+- [x] Project favorites for quick access
+- [x] From-branch feature creation (create feature from arbitrary remote branch)
+- [x] In-modal progress UX (streaming progress directly in create/delete dialogs)
+- [x] Delete feature dialog with real-time progress streaming
 - [x] Dark/light theme support (Tailwind dark mode classes in place)
 
 **Deliverable:** Polished UX with advanced features
@@ -689,19 +751,47 @@ ramp up feat-1 --json  # JSON output with progress updates
 
 ## Current Status
 
-**Phases 1-4 Complete.** The app can:
+**Phases 1-5 Mostly Complete.** The app can:
+
+### Core Features
 - Launch and start the Go backend automatically
 - Add projects via native directory picker
 - Validate `.ramp/ramp.yaml` exists
 - Display project configuration (repos, branch prefix, base port, setup/cleanup scripts)
 - Show existing features with expandable worktree details
 - Remove projects from the app
-- Create new features (`ramp up` equivalent)
-- Delete features with uncommitted changes warning (`ramp down` equivalent)
+
+### Feature Operations
+- Create new features (`ramp up` equivalent) with real-time progress
+- Create features from arbitrary remote branches (auto-derives feature name)
+- Delete features with confirmation dialog and streaming progress (`ramp down` equivalent)
+- Prune merged features across all repos
+- Uncommitted changes warning with detailed git status
+
+### Project Organization
+- Reorder projects via drag-and-drop
+- Mark projects as favorites for quick access
+- Handle project-specific configuration prompts
+
+### Source Repository Management
+- View source repository status (branch, ahead/behind, local changes)
+- Refresh source repos (pull latest from remote)
+
+### Custom Commands
 - Run custom commands with real-time output streaming
 - View command output in terminal-style modal
 
+### Settings & Preferences
+- Global settings dialog (terminal app preference)
+- Configurable terminal app (Terminal.app, iTerm2, Warp, or custom command)
+- Open terminal at project or feature worktree paths
+
+### UI/UX
+- In-modal progress streaming for create/delete operations
+- Detailed git status visualization (diff stats, untracked/staged/modified counts)
+- Dark/light theme support (CSS classes in place)
+
 **Next Steps**:
-1. Test the current implementation locally (`npm run dev` in `ramp-ui/frontend`)
-2. Phase 5 - Nice-to-haves (xterm.js, refresh/prune UI, settings panel)
-3. Phase 6 - Distribution (code signing, auto-updater, GitHub Actions)
+1. Phase 6 - Distribution (code signing, auto-updater, GitHub Actions)
+2. Optional: xterm.js integration for embedded terminal
+3. Optional: Theme toggle UI in settings
