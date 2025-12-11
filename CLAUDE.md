@@ -9,9 +9,14 @@ Ramp is a CLI tool for managing multi-repository development workflows using git
 ## Quick Reference
 
 ### Build & Test
-- `go build -o ramp .` - Build binary
-- `./install.sh` - Build and install to `/usr/local/bin`
+- `go build -o ramp .` - Build CLI binary
+- `./install.sh` - Build and install CLI to `/usr/local/bin`
 - `go test ./...` - Run all tests
+
+### Desktop App (ramp-ui)
+- `go build -o ramp-ui/frontend/resources/ramp-server ./cmd/ramp-ui` - Build backend
+- `cd ramp-ui/frontend && bun run dev` - Start dev mode with hot reload
+- `cd ramp-ui/frontend && bun run build && bun run package` - Build distributable
 
 ### Key Commands
 - `ramp init` - Interactive project setup (uses huh forms library)
@@ -31,6 +36,7 @@ For detailed usage, see README or use `--help` flag.
 ### Project Structure
 ```
 cmd/              # Cobra CLI commands (root.go, up.go, down.go, etc.)
+cmd/ramp-ui/      # HTTP server entry point for desktop app
 internal/
   config/         # YAML parsing, project discovery
   git/            # Git operations and worktree management
@@ -39,6 +45,9 @@ internal/
   ports/          # Port allocation management
   ui/             # Progress spinners and feedback
   autoupdate/     # Homebrew auto-update system
+  operations/     # Shared operation logic (up, down, refresh, install)
+  uiapi/          # REST API handlers for desktop app
+ramp-ui/          # Electron + React desktop app (see ramp-ui/README.md)
 ```
 
 ### Configuration
@@ -134,6 +143,26 @@ Progress feedback respecting `--verbose` flag:
 - `NewProgress()`, `Start()`, `Success()`, `Error()`, `Warning()`
 - `RunCommandWithProgress()` - Executes commands with spinner
 - `RunCommandWithProgressQuiet()` - Executes without showing output on success
+
+### `internal/operations/`
+Shared operation logic used by both CLI and desktop app:
+- `ProgressReporter` interface - Abstracts CLI spinners vs WebSocket broadcasting
+- `OutputStreamer` interface - Line-by-line command output streaming
+- `ConfirmationHandler` interface - User confirmation abstraction
+- `Up()`, `Down()`, `Refresh()`, `Install()`, `Run()` - Core operations accepting `ProgressReporter`
+
+### `internal/uiapi/`
+REST API and WebSocket handlers for the desktop app:
+- `Server` struct - Manages WebSocket connections, routes, and per-project locks
+- `projects.go` - Project CRUD, reorder, favorites
+- `features.go` - Feature create/delete/prune (ramp up/down/prune)
+- `commands.go` - Custom command execution endpoints
+- `source_repos.go` - Source repository status and refresh
+- `terminal.go` - Open terminal at project/feature paths
+- `websocket.go` - Real-time progress updates via WebSocket
+- `appconfig.go` - Persistent app configuration and settings
+- `config.go` - Project-level local preferences (prompts)
+- `models.go` - API request/response types
 
 ## Environment Variables
 
