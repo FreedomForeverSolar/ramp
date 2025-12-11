@@ -390,3 +390,19 @@ func SaveLocalConfig(localCfg *LocalConfig, projectDir string) error {
 
 	return nil
 }
+
+// DeleteLocalConfig removes the local.yaml file for a project
+func DeleteLocalConfig(projectDir string) error {
+	localPath := filepath.Join(projectDir, ".ramp", "local.yaml")
+
+	// If file doesn't exist, nothing to delete
+	if _, err := os.Stat(localPath); os.IsNotExist(err) {
+		return nil
+	}
+
+	if err := os.Remove(localPath); err != nil {
+		return fmt.Errorf("failed to delete local config file: %w", err)
+	}
+
+	return nil
+}

@@ -1,0 +1,175 @@
+name: Release UI
+
+on:
+  push:
+    tags:
+      - 'ui-v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    name: Build macOS
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#ui-v}" >> $GITHUB_OUTPUT
+
+      - name: Build Go backend (arm64)
+        run: |
+          GOOS=darwin GOARCH=arm64 go build -o ramp-ui/frontend/resources/ramp-server-arm64 ./cmd/ramp-ui
+
+      - name: Build Go backend (x64)
+        run: |
+          GOOS=darwin GOARCH=amd64 go build -o ramp-ui/frontend/resources/ramp-server-x64 ./cmd/ramp-ui
+
+      - name: Create universal binary
+        run: |
+          lipo -create -output ramp-ui/frontend/resources/ramp-server \
+            ramp-ui/frontend/resources/ramp-server-arm64 \
+            ramp-ui/frontend/resources/ramp-server-x64
+          rm ramp-ui/frontend/resources/ramp-server-arm64 ramp-ui/frontend/resources/ramp-server-x64
+
+      - name: Install frontend dependencies
+        working-directory: ramp-ui/frontend
+        run: bun install
+
+      - name: Set version in package.json
+        working-directory: ramp-ui/frontend
+        run: bun run set-version
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
+
+      - name: Build and package
+        working-directory: ramp-ui/frontend
+        run: bun run package:publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-build
+          path: |
+            ramp-ui/frontend/release/*.dmg
+            ramp-ui/frontend/release/*.zip
+            ramp-ui/frontend/release/*.yml
+          if-no-files-found: error
+
+  build-linux:
+    name: Build Linux
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#ui-v}" >> $GITHUB_OUTPUT
+
+      - name: Build Go backend
+        run: |
+          GOOS=linux GOARCH=amd64 go build -o ramp-ui/frontend/resources/ramp-server ./cmd/ramp-ui
+
+      - name: Install frontend dependencies
+        working-directory: ramp-ui/frontend
+        run: bun install
+
+      - name: Set version in package.json
+        working-directory: ramp-ui/frontend
+        run: bun run set-version
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
+
+      - name: Build and package
+        working-directory: ramp-ui/frontend
+        run: bun run package:publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-build
+          path: |
+            ramp-ui/frontend/release/*.AppImage
+            ramp-ui/frontend/release/*.yml
+          if-no-files-found: error
+
+  build-windows:
+    name: Build Windows
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Extract version from tag
+        id: version
+        shell: bash
+        run: echo "VERSION=${GITHUB_REF_NAME#ui-v}" >> $GITHUB_OUTPUT
+
+      - name: Build Go backend
+        run: |
+          $env:GOOS = "windows"
+          $env:GOARCH = "amd64"
+          go build -o ramp-ui/frontend/resources/ramp-server.exe ./cmd/ramp-ui
+
+      - name: Install frontend dependencies
+        working-directory: ramp-ui/frontend
+        run: bun install
+
+      - name: Set version in package.json
+        working-directory: ramp-ui/frontend
+        run: bun run set-version
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
+
+      - name: Build and package
+        working-directory: ramp-ui/frontend
+        run: bun run package:publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build
+          path: |
+            ramp-ui/frontend/release/*.exe
+            ramp-ui/frontend/release/*.yml
+          if-no-files-found: error

@@ -1,6 +1,14 @@
 # Binary build output
 ramp
 
+# Ramp UI build artifacts
+ramp-ui/ramp-ui
+ramp-ui/frontend/resources/ramp-server
+ramp-ui/frontend/dist/
+ramp-ui/frontend/release/
+ramp-ui/frontend/node_modules/
+*.tsbuildinfo
+
 # Demo project generated files
 demo/**/source/
 demo/**/trees/
