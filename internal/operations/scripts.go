@@ -26,7 +26,9 @@ func RunSetupScript(projectDir, treesDir, featureName string, cfg *config.Config
 
 	progress.Update(fmt.Sprintf("Running setup script: %s", cfg.Setup))
 
-	cmd := exec.Command("/bin/bash", scriptPath)
+	// Use login shell (-l) to source user's profile and get full PATH
+	// This ensures tools like bun, node, etc. are available in GUI environments
+	cmd := exec.Command("/bin/bash", "-l", scriptPath)
 	cmd.Dir = treesDir
 
 	// Set up environment variables
@@ -49,7 +51,9 @@ func RunCleanupScript(projectDir, treesDir, featureName string, cfg *config.Conf
 
 	progress.Update(fmt.Sprintf("Running cleanup script: %s", cfg.Cleanup))
 
-	cmd := exec.Command("/bin/bash", scriptPath)
+	// Use login shell (-l) to source user's profile and get full PATH
+	// This ensures tools like bun, node, etc. are available in GUI environments
+	cmd := exec.Command("/bin/bash", "-l", scriptPath)
 	cmd.Dir = treesDir
 
 	// Get allocated ports for this feature
