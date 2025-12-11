@@ -15,8 +15,7 @@ This ensures the UI uses the same battle-tested logic as the CLI with zero code 
 ### Prerequisites
 
 - Go 1.24+
-- Node.js 20+
-- npm
+- Bun 1.0+
 
 ### Backend
 
@@ -33,18 +32,24 @@ go build -o ramp-ui/frontend/resources/ramp-server ./cmd/ramp-ui
 ### Frontend
 
 ```bash
-# Install npm dependencies
 cd ramp-ui/frontend
-npm install
+
+# Install dependencies
+bun install
+
+# Build the Electron main process (required once, and after changes to src/main/)
+bun run build:electron
 
 # Start development mode (hot reload)
-npm run dev
+bun run dev
 ```
 
 This will:
 1. Start the Vite dev server on port 5173
 2. Launch Electron which spawns the Go backend
 3. Connect to the backend API on port 37429
+
+**Note**: The `build:electron` step compiles the Electron main process TypeScript. You only need to re-run it if you modify files in `src/main/`.
 
 ### Building for Production
 
@@ -56,8 +61,8 @@ go build -o ramp-ui/frontend/resources/ramp-server ./cmd/ramp-ui
 
 # Build Electron app
 cd ramp-ui/frontend
-npm run build
-npm run package
+bun run build
+bun run package
 ```
 
 Distributable files will be in `ramp-ui/frontend/release/`.

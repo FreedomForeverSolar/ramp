@@ -29,9 +29,19 @@ func NewServer() *Server {
 			CheckOrigin: func(r *http.Request) bool {
 				// Allow connections from our frontend
 				origin := r.Header.Get("Origin")
-				return origin == "http://localhost:5173" ||
-					origin == "http://localhost:3000" ||
-					origin == "" // Allow no origin (e.g., from Electron)
+				// Allow dev servers
+				if origin == "http://localhost:5173" || origin == "http://localhost:3000" {
+					return true
+				}
+				// Allow Electron production (file:// protocol) and empty origin
+				if origin == "" || origin == "file://" {
+					return true
+				}
+				// Allow null origin (some browsers send this for file://)
+				if origin == "null" {
+					return true
+				}
+				return false
 			},
 		},
 	}
