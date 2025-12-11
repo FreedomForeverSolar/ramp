@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import { spawn, ChildProcess } from 'child_process';
+import { autoUpdater } from 'electron-updater';
 import path from 'path';
 import http from 'http';
 
@@ -149,11 +150,86 @@ ipcMain.handle('get-backend-port', () => {
   return BACKEND_PORT;
 });
 
+// Auto-updater IPC handlers
+ipcMain.handle('check-for-updates', async () => {
+  if (!app.isPackaged) {
+    return { status: 'dev-mode' };
+  }
+  try {
+    const result = await autoUpdater.checkForUpdates();
+    return { status: 'checking', version: result?.updateInfo?.version };
+  } catch (err) {
+    console.error('Update check failed:', err);
+    return { status: 'error', error: err instanceof Error ? err.message : String(err) };
+  }
+});
+
+ipcMain.handle('quit-and-install', () => {
+  autoUpdater.quitAndInstall();
+});
+
+// Auto-updater setup
+function setupAutoUpdater(): void {
+  if (!app.isPackaged) {
+    console.log('Auto-updater disabled in development mode');
+    return;
+  }
+
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on('checking-for-update', () => {
+    console.log('Checking for updates...');
+  });
+
+  autoUpdater.on('update-available', (info) => {
+    console.log('Update available:', info.version);
+    mainWindow?.webContents.send('update-available', {
+      version: info.version,
+      releaseNotes: info.releaseNotes,
+    });
+  });
+
+  autoUpdater.on('update-not-available', () => {
+    console.log('No updates available');
+  });
+
+  autoUpdater.on('download-progress', (progress) => {
+    console.log(`Download progress: ${progress.percent.toFixed(1)}%`);
+    mainWindow?.webContents.send('update-download-progress', {
+      percent: progress.percent,
+      bytesPerSecond: progress.bytesPerSecond,
+      transferred: progress.transferred,
+      total: progress.total,
+    });
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    console.log('Update downloaded:', info.version);
+    mainWindow?.webContents.send('update-downloaded', {
+      version: info.version,
+      releaseNotes: info.releaseNotes,
+    });
+  });
+
+  autoUpdater.on('error', (err) => {
+    console.error('Auto-updater error:', err);
+  });
+
+  // Check for updates after a short delay (don't block startup)
+  setTimeout(() => {
+    autoUpdater.checkForUpdates().catch((err) => {
+      console.error('Initial update check failed:', err);
+    });
+  }, 3000);
+}
+
 // App lifecycle
 app.whenReady().then(async () => {
   try {
     await startBackend();
     createWindow();
+    setupAutoUpdater();
   } catch (err) {
     console.error('Failed to initialize app:', err);
     dialog.showErrorBox(

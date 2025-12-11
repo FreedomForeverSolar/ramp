@@ -419,10 +419,10 @@ cask "ramp-ui" do
   version "1.0.0"
   sha256 "..."
 
-  url "https://github.com/robrichardson13/ramp/releases/download/v#{version}/ramp-ui-#{version}-darwin.dmg"
+  url "https://github.com/FreedomForeverSolar/ramp/releases/download/v#{version}/ramp-ui-#{version}-darwin.dmg"
   name "Ramp UI"
   desc "Native desktop app for Ramp multi-repo workflow manager"
-  homepage "https://github.com/robrichardson13/ramp"
+  homepage "https://github.com/FreedomForeverSolar/ramp"
 
   app "Ramp.app"
 end
@@ -462,7 +462,7 @@ linux:
   category: Development
 publish:
   provider: github
-  owner: robrichardson13
+  owner: FreedomForeverSolar
   repo: ramp
 ```
 
@@ -550,7 +550,7 @@ Users can control update behavior in the app settings:
 # frontend/electron-builder.yml
 publish:
   provider: github
-  owner: robrichardson13
+  owner: FreedomForeverSolar
   repo: ramp
   releaseType: release  # or 'draft', 'prerelease'
 ```
@@ -686,20 +686,22 @@ install-ui-deps:
 
 **Deliverable:** Polished UX with advanced features
 
-### Phase 6: Distribution
+### Phase 6: Distribution ✅ MOSTLY COMPLETE
 - [x] Configure electron-builder for all platforms (electron-builder.yml)
-- [ ] Set up code signing certificates (macOS/Windows)
-- [ ] Implement Electron auto-updater integration
-- [ ] Configure update channels (stable/beta)
-- [ ] Add update settings to preferences panel
-- [ ] Create GitHub Actions workflow for releases
+- [x] Implement Electron auto-updater integration (electron-updater)
+- [x] Create GitHub Actions workflow for releases (release-ui.yml, triggered by `ui-v*` tags)
+- [x] Add UpdateNotification component for in-app update prompts
+- [x] Version extraction script for CI (scripts/set-version.js)
+- [ ] Set up code signing certificates (macOS/Windows) - deferred
+- [ ] Configure update channels (stable/beta) - future enhancement
+- [ ] Add update settings to preferences panel - future enhancement
 - [ ] Test builds on all platforms
 - [ ] Test auto-update flow (download, install, rollback)
 - [ ] Write Homebrew cask formula
 - [ ] Create installation documentation
 - [ ] Update main README with UI download links
 
-**Deliverable:** Downloadable installers with auto-update support, Homebrew installation
+**Deliverable:** Downloadable installers with auto-update support
 
 ## Alternative Consideration: CLI JSON Mode
 

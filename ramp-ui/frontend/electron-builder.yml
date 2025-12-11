@@ -22,20 +22,20 @@ mac:
         - x64
         - arm64
   category: public.app-category.developer-tools
-  icon: build/icon.icns
+  # icon: build/icon.icns  # Optional: add custom icon later
 win:
   target: nsis
-  icon: build/icon.ico
+  # icon: build/icon.ico  # Optional: add custom icon later
 linux:
   target: AppImage
   category: Development
-  icon: build/icon.png
+  # icon: build/icon.png  # Optional: add custom icon later
 nsis:
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
 publish:
   provider: github
-  owner: robrichardson13
+  owner: FreedomForeverSolar
   repo: ramp
   releaseType: release

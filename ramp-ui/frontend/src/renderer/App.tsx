@@ -4,6 +4,7 @@ import { useProjects, useAppSettings, useSaveAppSettings } from './hooks/useRamp
 import ProjectList from './components/ProjectList';
 import ProjectView from './components/ProjectView';
 import EmptyState from './components/EmptyState';
+import UpdateNotification from './components/UpdateNotification';
 import { Project } from './types';
 
 function App() {
@@ -81,6 +82,9 @@ function App() {
 
   return (
     <div className="flex h-screen bg-white dark:bg-gray-900">
+      {/* Auto-update notification */}
+      <UpdateNotification />
+
       {/* Sidebar */}
       <div className="w-64 flex-shrink-0 border-r border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
         {/* Title bar drag region */}
