@@ -1,8 +1,38 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron';
-import { spawn, ChildProcess } from 'child_process';
+import { spawn, execSync, ChildProcess } from 'child_process';
 import { autoUpdater } from 'electron-updater';
 import path from 'path';
 import http from 'http';
+
+function getShellEnv(): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+
+  try {
+    // Get PATH from user's login shell to inherit their full environment
+    // This ensures tools like bun, node, etc. are available to scripts
+    const shell = process.env.SHELL || '/bin/zsh';
+    const shellPath = execSync(`${shell} -l -c "echo $PATH"`, {
+      encoding: 'utf8',
+      timeout: 5000,
+    }).trim();
+
+    if (shellPath) {
+      env.PATH = shellPath;
+    }
+  } catch (err) {
+    console.warn('Failed to get PATH from login shell:', err);
+    // Fall back to adding common paths
+    const additionalPaths = [
+      '/opt/homebrew/bin',
+      '/usr/local/bin',
+      `${process.env.HOME}/.bun/bin`,
+    ].filter(Boolean);
+    const currentPath = env.PATH || '/usr/bin:/bin:/usr/sbin:/sbin';
+    env.PATH = [...additionalPaths, currentPath].join(':');
+  }
+
+  return env;
+}
 
 let mainWindow: BrowserWindow | null = null;
 let backendProcess: ChildProcess | null = null;
@@ -61,6 +91,7 @@ async function startBackend(): Promise<void> {
 
   backendProcess = spawn(backendPath, ['--port', String(BACKEND_PORT)], {
     stdio: ['ignore', 'pipe', 'pipe'],
+    env: getShellEnv(),
   });
 
   backendProcess.stdout?.on('data', (data: Buffer) => {
