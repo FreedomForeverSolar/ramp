@@ -8,7 +8,7 @@ let mainWindow: BrowserWindow | null = null;
 let backendProcess: ChildProcess | null = null;
 
 const BACKEND_PORT = 37429;
-const isDev = process.env.NODE_ENV !== 'production' || !app.isPackaged;
+const isDev = !app.isPackaged;
 
 function getBackendPath(): string {
   if (isDev) {
