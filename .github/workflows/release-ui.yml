@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'ui-v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version number (e.g., 1.0.0-test)'
+        required: false
+        default: '0.0.0-dev'
 
 permissions:
   contents: write
@@ -26,9 +32,14 @@ jobs:
         with:
           bun-version: latest
 
-      - name: Extract version from tag
+      - name: Extract version
         id: version
-        run: echo "VERSION=${GITHUB_REF_NAME#ui-v}" >> $GITHUB_OUTPUT
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "VERSION=${GITHUB_REF_NAME#ui-v}" >> $GITHUB_OUTPUT
+          fi
 
       - name: Build Go backend (arm64)
         run: |
@@ -88,9 +99,14 @@ jobs:
         with:
           bun-version: latest
 
-      - name: Extract version from tag
+      - name: Extract version
         id: version
-        run: echo "VERSION=${GITHUB_REF_NAME#ui-v}" >> $GITHUB_OUTPUT
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "VERSION=${GITHUB_REF_NAME#ui-v}" >> $GITHUB_OUTPUT
+          fi
 
       - name: Build Go backend
         run: |
@@ -138,10 +154,15 @@ jobs:
         with:
           bun-version: latest
 
-      - name: Extract version from tag
+      - name: Extract version
         id: version
         shell: bash
-        run: echo "VERSION=${GITHUB_REF_NAME#ui-v}" >> $GITHUB_OUTPUT
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "VERSION=${GITHUB_REF_NAME#ui-v}" >> $GITHUB_OUTPUT
+          fi
 
       - name: Build Go backend
         run: |
