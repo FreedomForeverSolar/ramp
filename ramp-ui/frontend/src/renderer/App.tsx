@@ -88,9 +88,8 @@ function App() {
       {/* Sidebar */}
       <div className="w-64 flex-shrink-0 border-r border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
         {/* Title bar drag region */}
-        <div className="titlebar-drag-region h-8 border-b border-gray-200 dark:border-gray-700 flex items-center px-20">
-          <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Ramp</span>
-        </div>
+        <div className="titlebar-drag-region h-8 border-b border-gray-200 dark:border-gray-700" />
+
 
         {/* Project list */}
         <div className="flex flex-col h-[calc(100%-2rem)]">

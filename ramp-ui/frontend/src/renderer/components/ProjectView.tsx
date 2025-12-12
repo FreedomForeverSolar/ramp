@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { Project } from '../types';
 import { useFeatures, useRemoveProject, useConfigStatus, useCommands, useSourceRepos } from '../hooks/useRampAPI';
 import FeatureList from './FeatureList';
@@ -7,6 +7,7 @@ import FromBranchDialog from './FromBranchDialog';
 import ProjectSettings from './ProjectSettings';
 import ConfigPromptsDialog from './ConfigPromptsDialog';
 import SourceRepoList from './SourceRepoList';
+import DropdownMenu, { MenuIcons } from './DropdownMenu';
 
 interface ProjectViewProps {
   project: Project;
@@ -19,7 +20,7 @@ export default function ProjectView({ project }: ProjectViewProps) {
   const [pendingNewFeature, setPendingNewFeature] = useState(false);
   const [pendingFromBranch, setPendingFromBranch] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const dropdownButtonRef = useRef<HTMLButtonElement>(null);
   const { data: featuresData, isLoading: featuresLoading, isFetching: featuresRefetching } = useFeatures(project.id);
   const { data: commandsData, isFetching: commandsRefetching } = useCommands(project.id);
   const { data: configStatus, isFetching: configRefetching } = useConfigStatus(project.id);
@@ -27,17 +28,6 @@ export default function ProjectView({ project }: ProjectViewProps) {
 
   const isRefetching = featuresRefetching || commandsRefetching || configRefetching || sourceReposRefetching;
   const removeProject = useRemoveProject();
-
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setShowDropdown(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
 
   const handleRemoveProject = async () => {
     if (confirm(`Remove "${project.name}" from Ramp UI?\n\nThis will not delete any files.`)) {
@@ -128,69 +118,51 @@ export default function ProjectView({ project }: ProjectViewProps) {
             <ProjectSettings projectId={project.id} />
 
             {/* Split button for New Feature */}
-            <div className="relative" ref={dropdownRef}>
-              <div className="inline-flex rounded-md shadow-sm">
-                <button
-                  onClick={handleNewFeature}
-                  className="inline-flex items-center px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium rounded-l-md transition-colors"
+            <div className="inline-flex rounded-md shadow-sm">
+              <button
+                onClick={handleNewFeature}
+                className="inline-flex items-center px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium rounded-l-md transition-colors"
+              >
+                <svg
+                  className="w-4 h-4 mr-2"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
                 >
-                  <svg
-                    className="w-4 h-4 mr-2"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 4v16m8-8H4"
-                    />
-                  </svg>
-                  New Feature
-                </button>
-                <button
-                  onClick={() => setShowDropdown(!showDropdown)}
-                  className="inline-flex items-center px-2 py-2 bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium rounded-r-md border-l border-primary-400 transition-colors"
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 4v16m8-8H4"
+                  />
+                </svg>
+                New Feature
+              </button>
+              <button
+                ref={dropdownButtonRef}
+                onClick={() => setShowDropdown(!showDropdown)}
+                className="inline-flex items-center px-2 py-2 bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium rounded-r-md border-l border-primary-400 transition-colors"
+              >
+                <svg
+                  className={`w-4 h-4 transition-transform ${showDropdown ? 'rotate-180' : ''}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
                 >
-                  <svg
-                    className={`w-4 h-4 transition-transform ${showDropdown ? 'rotate-180' : ''}`}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-              </div>
-
-              {/* Dropdown menu */}
-              {showDropdown && (
-                <div className="absolute right-0 mt-1 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg ring-1 ring-black ring-opacity-5 z-10">
-                  <div className="py-1">
-                    <button
-                      onClick={handleFromBranch}
-                      className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
-                    >
-                      <svg
-                        className="w-4 h-4"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"
-                        />
-                      </svg>
-                      From Branch...
-                    </button>
-                  </div>
-                </div>
-              )}
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
             </div>
+            <DropdownMenu
+              items={[{
+                label: 'From Branch...',
+                icon: MenuIcons.branch,
+                onClick: handleFromBranch,
+              }]}
+              isOpen={showDropdown}
+              onClose={() => setShowDropdown(false)}
+              triggerRef={dropdownButtonRef}
+            />
             <button
               onClick={handleRemoveProject}
               className="p-2 text-gray-500 hover:text-red-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors"

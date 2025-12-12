@@ -1,8 +1,9 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSourceRepos, useRefreshSourceRepos, useOpenTerminal, useWebSocket } from '../hooks/useRampAPI';
 import { Command, Feature, Repo, WSMessage } from '../types';
 import RunCommandDialog from './RunCommandDialog';
+import DropdownMenu, { DropdownMenuItem, MenuIcons } from './DropdownMenu';
 
 interface SourceRepoListProps {
   projectId: string;
@@ -27,18 +28,7 @@ export default function SourceRepoList({
   const [selectedCommand, setSelectedCommand] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setShowCommandDropdown(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  const runButtonRef = useRef<HTMLButtonElement>(null);
 
   // Handle WebSocket messages for refresh operation
   const handleWSMessage = useCallback((message: unknown) => {
@@ -226,8 +216,9 @@ export default function SourceRepoList({
 
           {/* Run command dropdown */}
           {commands.length > 0 && (
-            <div className="relative" ref={dropdownRef}>
+            <>
               <button
+                ref={runButtonRef}
                 onClick={() => setShowCommandDropdown(!showCommandDropdown)}
                 className="flex items-center gap-1 px-2 py-1 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors"
               >
@@ -241,23 +232,17 @@ export default function SourceRepoList({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                 </svg>
               </button>
-
-              {showCommandDropdown && (
-                <div className="absolute right-0 mt-1 w-40 bg-white dark:bg-gray-800 rounded-md shadow-lg ring-1 ring-black ring-opacity-5 z-10">
-                  <div className="py-1">
-                    {commands.map((cmd) => (
-                      <button
-                        key={cmd.name}
-                        onClick={() => handleRunCommand(cmd.name)}
-                        className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                      >
-                        {cmd.name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
+              <DropdownMenu
+                items={commands.map((cmd): DropdownMenuItem => ({
+                  label: cmd.name,
+                  icon: MenuIcons.play,
+                  onClick: () => handleRunCommand(cmd.name),
+                }))}
+                isOpen={showCommandDropdown}
+                onClose={() => setShowCommandDropdown(false)}
+                triggerRef={runButtonRef}
+              />
+            </>
           )}
         </div>
       </div>
