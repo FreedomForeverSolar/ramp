@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"ramp/internal/shellenv"
 	"ramp/internal/uiapi"
 
 	"github.com/gorilla/mux"
@@ -18,6 +19,13 @@ import (
 )
 
 func main() {
+	// Load user's shell environment (PATH, etc.) before doing anything else.
+	// This is critical for GUI environments where the app doesn't inherit
+	// the user's shell configuration.
+	if err := shellenv.LoadShellEnv(); err != nil {
+		log.Printf("Warning: failed to load shell environment: %v", err)
+	}
+
 	port := flag.Int("port", 37429, "Port to run the server on")
 	flag.Parse()
 

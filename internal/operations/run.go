@@ -109,7 +109,9 @@ func runInFeature(opts RunOptions, scriptPath, treesDir string) (int, error) {
 	cfg := opts.Config
 	featureName := opts.FeatureName
 
-	cmd := exec.Command("/bin/bash", scriptPath)
+	// Use login shell (-l) to source user's profile and get full PATH
+	// This ensures tools like bun, node, etc. are available in GUI environments
+	cmd := exec.Command("/bin/bash", "-l", scriptPath)
 	cmd.Dir = treesDir
 
 	// Build environment variables
@@ -151,7 +153,9 @@ func runInSource(opts RunOptions, scriptPath string) (int, error) {
 	projectDir := opts.ProjectDir
 	cfg := opts.Config
 
-	cmd := exec.Command("/bin/bash", scriptPath)
+	// Use login shell (-l) to source user's profile and get full PATH
+	// This ensures tools like bun, node, etc. are available in GUI environments
+	cmd := exec.Command("/bin/bash", "-l", scriptPath)
 	cmd.Dir = projectDir
 
 	// Build environment variables (excluding feature-specific vars)
