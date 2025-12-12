@@ -1,6 +1,15 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useRunCommand, useWebSocket } from '../hooks/useRampAPI';
 import { WSMessage, Feature } from '../types';
+import Convert from 'ansi-to-html';
+
+// Create a singleton converter with options matching dark terminal background
+const ansiConverter = new Convert({
+  fg: '#d1d5db', // text-gray-300
+  bg: '#111827', // bg-gray-900
+  newline: false,
+  escapeXML: true,
+});
 
 interface RunCommandDialogProps {
   projectId: string;
@@ -28,6 +37,7 @@ export default function RunCommandDialog({
   const [success, setSuccess] = useState(false);
   const runCommand = useRunCommand(projectId);
   const outputRef = useRef<HTMLDivElement>(null);
+  const hasStartedRef = useRef(false);
 
   // Auto-scroll output
   useEffect(() => {
@@ -66,11 +76,20 @@ export default function RunCommandDialog({
   useWebSocket(handleWSMessage, isRunning);
 
   // Auto-start if featureName was provided or runImmediately is true
+  // Use ref to prevent double-execution from React 18 Strict Mode
   useEffect(() => {
-    if (shouldAutoRun && isRunning && outputLines.length === 0) {
+    if (shouldAutoRun && isRunning && outputLines.length === 0 && !hasStartedRef.current) {
+      hasStartedRef.current = true;
       executeCommand(selectedTarget);
     }
   }, []); // Run once on mount
+
+  // Auto-close on success with no output
+  useEffect(() => {
+    if (success && outputLines.length === 0) {
+      onClose();
+    }
+  }, [success, outputLines.length, onClose]);
 
   const executeCommand = async (target: string) => {
     setIsRunning(true);
@@ -160,9 +179,8 @@ export default function RunCommandDialog({
           <div
             key={i}
             className={line.isError ? 'text-red-400' : 'text-gray-300'}
-          >
-            {line.text}
-          </div>
+            dangerouslySetInnerHTML={{ __html: ansiConverter.toHtml(line.text) }}
+          />
         ))}
 
         {/* Show cursor while running */}

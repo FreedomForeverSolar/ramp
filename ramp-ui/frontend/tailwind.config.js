@@ -9,16 +9,30 @@ export default {
       colors: {
         // Custom colors for the app
         primary: {
-          50: '#f0f9ff',
-          100: '#e0f2fe',
-          200: '#bae6fd',
-          300: '#7dd3fc',
-          400: '#38bdf8',
-          500: '#0ea5e9',
-          600: '#0284c7',
-          700: '#0369a1',
-          800: '#075985',
-          900: '#0c4a6e',
+          50: '#f2f4f8',
+          100: '#dce1eb',
+          200: '#b8c2d4',
+          300: '#94a3bd',
+          400: '#7085a6',
+          500: '#6272a4',
+          600: '#515f88',
+          700: '#434e70',
+          800: '#363e59',
+          900: '#2a3045',
+        },
+      },
+      animation: {
+        'dropdown-in': 'dropdown-in 0.15s ease-out',
+        'dropdown-in-up': 'dropdown-in-up 0.15s ease-out',
+      },
+      keyframes: {
+        'dropdown-in': {
+          '0%': { opacity: '0', transform: 'scale(0.95) translateY(-4px)' },
+          '100%': { opacity: '1', transform: 'scale(1) translateY(0)' },
+        },
+        'dropdown-in-up': {
+          '0%': { opacity: '0', transform: 'scale(0.95) translateY(4px)' },
+          '100%': { opacity: '1', transform: 'scale(1) translateY(0)' },
         },
       },
     },

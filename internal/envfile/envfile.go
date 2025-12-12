@@ -118,8 +118,9 @@ func executeScript(scriptPath string, cacheTTL string, envVars map[string]string
 		}
 	}
 
-	// Execute the script
-	cmd := exec.Command(scriptPath)
+	// Execute the script through a login shell to ensure user's PATH is available
+	// This ensures tools like bun, node, etc. are available in GUI environments
+	cmd := exec.Command("/bin/bash", "-l", scriptPath)
 
 	// Set environment variables
 	cmd.Env = buildScriptEnv(envVars)

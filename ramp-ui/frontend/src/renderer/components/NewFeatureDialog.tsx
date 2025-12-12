@@ -1,6 +1,16 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useCreateFeature, useWebSocket } from '../hooks/useRampAPI';
 import { WSMessage } from '../types';
+import Convert from 'ansi-to-html';
+
+// Create a singleton converter with options matching dark terminal background
+const ansiConverter = new Convert({
+  fg: '#d1d5db', // text-gray-300
+  bg: '#111827', // bg-gray-900
+  newline: false,
+  escapeXML: true,
+});
 
 interface NewFeatureDialogProps {
   projectId: string;
@@ -20,9 +30,12 @@ export default function NewFeatureDialog({
   const [target, setTarget] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [progressMessages, setProgressMessages] = useState<string[]>([]);
+  const [outputLines, setOutputLines] = useState<{ text: string; isError: boolean }[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
   const createFeature = useCreateFeature(projectId);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const outputRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll progress messages to bottom
   useEffect(() => {
@@ -30,6 +43,13 @@ export default function NewFeatureDialog({
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [progressMessages]);
+
+  // Auto-scroll output terminal to bottom
+  useEffect(() => {
+    if (outputRef.current) {
+      outputRef.current.scrollTop = outputRef.current.scrollHeight;
+    }
+  }, [outputLines]);
 
   // Build the full branch name preview
   const effectivePrefix = noPrefix ? '' : prefix;
@@ -48,13 +68,60 @@ export default function NewFeatureDialog({
 
     if (msg.type === 'progress') {
       setProgressMessages(prev => [...prev, msg.message]);
+    } else if (msg.type === 'output') {
+      // Capture setup script output
+      const isError = msg.message.startsWith('[stderr]');
+      const text = isError ? msg.message.replace('[stderr] ', '') : msg.message;
+      setOutputLines(prev => [...prev, { text, isError }]);
     } else if (msg.type === 'complete') {
-      // Success - close the modal
+      const featureName = name.trim();
+
+      // Immediately add the new feature to cache (instant UI update)
+      // We add minimal data - background refetch will fill in details
+      queryClient.setQueryData(
+        ['projects', projectId, 'features'],
+        (old: { features: Array<{ name: string }> } | undefined) => {
+          if (!old) return old;
+          // Check if feature already exists (avoid duplicates)
+          if (old.features.some(f => f.name === featureName)) return old;
+          return {
+            ...old,
+            features: [
+              ...old.features,
+              {
+                name: featureName,
+                repos: [],
+                hasUncommittedChanges: false,
+                category: 'clean' as const,
+              },
+            ],
+          };
+        }
+      );
+
+      // Update the project's feature list in the sidebar (for feature count)
+      queryClient.setQueryData(
+        ['projects'],
+        (old: { projects: Array<{ id: string; features: string[] }> } | undefined) => {
+          if (!old) return old;
+          return {
+            ...old,
+            projects: old.projects.map(p =>
+              p.id === projectId && !p.features.includes(featureName)
+                ? { ...p, features: [...p.features, featureName] }
+                : p
+            ),
+          };
+        }
+      );
+
+      // Don't invalidate here - onSuccess in the mutation hook will do it
+      // setQueryData above provides the immediate UI update
       onClose();
     } else if (msg.type === 'error') {
       setError(msg.message);
     }
-  }, [onClose, name]);
+  }, [onClose, name, queryClient, projectId]);
 
   // Only subscribe to WebSocket while creating
   useWebSocket(handleWSMessage, isCreating);
@@ -65,6 +132,7 @@ export default function NewFeatureDialog({
 
     setIsCreating(true);
     setProgressMessages([]);
+    setOutputLines([]);
     setError(null);
 
     try {
@@ -77,14 +145,16 @@ export default function NewFeatureDialog({
       // Don't close here - wait for WebSocket 'complete' message
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
-      setIsCreating(false); // Reset to allow form editing and retry
+      // Keep isCreating true so user stays on progress view and can see the error
+      // They can retry or cancel from there
     }
   };
 
   const handleRetry = () => {
     setError(null);
     setProgressMessages([]);
-    setIsCreating(true);
+    setOutputLines([]);
+    // isCreating is already true, no need to set it again
     createFeature.mutateAsync({
       name: name.trim(),
       prefix: prefix !== defaultBranchPrefix ? prefix : undefined,
@@ -92,7 +162,7 @@ export default function NewFeatureDialog({
       target: target.trim() || undefined,
     }).catch(err => {
       setError(err instanceof Error ? err.message : 'Unknown error');
-      setIsCreating(false); // Reset to allow form editing and retry
+      // Keep isCreating true so user stays on progress view and can see the error
     });
   };
 
@@ -152,6 +222,27 @@ export default function NewFeatureDialog({
           </div>
         )}
       </div>
+
+      {/* Setup script output terminal (shown when there's output) */}
+      {outputLines.length > 0 && (
+        <div className="mt-4">
+          <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Setup script output:
+          </p>
+          <div
+            ref={outputRef}
+            className="bg-gray-900 rounded-md p-3 max-h-48 overflow-y-auto font-mono text-xs"
+          >
+            {outputLines.map((line, i) => (
+              <div
+                key={i}
+                className={line.isError ? 'text-red-400' : 'text-gray-300'}
+                dangerouslySetInnerHTML={{ __html: ansiConverter.toHtml(line.text) }}
+              />
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Error state */}
       {error && (

@@ -129,8 +129,9 @@ export function useCreateFeature(projectId: string) {
         body: JSON.stringify(data),
       }),
     onSuccess: () => {
+      // Only invalidate features - the dialog handles immediate cache updates via setQueryData
+      // This serves as a fallback to ensure data is fresh after HTTP response
       queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'features'] });
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
     },
     onError: () => {
       // Invalidate on error to ensure fresh state (operation may have partially completed)
@@ -148,8 +149,9 @@ export function useDeleteFeature(projectId: string) {
         method: 'DELETE',
       }),
     onSuccess: () => {
+      // Only invalidate features - the dialog handles immediate cache updates via setQueryData
+      // This serves as a fallback to ensure data is fresh after HTTP response
       queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'features'] });
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
     },
     onError: () => {
       // Invalidate on error to ensure fresh state (operation may have partially completed)
@@ -167,8 +169,9 @@ export function usePruneFeatures(projectId: string) {
         method: 'POST',
       }),
     onSuccess: () => {
+      // Only invalidate features - the component handles immediate cache updates via setQueryData
+      // This serves as a fallback to ensure data is fresh after HTTP response
       queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'features'] });
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
     },
     onError: () => {
       // Invalidate on error to ensure fresh state (operation may have partially completed)
@@ -319,16 +322,13 @@ export function useSourceRepos(projectId: string) {
 }
 
 export function useRefreshSourceRepos(projectId: string) {
-  const queryClient = useQueryClient();
-
   return useMutation<SuccessResponse, Error, void>({
     mutationFn: () =>
       fetchAPI<SuccessResponse>(`/projects/${projectId}/source-repos/refresh`, {
         method: 'POST',
       }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'source-repos'] });
-    },
+    // No onSuccess invalidation - refresh is async and the WebSocket handler
+    // in SourceRepoList refetches when the operation actually completes
   });
 }
 
@@ -360,8 +360,15 @@ export function useSaveAppSettings() {
         method: 'POST',
         body: JSON.stringify(data),
       }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['settings'] });
+    onSuccess: (_data, variables) => {
+      // Update cache directly instead of refetching - we know what we just saved
+      queryClient.setQueryData<AppSettingsResponse>(['settings'], (old) => {
+        if (!old) return old;
+        return {
+          terminalApp: variables.terminalApp ?? old.terminalApp,
+          lastSelectedProjectId: variables.lastSelectedProjectId ?? old.lastSelectedProjectId,
+        };
+      });
     },
   });
 }
