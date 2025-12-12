@@ -254,23 +254,21 @@ ramp-ui/frontend/src/
 ├── main/                    # Electron main process
 │   ├── index.ts             # App lifecycle, backend spawning, auto-updater
 │   └── preload.ts           # IPC bridge (select-directory, get-backend-port)
-├── renderer/                # React app
-│   ├── App.tsx              # Root component, project/feature selection state
-│   ├── components/
-│   │   ├── ProjectList.tsx      # Sidebar with projects, favorites, drag-reorder
-│   │   ├── ProjectView.tsx      # Main content area for selected project
-│   │   ├── FeatureList.tsx      # Feature cards with status indicators
-│   │   ├── SourceRepoList.tsx   # Source repo status and refresh
-│   │   ├── NewFeatureDialog.tsx # Create feature (ramp up)
-│   │   ├── DeleteFeatureDialog.tsx
-│   │   ├── RunCommandDialog.tsx # Execute custom commands
-│   │   └── ...
-│   ├── hooks/
-│   │   └── useRampAPI.ts    # TanStack Query hooks for all API calls
-│   └── types/
-│       └── index.ts         # Frontend-only types (imports shared/types.ts)
-└── ramp-ui/shared/
-    └── types.ts             # Types shared between frontend and mirroring Go models
+└── renderer/                # React app
+    ├── App.tsx              # Root component, project/feature selection state
+    ├── components/
+    │   ├── ProjectList.tsx      # Sidebar with projects, favorites, drag-reorder
+    │   ├── ProjectView.tsx      # Main content area for selected project
+    │   ├── FeatureList.tsx      # Feature cards with status indicators
+    │   ├── SourceRepoList.tsx   # Source repo status and refresh
+    │   ├── NewFeatureDialog.tsx # Create feature (ramp up)
+    │   ├── DeleteFeatureDialog.tsx
+    │   ├── RunCommandDialog.tsx # Execute custom commands
+    │   └── ...
+    ├── hooks/
+    │   └── useRampAPI.ts    # TanStack Query hooks for all API calls
+    └── types/
+        └── index.ts         # API types mirroring Go backend models
 ```
 
 ### Key Patterns
@@ -297,7 +295,7 @@ useWebSocket((message) => {
 ```
 
 **Shared types pattern:**
-`ramp-ui/shared/types.ts` mirrors Go models from `internal/uiapi/models.go`. When adding API responses, update both.
+`ramp-ui/frontend/src/renderer/types/index.ts` mirrors Go models from `internal/uiapi/models.go`. When adding API responses, update both.
 
 **Dev vs production detection:**
 Use `app.isPackaged` (not `process.env.NODE_ENV`) for reliable detection in Electron:

@@ -24,6 +24,17 @@ export default function DeleteFeatureDialog({
   const deleteFeature = useDeleteFeature(projectId);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Close on Escape key (only when not deleting)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !isDeleting) {
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [onClose, isDeleting]);
+
   // Auto-scroll progress messages to bottom
   useEffect(() => {
     if (scrollRef.current) {

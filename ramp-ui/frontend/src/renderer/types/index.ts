@@ -181,11 +181,13 @@ export interface OpenTerminalRequest {
 export interface AppSettingsResponse {
   terminalApp: string;
   lastSelectedProjectId: string;
+  theme: string;
 }
 
 export interface SaveAppSettingsRequest {
   terminalApp?: string;
   lastSelectedProjectId?: string;
+  theme?: string;
 }
 
 // Prune types

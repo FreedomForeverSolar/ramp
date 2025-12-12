@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useSaveConfig } from '../hooks/useRampAPI';
 import { Prompt } from '../types';
 
@@ -28,6 +28,17 @@ export default function ConfigPromptsDialog({
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const saveConfig = useSaveConfig(projectId);
+
+  // Close on Escape key (only when not saving)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !isSaving) {
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [onClose, isSaving]);
 
   const handleSave = async () => {
     setIsSaving(true);

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAppSettings, useSaveAppSettings } from '../hooks/useRampAPI';
+import { themes, getThemeById, applyTheme } from '../themes';
 
 interface GlobalSettingsDialogProps {
   onClose: () => void;
@@ -17,7 +18,28 @@ export default function GlobalSettingsDialog({ onClose }: GlobalSettingsDialogPr
   const [terminalApp, setTerminalApp] = useState('terminal');
   const [customCommand, setCustomCommand] = useState('');
   const [isCustom, setIsCustom] = useState(false);
+  const [selectedTheme, setSelectedTheme] = useState('github-dark');
   const [isSaving, setIsSaving] = useState(false);
+
+  // Revert theme and close
+  const handleClose = () => {
+    if (settings?.theme && settings.theme !== selectedTheme) {
+      const originalTheme = getThemeById(settings.theme);
+      applyTheme(originalTheme);
+    }
+    onClose();
+  };
+
+  // Close on Escape key (only when not saving)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !isSaving) {
+        handleClose();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [onClose, isSaving, settings?.theme, selectedTheme]);
 
   // Initialize form with current settings
   useEffect(() => {
@@ -31,19 +53,37 @@ export default function GlobalSettingsDialog({ onClose }: GlobalSettingsDialogPr
         setCustomCommand(settings.terminalApp);
       }
     }
+    if (settings?.theme) {
+      setSelectedTheme(settings.theme);
+    }
   }, [settings]);
 
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      const value = isCustom ? customCommand : terminalApp;
-      await saveSettings.mutateAsync({ terminalApp: value });
+      const terminalValue = isCustom ? customCommand : terminalApp;
+      await saveSettings.mutateAsync({
+        terminalApp: terminalValue,
+        theme: selectedTheme,
+      });
       onClose();
     } catch (error) {
       console.error('Failed to save settings:', error);
+      // Revert theme on error
+      if (settings?.theme) {
+        const originalTheme = getThemeById(settings.theme);
+        applyTheme(originalTheme);
+      }
     } finally {
       setIsSaving(false);
     }
+  };
+
+  // Handle theme change - apply immediately for preview
+  const handleThemeChange = (themeId: string) => {
+    setSelectedTheme(themeId);
+    const theme = getThemeById(themeId);
+    applyTheme(theme);
   };
 
   const handleTerminalChange = (value: string) => {
@@ -58,7 +98,7 @@ export default function GlobalSettingsDialog({ onClose }: GlobalSettingsDialogPr
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/50" onClick={handleClose} />
 
       {/* Dialog */}
       <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md mx-4">
@@ -98,6 +138,24 @@ export default function GlobalSettingsDialog({ onClose }: GlobalSettingsDialogPr
             </div>
           ) : (
             <div className="space-y-6">
+              {/* Theme Selection */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Theme
+                </label>
+                <select
+                  value={selectedTheme}
+                  onChange={(e) => handleThemeChange(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                >
+                  {themes.map((theme) => (
+                    <option key={theme.id} value={theme.id}>
+                      {theme.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               {/* Terminal Application */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -109,8 +167,8 @@ export default function GlobalSettingsDialog({ onClose }: GlobalSettingsDialogPr
                       key={option.value}
                       className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${
                         !isCustom && terminalApp === option.value
-                          ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
-                          : 'border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500'
+                          ? 'border-[var(--color-accent)] bg-[var(--color-accent)]/10'
+                          : 'border-[var(--color-border)] hover:border-[var(--color-text-secondary)]'
                       }`}
                     >
                       <input
@@ -149,8 +207,8 @@ export default function GlobalSettingsDialog({ onClose }: GlobalSettingsDialogPr
                   <label
                     className={`flex items-start p-3 border rounded-lg cursor-pointer transition-colors ${
                       isCustom
-                        ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
-                        : 'border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500'
+                        ? 'border-[var(--color-accent)] bg-[var(--color-accent)]/10'
+                        : 'border-[var(--color-border)] hover:border-[var(--color-text-secondary)]'
                     }`}
                   >
                     <input
@@ -202,7 +260,7 @@ export default function GlobalSettingsDialog({ onClose }: GlobalSettingsDialogPr
           <div className="mt-6 flex justify-end gap-3">
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleClose}
               className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors"
             >
               Cancel

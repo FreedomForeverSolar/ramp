@@ -9,9 +9,6 @@ on:
       - 'scripts/gen-docs.go'
       - '.github/workflows/docs.yml'
   pull_request:
-    paths:
-      - 'cmd/**'
-      - 'scripts/gen-docs.go'
   release:
     types: [published]
   workflow_dispatch:  # Allow manual trigger

@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSourceRepos, useRefreshSourceRepos, useOpenTerminal, useWebSocket } from '../hooks/useRampAPI';
 import { Command, Feature, Repo, WSMessage } from '../types';
@@ -54,14 +54,22 @@ export default function SourceRepoList({
     }
   };
 
-  const handleRefresh = async () => {
+  const handleRefresh = useCallback(async () => {
+    if (isRefreshing) return;
     setIsRefreshing(true);
     try {
       await refreshSourceRepos.mutateAsync();
     } catch {
       setIsRefreshing(false);
     }
-  };
+  }, [isRefreshing, refreshSourceRepos]);
+
+  // Listen for keyboard shortcut from menu (CMD+R)
+  useEffect(() => {
+    const handler = () => handleRefresh();
+    window.addEventListener('ramp:refresh', handler);
+    return () => window.removeEventListener('ramp:refresh', handler);
+  }, [handleRefresh]);
 
   const handleOpenTerminal = async () => {
     // Open to the repos directory (use first repo's path from config)

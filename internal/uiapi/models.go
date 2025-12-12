@@ -235,12 +235,14 @@ type OpenTerminalRequest struct {
 type AppSettingsResponse struct {
 	TerminalApp           string `json:"terminalApp"`
 	LastSelectedProjectID string `json:"lastSelectedProjectId"`
+	Theme                 string `json:"theme"`
 }
 
 // SaveAppSettingsRequest is the request body for saving app settings
 type SaveAppSettingsRequest struct {
 	TerminalApp           string `json:"terminalApp,omitempty"`
 	LastSelectedProjectID string `json:"lastSelectedProjectId,omitempty"`
+	Theme                 string `json:"theme,omitempty"`
 }
 
 // PruneFailure represents a feature that failed to be pruned

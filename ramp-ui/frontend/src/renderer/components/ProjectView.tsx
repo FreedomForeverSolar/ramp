@@ -1,6 +1,6 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Project } from '../types';
-import { useFeatures, useRemoveProject, useConfigStatus, useCommands, useSourceRepos } from '../hooks/useRampAPI';
+import { useFeatures, useRemoveProject, useConfigStatus, useConfig, useCommands, useSourceRepos } from '../hooks/useRampAPI';
 import FeatureList from './FeatureList';
 import NewFeatureDialog from './NewFeatureDialog';
 import FromBranchDialog from './FromBranchDialog';
@@ -17,6 +17,7 @@ export default function ProjectView({ project }: ProjectViewProps) {
   const [showNewFeatureDialog, setShowNewFeatureDialog] = useState(false);
   const [showFromBranchDialog, setShowFromBranchDialog] = useState(false);
   const [showConfigDialog, setShowConfigDialog] = useState(false);
+  const [showSettingsDialog, setShowSettingsDialog] = useState(false);
   const [pendingNewFeature, setPendingNewFeature] = useState(false);
   const [pendingFromBranch, setPendingFromBranch] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
@@ -24,6 +25,7 @@ export default function ProjectView({ project }: ProjectViewProps) {
   const { data: featuresData, isLoading: featuresLoading, isFetching: featuresRefetching } = useFeatures(project.id);
   const { data: commandsData, isFetching: commandsRefetching } = useCommands(project.id);
   const { data: configStatus, isFetching: configRefetching } = useConfigStatus(project.id);
+  const { data: configData } = useConfig(project.id);
   const { isFetching: sourceReposRefetching } = useSourceRepos(project.id);
 
   const isRefetching = featuresRefetching || commandsRefetching || configRefetching || sourceReposRefetching;
@@ -35,7 +37,7 @@ export default function ProjectView({ project }: ProjectViewProps) {
     }
   };
 
-  const handleNewFeature = () => {
+  const handleNewFeature = useCallback(() => {
     // Check if config is needed before allowing feature creation
     if (configStatus?.needsConfig) {
       setPendingNewFeature(true);
@@ -43,7 +45,29 @@ export default function ProjectView({ project }: ProjectViewProps) {
     } else {
       setShowNewFeatureDialog(true);
     }
-  };
+  }, [configStatus?.needsConfig]);
+
+  // Listen for keyboard shortcut from menu (CMD+N)
+  useEffect(() => {
+    const handler = () => {
+      if (!showNewFeatureDialog) {
+        handleNewFeature();
+      }
+    };
+    window.addEventListener('ramp:new-feature', handler);
+    return () => window.removeEventListener('ramp:new-feature', handler);
+  }, [handleNewFeature, showNewFeatureDialog]);
+
+  // Listen for keyboard shortcut from menu (CMD+,)
+  useEffect(() => {
+    const handler = () => {
+      if (configStatus?.prompts && configStatus.prompts.length > 0 && !showSettingsDialog) {
+        setShowSettingsDialog(true);
+      }
+    };
+    window.addEventListener('ramp:settings', handler);
+    return () => window.removeEventListener('ramp:settings', handler);
+  }, [configStatus?.prompts, showSettingsDialog]);
 
   const handleFromBranch = () => {
     setShowDropdown(false);
@@ -263,6 +287,17 @@ export default function ProjectView({ project }: ProjectViewProps) {
           prompts={configStatus.prompts}
           onClose={handleConfigClosed}
           onSaved={handleConfigSaved}
+        />
+      )}
+
+      {/* Settings Dialog (opened via CMD+,) */}
+      {showSettingsDialog && configStatus?.prompts && (
+        <ConfigPromptsDialog
+          projectId={project.id}
+          prompts={configStatus.prompts}
+          existingPreferences={configData?.preferences}
+          onClose={() => setShowSettingsDialog(false)}
+          onSaved={() => setShowSettingsDialog(false)}
         />
       )}
     </div>

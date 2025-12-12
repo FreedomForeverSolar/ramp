@@ -367,6 +367,7 @@ export function useSaveAppSettings() {
         return {
           terminalApp: variables.terminalApp ?? old.terminalApp,
           lastSelectedProjectId: variables.lastSelectedProjectId ?? old.lastSelectedProjectId,
+          theme: variables.theme ?? old.theme,
         };
       });
     },

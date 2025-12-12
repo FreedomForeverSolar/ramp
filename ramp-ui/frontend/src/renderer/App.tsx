@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 // import { useQueryClient } from '@tanstack/react-query';
 import { useProjects, useAppSettings, useSaveAppSettings } from './hooks/useRampAPI';
 import ProjectList from './components/ProjectList';
@@ -6,6 +6,7 @@ import ProjectView from './components/ProjectView';
 import EmptyState from './components/EmptyState';
 import UpdateNotification from './components/UpdateNotification';
 import { Project } from './types';
+import { getThemeById, applyTheme } from './themes';
 
 function App() {
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
@@ -17,6 +18,16 @@ function App() {
 
   const projects = projectsData?.projects ?? [];
   const selectedProject = projects.find((p: Project) => p.id === selectedProjectId);
+
+  // Sort projects same as ProjectList: favorites first, then by order
+  const sortedProjects = useMemo(() => {
+    return [...projects].sort((a, b) => {
+      if (a.isFavorite !== b.isFavorite) {
+        return a.isFavorite ? -1 : 1;
+      }
+      return a.order - b.order;
+    });
+  }, [projects]);
 
   // Refresh features and source repo status when app comes to foreground
   // useEffect(() => {
@@ -72,6 +83,30 @@ function App() {
     hasInitialized.current = true;
   }, [projects, settingsData]);
 
+  // Apply theme when settings load or change
+  useEffect(() => {
+    if (settingsData?.theme) {
+      const theme = getThemeById(settingsData.theme);
+      applyTheme(theme);
+    }
+  }, [settingsData?.theme]);
+
+  // Listen for menu keyboard shortcuts
+  useEffect(() => {
+    const cleanups = [
+      window.electronAPI?.onMenuNewFeature?.(() => {
+        window.dispatchEvent(new CustomEvent('ramp:new-feature'));
+      }),
+      window.electronAPI?.onMenuRefresh?.(() => {
+        window.dispatchEvent(new CustomEvent('ramp:refresh'));
+      }),
+      window.electronAPI?.onMenuSettings?.(() => {
+        window.dispatchEvent(new CustomEvent('ramp:settings'));
+      }),
+    ];
+    return () => cleanups.forEach(cleanup => cleanup?.());
+  }, []);
+
   // Handler that saves selection to settings
   const handleSelectProject = (projectId: string | null) => {
     setSelectedProjectId(projectId);
@@ -80,15 +115,25 @@ function App() {
     }
   };
 
+  // Listen for project switch shortcuts (CMD+1-9)
+  useEffect(() => {
+    const cleanup = window.electronAPI?.onMenuSwitchProject?.((index: number) => {
+      if (sortedProjects[index]) {
+        handleSelectProject(sortedProjects[index].id);
+      }
+    });
+    return cleanup;
+  }, [sortedProjects, handleSelectProject]);
+
   return (
-    <div className="flex h-screen bg-white dark:bg-gray-900">
+    <div className="flex h-screen bg-[var(--color-bg)]">
       {/* Auto-update notification */}
       <UpdateNotification />
 
       {/* Sidebar */}
-      <div className="w-64 flex-shrink-0 border-r border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+      <div className="w-64 flex-shrink-0 border-r border-[var(--color-border)] bg-[var(--color-bg-secondary)]">
         {/* Title bar drag region */}
-        <div className="titlebar-drag-region h-8 border-b border-gray-200 dark:border-gray-700" />
+        <div className="titlebar-drag-region h-8 border-b border-[var(--color-border)]" />
 
 
         {/* Project list */}
@@ -105,8 +150,8 @@ function App() {
       {/* Main content */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Title bar drag region */}
-        <div className="titlebar-drag-region h-8 border-b border-gray-200 dark:border-gray-700 flex items-center justify-center">
-          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+        <div className="titlebar-drag-region h-8 border-b border-[var(--color-border)] flex items-center justify-center">
+          <span className="text-sm font-medium text-[var(--color-text-secondary)]">
             {selectedProject?.name ?? 'Ramp'}
           </span>
         </div>

@@ -39,6 +39,17 @@ export default function RunCommandDialog({
   const outputRef = useRef<HTMLDivElement>(null);
   const hasStartedRef = useRef(false);
 
+  // Close on Escape key (only when not running)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !isRunning) {
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [onClose, isRunning]);
+
   // Auto-scroll output
   useEffect(() => {
     if (outputRef.current) {
