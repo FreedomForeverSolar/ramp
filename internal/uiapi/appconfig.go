@@ -61,7 +61,7 @@ func LoadAppConfig() (*AppConfig, error) {
 			return &AppConfig{
 				Projects: []ProjectRef{},
 				Preferences: Preferences{
-					Theme:         "system",
+					Theme:         "github-dark",
 					ShowGitStatus: true,
 					TerminalApp:   "terminal", // macOS Terminal.app default
 				},

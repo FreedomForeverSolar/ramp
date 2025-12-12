@@ -7,18 +7,64 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Custom colors for the app
+        // Primary color uses CSS variable from theme
         primary: {
-          50: '#f2f4f8',
-          100: '#dce1eb',
-          200: '#b8c2d4',
-          300: '#94a3bd',
-          400: '#7085a6',
-          500: '#6272a4',
-          600: '#515f88',
-          700: '#434e70',
-          800: '#363e59',
-          900: '#2a3045',
+          50: 'color-mix(in srgb, var(--color-accent) 10%, white)',
+          100: 'color-mix(in srgb, var(--color-accent) 20%, white)',
+          200: 'color-mix(in srgb, var(--color-accent) 40%, white)',
+          300: 'color-mix(in srgb, var(--color-accent) 60%, white)',
+          400: 'color-mix(in srgb, var(--color-accent) 80%, white)',
+          500: 'var(--color-accent)',
+          600: 'color-mix(in srgb, var(--color-accent) 90%, black)',
+          700: 'color-mix(in srgb, var(--color-accent) 70%, black)',
+          800: 'color-mix(in srgb, var(--color-accent) 50%, black)',
+          900: 'color-mix(in srgb, var(--color-accent) 30%, black)',
+        },
+        // GitHub Dark background scale
+        gray: {
+          50: '#f0f6fc',   // Lightest
+          100: '#c9d1d9',  // Default text
+          200: '#b1bac4',
+          300: '#8b949e',  // Muted
+          400: '#6e7681',
+          500: '#484f58',  // Border
+          600: '#30363d',  // Border muted
+          700: '#21262d',  // Canvas subtle
+          800: '#161b22',  // Canvas default
+          900: '#0d1117',  // Canvas inset
+        },
+        // GitHub Dark accent colors
+        gh: {
+          // Canvas (backgrounds)
+          canvasDefault: '#0d1117',
+          canvasOverlay: '#161b22',
+          canvasInset: '#010409',
+          canvasSubtle: '#161b22',
+          // Borders
+          borderDefault: '#30363d',
+          borderMuted: '#21262d',
+          borderSubtle: '#6e7681',
+          // Text
+          fgDefault: '#c9d1d9',
+          fgMuted: '#8b949e',
+          fgSubtle: '#6e7681',
+          // Accent colors
+          blue: '#58a6ff',
+          green: '#3fb950',
+          purple: '#a371f7',
+          red: '#f85149',
+          orange: '#db6d28',
+          yellow: '#d29922',
+          pink: '#db61a2',
+          coral: '#ea6045',
+          // State colors
+          successFg: '#3fb950',
+          dangerFg: '#f85149',
+          warningFg: '#d29922',
+          // Diff colors
+          diffAdd: '#238636',
+          diffDelete: '#da3633',
+          diffChange: '#9e6a03',
         },
       },
       animation: {

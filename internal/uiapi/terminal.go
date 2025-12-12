@@ -105,6 +105,7 @@ func (s *Server) GetAppSettings(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, AppSettingsResponse{
 		TerminalApp:           appConfig.Preferences.TerminalApp,
 		LastSelectedProjectID: appConfig.Preferences.LastSelectedProjectID,
+		Theme:                 appConfig.Preferences.Theme,
 	})
 }
 
@@ -129,6 +130,9 @@ func (s *Server) SaveAppSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.LastSelectedProjectID != "" {
 		appConfig.Preferences.LastSelectedProjectID = req.LastSelectedProjectID
+	}
+	if req.Theme != "" {
+		appConfig.Preferences.Theme = req.Theme
 	}
 
 	if err := SaveAppConfig(appConfig); err != nil {

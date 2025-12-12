@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu } from 'electron';
 import { spawn, execSync, ChildProcess } from 'child_process';
 import { autoUpdater } from 'electron-updater';
 import path from 'path';
@@ -181,6 +181,79 @@ function createWindow(): void {
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+
+  // Application menu with keyboard shortcuts
+  const menu = Menu.buildFromTemplate([
+    {
+      label: 'Ramp',
+      submenu: [
+        { role: 'about' },
+        { type: 'separator' },
+        { role: 'hide' },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' }
+      ]
+    },
+    {
+      label: 'File',
+      submenu: [
+        {
+          label: 'New Feature',
+          accelerator: 'CmdOrCtrl+N',
+          click: () => mainWindow?.webContents.send('menu-new-feature')
+        },
+        { type: 'separator' },
+        {
+          label: 'Refresh Repos',
+          accelerator: 'CmdOrCtrl+R',
+          click: () => mainWindow?.webContents.send('menu-refresh')
+        },
+        { type: 'separator' },
+        {
+          label: 'Project Settings...',
+          accelerator: 'CmdOrCtrl+,',
+          click: () => mainWindow?.webContents.send('menu-settings')
+        }
+      ]
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' }
+      ]
+    },
+    {
+      label: 'Go',
+      submenu: [
+        { label: 'Project 1', accelerator: 'CmdOrCtrl+1', click: () => mainWindow?.webContents.send('menu-switch-project', 0) },
+        { label: 'Project 2', accelerator: 'CmdOrCtrl+2', click: () => mainWindow?.webContents.send('menu-switch-project', 1) },
+        { label: 'Project 3', accelerator: 'CmdOrCtrl+3', click: () => mainWindow?.webContents.send('menu-switch-project', 2) },
+        { label: 'Project 4', accelerator: 'CmdOrCtrl+4', click: () => mainWindow?.webContents.send('menu-switch-project', 3) },
+        { label: 'Project 5', accelerator: 'CmdOrCtrl+5', click: () => mainWindow?.webContents.send('menu-switch-project', 4) },
+        { label: 'Project 6', accelerator: 'CmdOrCtrl+6', click: () => mainWindow?.webContents.send('menu-switch-project', 5) },
+        { label: 'Project 7', accelerator: 'CmdOrCtrl+7', click: () => mainWindow?.webContents.send('menu-switch-project', 6) },
+        { label: 'Project 8', accelerator: 'CmdOrCtrl+8', click: () => mainWindow?.webContents.send('menu-switch-project', 7) },
+        { label: 'Project 9', accelerator: 'CmdOrCtrl+9', click: () => mainWindow?.webContents.send('menu-switch-project', 8) },
+      ]
+    },
+    {
+      label: 'Window',
+      submenu: [
+        { role: 'minimize' },
+        { role: 'zoom' },
+        { role: 'close' }
+      ]
+    }
+  ]);
+  Menu.setApplicationMenu(menu);
 }
 
 // IPC handlers

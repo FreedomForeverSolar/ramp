@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useCreateFeature, useWebSocket } from '../hooks/useRampAPI';
 import { WSMessage } from '../types';
 
@@ -44,6 +44,17 @@ export default function FromBranchDialog({
   }, [remoteBranch]);
 
   const effectiveFeatureName = featureNameOverride.trim() || parsed.derivedName;
+
+  // Close on Escape key (only when not creating)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !isCreating) {
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [onClose, isCreating]);
 
   // Handle WebSocket messages for the "up" operation
   // Filter by both operation AND target (feature name) to prevent cross-contamination

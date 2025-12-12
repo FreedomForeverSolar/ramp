@@ -2,22 +2,22 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Default theme (GitHub Dark) - overridden by JS when user preference loads */
 :root {
-  --color-bg: #ffffff;
-  --color-bg-secondary: #f9fafb;
-  --color-text: #111827;
-  --color-text-secondary: #6b7280;
-  --color-border: #e5e7eb;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-bg: #21222c;
-    --color-bg-secondary: #282a36;
-    --color-text: #f8f8f2;
-    --color-text-secondary: #6272a4;
-    --color-border: #343746;
-  }
+  --color-bg: #0d1117;
+  --color-bg-secondary: #161b22;
+  --color-text: #c9d1d9;
+  --color-text-secondary: #8b949e;
+  --color-border: #30363d;
+  --color-accent: #58a6ff;
+  --color-blue: #58a6ff;
+  --color-green: #3fb950;
+  --color-purple: #a371f7;
+  --color-red: #f85149;
+  --color-orange: #db6d28;
+  --color-yellow: #d29922;
+  --color-pink: #db61a2;
+  --color-coral: #ea6045;
 }
 
 body {

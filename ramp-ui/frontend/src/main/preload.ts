@@ -27,4 +27,26 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('update-downloaded', listener);
     return () => ipcRenderer.removeListener('update-downloaded', listener);
   },
+
+  // Menu event listeners
+  onMenuNewFeature: (callback: () => void) => {
+    const listener = () => callback();
+    ipcRenderer.on('menu-new-feature', listener);
+    return () => ipcRenderer.removeListener('menu-new-feature', listener);
+  },
+  onMenuRefresh: (callback: () => void) => {
+    const listener = () => callback();
+    ipcRenderer.on('menu-refresh', listener);
+    return () => ipcRenderer.removeListener('menu-refresh', listener);
+  },
+  onMenuSettings: (callback: () => void) => {
+    const listener = () => callback();
+    ipcRenderer.on('menu-settings', listener);
+    return () => ipcRenderer.removeListener('menu-settings', listener);
+  },
+  onMenuSwitchProject: (callback: (index: number) => void) => {
+    const listener = (_event: IpcRendererEvent, index: number) => callback(index);
+    ipcRenderer.on('menu-switch-project', listener);
+    return () => ipcRenderer.removeListener('menu-switch-project', listener);
+  },
 });

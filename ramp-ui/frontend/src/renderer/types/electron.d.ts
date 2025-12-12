@@ -31,6 +31,12 @@ export interface ElectronAPI {
   onUpdateAvailable: (callback: (info: UpdateInfo) => void) => () => void;
   onUpdateDownloadProgress: (callback: (progress: UpdateProgress) => void) => () => void;
   onUpdateDownloaded: (callback: (info: UpdateInfo) => void) => () => void;
+
+  // Menu event listeners (return cleanup function)
+  onMenuNewFeature: (callback: () => void) => () => void;
+  onMenuRefresh: (callback: () => void) => () => void;
+  onMenuSettings: (callback: () => void) => () => void;
+  onMenuSwitchProject: (callback: (index: number) => void) => () => void;
 }
 
 declare global {

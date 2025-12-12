@@ -37,6 +37,17 @@ export default function NewFeatureDialog({
   const scrollRef = useRef<HTMLDivElement>(null);
   const outputRef = useRef<HTMLDivElement>(null);
 
+  // Close on Escape key (only when not creating)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !isCreating) {
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [onClose, isCreating]);
+
   // Auto-scroll progress messages to bottom
   useEffect(() => {
     if (scrollRef.current) {
