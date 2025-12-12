@@ -1,5 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron';
-import { spawn, ChildProcess } from 'child_process';
+import { spawn, execSync, ChildProcess } from 'child_process';
 import { autoUpdater } from 'electron-updater';
 import path from 'path';
 import http from 'http';
@@ -9,6 +9,56 @@ let backendProcess: ChildProcess | null = null;
 
 const BACKEND_PORT = 37429;
 const isDev = !app.isPackaged;
+
+/**
+ * Get environment variables from the user's login shell.
+ * When Electron is launched from Finder/Dock on macOS, it doesn't inherit
+ * the user's shell environment. This function sources the user's shell
+ * profile to get the full environment including PATH.
+ */
+function getShellEnv(): NodeJS.ProcessEnv {
+  // In development (launched from terminal), we already have the full environment
+  if (isDev) {
+    return process.env;
+  }
+
+  const env = { ...process.env };
+  const shell = process.env.SHELL || '/bin/zsh';
+
+  try {
+    // Use the user's actual shell to get their full environment
+    // -l = login shell (sources profile files like .zshrc, .bash_profile)
+    // -i = interactive shell (may source additional files like .zshrc)
+    // -c = execute command
+    // We use `env` command to print all environment variables
+    const envOutput = execSync(`${shell} -l -i -c env`, {
+      encoding: 'utf8',
+      timeout: 10000,
+      // Suppress any stderr output (shell warnings, etc.)
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    // Parse the env output and merge into our environment
+    for (const line of envOutput.split('\n')) {
+      const eqIndex = line.indexOf('=');
+      if (eqIndex > 0) {
+        const key = line.substring(0, eqIndex);
+        const value = line.substring(eqIndex + 1);
+        // Only override if we got a valid value
+        if (key && value !== undefined) {
+          env[key] = value;
+        }
+      }
+    }
+
+    console.log('Successfully loaded shell environment from', shell);
+  } catch (err) {
+    // Log the error but continue - the Go backend has its own shell env loading
+    console.warn('Failed to get environment from login shell:', err);
+  }
+
+  return env;
+}
 
 function getBackendPath(): string {
   if (isDev) {
@@ -56,11 +106,14 @@ async function waitForBackend(port: number, maxAttempts = 30): Promise<boolean> 
 
 async function startBackend(): Promise<void> {
   const backendPath = getBackendPath();
+  const shellEnv = getShellEnv();
 
   console.log(`Starting backend from: ${backendPath}`);
+  console.log(`PATH: ${shellEnv.PATH}`);
 
   backendProcess = spawn(backendPath, ['--port', String(BACKEND_PORT)], {
     stdio: ['ignore', 'pipe', 'pipe'],
+    env: shellEnv,
   });
 
   backendProcess.stdout?.on('data', (data: Buffer) => {
