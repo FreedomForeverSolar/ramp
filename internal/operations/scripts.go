@@ -13,7 +13,8 @@ import (
 )
 
 // RunSetupScript runs the setup script for a feature with progress reporting.
-func RunSetupScript(projectDir, treesDir, featureName string, cfg *config.Config, allocatedPorts []int, repos map[string]*config.Repo, progress ProgressReporter) error {
+// If output is provided, stdout/stderr will be streamed via the OutputStreamer.
+func RunSetupScript(projectDir, treesDir, featureName string, cfg *config.Config, allocatedPorts []int, repos map[string]*config.Repo, progress ProgressReporter, output OutputStreamer) error {
 	if cfg.Setup == "" {
 		return nil
 	}
@@ -34,6 +35,19 @@ func RunSetupScript(projectDir, treesDir, featureName string, cfg *config.Config
 	// Set up environment variables
 	cmd.Env = buildScriptEnv(projectDir, treesDir, featureName, allocatedPorts, cfg, repos)
 
+	// If output streamer provided, stream output in real-time
+	if output != nil {
+		exitCode, err := executeWithStreaming(cmd, output)
+		if err != nil {
+			return err
+		}
+		if exitCode != 0 {
+			return fmt.Errorf("setup script exited with code %d", exitCode)
+		}
+		return nil
+	}
+
+	// Fall back to capture mode (for CLI without streaming)
 	return runScriptWithCapture(cmd)
 }
 
