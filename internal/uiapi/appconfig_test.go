@@ -56,8 +56,8 @@ func TestLoadAppConfig_DefaultConfig(t *testing.T) {
 		t.Errorf("LoadAppConfig() default projects = %v, want empty", config.Projects)
 	}
 
-	if config.Preferences.Theme != "system" {
-		t.Errorf("LoadAppConfig() default theme = %v, want system", config.Preferences.Theme)
+	if config.Preferences.Theme != "github-dark" {
+		t.Errorf("LoadAppConfig() default theme = %v, want github-dark", config.Preferences.Theme)
 	}
 
 	if !config.Preferences.ShowGitStatus {
