@@ -19,17 +19,22 @@ mac:
   target:
     - target: dmg
       arch:
-        # - x64
+        - x64
         - arm64
   category: public.app-category.developer-tools
-  # icon: build/icon.icns  # Optional: add custom icon later
-# win:
-#   target: nsis
-#   # icon: build/icon.ico  # Optional: add custom icon later
-# linux:
-#   target: AppImage
-#   category: Development
-#   # icon: build/icon.png  # Optional: add custom icon later
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  icon: build/icon.icns
+afterSign: scripts/notarize.js
+win:
+  target: nsis
+  # icon: build/icon.ico  # Optional: add custom icon later
+linux:
+  target: AppImage
+  category: Development
+  # icon: build/icon.png  # Optional: add custom icon later
 nsis:
   oneClick: false
   perMachine: false
