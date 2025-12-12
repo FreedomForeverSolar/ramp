@@ -36,6 +36,6 @@ nsis:
   allowToChangeInstallationDirectory: true
 publish:
   provider: github
-  owner: FreedomForeverSolar
+  owner: robrichardson13
   repo: ramp
   releaseType: release
