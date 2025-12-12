@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useDeleteFeature, useWebSocket } from '../hooks/useRampAPI';
 import { WSMessage } from '../types';
 
@@ -19,6 +20,7 @@ export default function DeleteFeatureDialog({
   const [progressMessages, setProgressMessages] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [acknowledged, setAcknowledged] = useState(false);
+  const queryClient = useQueryClient();
   const deleteFeature = useDeleteFeature(projectId);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -44,12 +46,39 @@ export default function DeleteFeatureDialog({
     if (msg.type === 'progress') {
       setProgressMessages(prev => [...prev, msg.message]);
     } else if (msg.type === 'complete') {
-      // Success - close the modal
+      // Immediately update cache to remove the deleted feature (instant UI update)
+      queryClient.setQueryData(
+        ['projects', projectId, 'features'],
+        (old: { features: Array<{ name: string }> } | undefined) => {
+          if (!old) return old;
+          return {
+            ...old,
+            features: old.features.filter(f => f.name !== featureName),
+          };
+        }
+      );
+
+      // Update the project's feature list in the sidebar (for feature count)
+      queryClient.setQueryData(
+        ['projects'],
+        (old: { projects: Array<{ id: string; features: string[] }> } | undefined) => {
+          if (!old) return old;
+          return {
+            ...old,
+            projects: old.projects.map(p =>
+              p.id === projectId
+                ? { ...p, features: p.features.filter(f => f !== featureName) }
+                : p
+            ),
+          };
+        }
+      );
+
       onClose();
     } else if (msg.type === 'error') {
       setError(msg.message);
     }
-  }, [onClose, featureName]);
+  }, [onClose, featureName, queryClient, projectId]);
 
   // Only subscribe to WebSocket while deleting
   useWebSocket(handleWSMessage, isDeleting);

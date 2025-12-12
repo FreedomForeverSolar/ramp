@@ -107,6 +107,11 @@ func (s *Server) CreateFeature(w http.ResponseWriter, r *http.Request) {
 		s.broadcast(msg)
 	})
 
+	// Create output streamer for setup script output
+	output := operations.NewWSOutputStreamerWithContext("up", featureName, "", func(msg interface{}) {
+		s.broadcast(msg)
+	})
+
 	// Call operations.Up() with WebSocket progress reporter
 	// All options from CreateFeatureRequest are passed through to operations.Up()
 	// This ensures CLI and UI have feature parity
@@ -116,6 +121,7 @@ func (s *Server) CreateFeature(w http.ResponseWriter, r *http.Request) {
 		ProjectDir:  ref.Path,
 		Config:      cfg,
 		Progress:    progress,
+		Output:      output, // Stream setup script output
 		// Branch configuration
 		Prefix:   prefix,
 		NoPrefix: req.NoPrefix,

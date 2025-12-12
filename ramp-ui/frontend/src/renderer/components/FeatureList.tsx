@@ -1,4 +1,5 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Feature, FeatureWorktreeStatus, Command, WSMessage } from '../types';
 import { useOpenTerminal, usePruneFeatures, useWebSocket } from '../hooks/useRampAPI';
 import DeleteFeatureDialog from './DeleteFeatureDialog';
@@ -84,11 +85,12 @@ export default function FeatureList({
   const [pruneProgress, setPruneProgress] = useState<string | null>(null);
   const [pruneError, setPruneError] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const queryClient = useQueryClient();
   const openTerminal = useOpenTerminal();
   const pruneFeatures = usePruneFeatures(projectId);
 
   // Listen for WebSocket messages during prune operation
-  useWebSocket((message) => {
+  const handlePruneWSMessage = useCallback((message: unknown) => {
     const msg = message as WSMessage;
     if (msg.operation === 'prune') {
       if (msg.type === 'progress' || msg.type === 'info') {
@@ -96,10 +98,46 @@ export default function FeatureList({
       } else if (msg.type === 'error') {
         setPruneError(msg.message);
       } else if (msg.type === 'complete') {
+        // Get merged feature names to remove (from current features prop)
+        const mergedNames = features
+          .filter(f => f.category === 'merged')
+          .map(f => f.name);
+
+        // Immediately remove pruned features from cache (instant UI update)
+        queryClient.setQueryData(
+          ['projects', projectId, 'features'],
+          (old: { features: Array<{ name: string; category: string }> } | undefined) => {
+            if (!old) return old;
+            return {
+              ...old,
+              features: old.features.filter(f => f.category !== 'merged'),
+            };
+          }
+        );
+
+        // Update the project's feature list in the sidebar (for feature count)
+        queryClient.setQueryData(
+          ['projects'],
+          (old: { projects: Array<{ id: string; features: string[] }> } | undefined) => {
+            if (!old) return old;
+            return {
+              ...old,
+              projects: old.projects.map(p =>
+                p.id === projectId
+                  ? { ...p, features: p.features.filter(f => !mergedNames.includes(f)) }
+                  : p
+              ),
+            };
+          }
+        );
+
         setPruneProgress(null);
+        setShowPruneDialog(false);
       }
     }
-  }, showPruneDialog);
+  }, [queryClient, projectId, features]);
+
+  useWebSocket(handlePruneWSMessage, showPruneDialog);
 
   const handleOpenTerminal = async (featureName: string) => {
     const featurePath = `${projectPath}/trees/${featureName}`;
@@ -140,7 +178,7 @@ export default function FeatureList({
     setPruneError(null);
     try {
       await pruneFeatures.mutateAsync();
-      setShowPruneDialog(false);
+      // Dialog close is handled by WebSocket 'complete' message
     } catch (error) {
       setPruneError(error instanceof Error ? error.message : 'Prune failed');
     }
@@ -324,23 +362,68 @@ export default function FeatureList({
           )}
         </div>
         <div className="flex flex-wrap gap-2">
-          {featureList.map((feature) => (
-            <span
-              key={feature.name}
-              className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded text-sm text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700"
-            >
-              {feature.name}
-              <button
-                onClick={() => handleDelete(feature)}
-                className="ml-1 text-gray-400 hover:text-red-500 transition-colors"
-                title="Delete feature"
+          {featureList.map((feature) => {
+            const isMenuOpen = openMenu === `compact-${feature.name}`;
+            return (
+              <span
+                key={feature.name}
+                className="group relative inline-flex items-center gap-1 px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded text-sm text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700"
               >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </span>
-          ))}
+                {feature.name}
+                {/* Terminal button - visible on hover */}
+                <button
+                  onClick={() => handleOpenTerminal(feature.name)}
+                  className="ml-1 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-all"
+                  title="Open in terminal"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                </button>
+                {/* Menu button - visible on hover */}
+                {commands.length > 0 && (
+                  <div className="relative" ref={isMenuOpen ? menuRef : undefined}>
+                    <button
+                      onClick={() => setOpenMenu(isMenuOpen ? null : `compact-${feature.name}`)}
+                      className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-all"
+                      title="Actions"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                      </svg>
+                    </button>
+                    {/* Dropdown menu */}
+                    {isMenuOpen && (
+                      <div className="absolute left-0 mt-1 w-40 bg-white dark:bg-gray-700 rounded-md shadow-lg border border-gray-200 dark:border-gray-600 py-1 z-[100]">
+                        {commands.map((cmd) => (
+                          <button
+                            key={cmd.name}
+                            onClick={() => {
+                              setOpenMenu(null);
+                              setRunningCommand({ commandName: cmd.name, featureName: feature.name });
+                            }}
+                            className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600"
+                          >
+                            {cmd.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {/* Delete button */}
+                <button
+                  onClick={() => handleDelete(feature)}
+                  className="text-gray-400 hover:text-red-500 transition-colors"
+                  title="Delete feature"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </span>
+            );
+          })}
         </div>
       </div>
     );

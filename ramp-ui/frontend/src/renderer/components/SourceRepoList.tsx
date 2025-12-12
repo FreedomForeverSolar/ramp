@@ -26,6 +26,7 @@ export default function SourceRepoList({
   const [showCommandDropdown, setShowCommandDropdown] = useState(false);
   const [selectedCommand, setSelectedCommand] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isCheckingStatus, setIsCheckingStatus] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Close dropdown when clicking outside
@@ -53,6 +54,15 @@ export default function SourceRepoList({
   }, [refetch, queryClient, projectId]);
 
   useWebSocket(handleWSMessage, isRefreshing);
+
+  const handleCheckStatus = async () => {
+    setIsCheckingStatus(true);
+    try {
+      await refetch();
+    } finally {
+      setIsCheckingStatus(false);
+    }
+  };
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -154,12 +164,34 @@ export default function SourceRepoList({
           Source Repositories
         </h3>
         <div className="flex items-center gap-2">
+          {/* Check status button */}
+          <button
+            onClick={handleCheckStatus}
+            disabled={isCheckingStatus || isRefreshing}
+            className="p-1.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors disabled:opacity-50"
+            title="Check status (fetch without pull)"
+          >
+            <svg
+              className={`w-4 h-4 ${isCheckingStatus ? 'animate-pulse' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+          </button>
+
           {/* Refresh button */}
           <button
             onClick={handleRefresh}
-            disabled={isRefreshing}
+            disabled={isRefreshing || isCheckingStatus}
             className="p-1.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors disabled:opacity-50"
-            title="Refresh repositories"
+            title="Refresh repositories (pull changes)"
           >
             <svg
               className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`}

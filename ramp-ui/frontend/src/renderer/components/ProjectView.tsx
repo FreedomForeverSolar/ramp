@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Project } from '../types';
-import { useFeatures, useRemoveProject, useConfigStatus, useCommands } from '../hooks/useRampAPI';
+import { useFeatures, useRemoveProject, useConfigStatus, useCommands, useSourceRepos } from '../hooks/useRampAPI';
 import FeatureList from './FeatureList';
 import NewFeatureDialog from './NewFeatureDialog';
 import FromBranchDialog from './FromBranchDialog';
@@ -20,9 +20,12 @@ export default function ProjectView({ project }: ProjectViewProps) {
   const [pendingFromBranch, setPendingFromBranch] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const { data: featuresData, isLoading: featuresLoading } = useFeatures(project.id);
-  const { data: commandsData } = useCommands(project.id);
-  const { data: configStatus } = useConfigStatus(project.id);
+  const { data: featuresData, isLoading: featuresLoading, isFetching: featuresRefetching } = useFeatures(project.id);
+  const { data: commandsData, isFetching: commandsRefetching } = useCommands(project.id);
+  const { data: configStatus, isFetching: configRefetching } = useConfigStatus(project.id);
+  const { isFetching: sourceReposRefetching } = useSourceRepos(project.id);
+
+  const isRefetching = featuresRefetching || commandsRefetching || configRefetching || sourceReposRefetching;
   const removeProject = useRemoveProject();
 
   // Close dropdown when clicking outside
@@ -90,9 +93,32 @@ export default function ProjectView({ project }: ProjectViewProps) {
       <div className="p-6 border-b border-gray-200 dark:border-gray-700">
         <div className="flex items-start justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-              {project.name}
-            </h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+                {project.name}
+              </h1>
+              {isRefetching && (
+                <svg
+                  className="w-4 h-4 animate-spin text-gray-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  />
+                </svg>
+              )}
+            </div>
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 font-mono">
               {project.path}
             </p>

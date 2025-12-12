@@ -48,6 +48,7 @@ internal/
   autoupdate/     # Homebrew auto-update system
   operations/     # Shared operation logic (up, down, refresh, install)
   uiapi/          # REST API handlers for desktop app
+  shellenv/       # GUI shell environment loading
 ramp-ui/          # Electron + React desktop app (see ramp-ui/README.md)
 ```
 
@@ -198,6 +199,7 @@ Run tests with `go test ./...` or `go test ./... -cover`.
 - **Safety checks**: `ramp down` warns about uncommitted changes
 - **Port management**: Unique ports allocated per feature (persisted in `.ramp/port_allocations.json`)
 - **Git stash caveat**: Stashes are shared across all worktrees of the same repo
+- **Login shell for scripts**: Setup/cleanup scripts run via `/bin/bash -l` to source user's profile and ensure tools like bun, node, etc. are available in GUI environments
 
 ## Auto-Update System
 

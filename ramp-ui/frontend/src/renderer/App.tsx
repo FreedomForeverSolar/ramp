@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+// import { useQueryClient } from '@tanstack/react-query';
 import { useProjects, useAppSettings, useSaveAppSettings } from './hooks/useRampAPI';
 import ProjectList from './components/ProjectList';
 import ProjectView from './components/ProjectView';
@@ -10,7 +10,7 @@ import { Project } from './types';
 function App() {
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const hasInitialized = useRef(false);
-  const queryClient = useQueryClient();
+  // const queryClient = useQueryClient();
   const { data: projectsData, isLoading, error } = useProjects();
   const { data: settingsData } = useAppSettings();
   const saveSettings = useSaveAppSettings();
@@ -19,42 +19,42 @@ function App() {
   const selectedProject = projects.find((p: Project) => p.id === selectedProjectId);
 
   // Refresh features and source repo status when app comes to foreground
-  useEffect(() => {
-    const isFeaturesQuery = (query: { queryKey: unknown }) => {
-      const key = query.queryKey;
-      return Array.isArray(key) && key.length >= 3 && key[0] === 'projects' && key[2] === 'features';
-    };
+  // useEffect(() => {
+  //   const isFeaturesQuery = (query: { queryKey: unknown }) => {
+  //     const key = query.queryKey;
+  //     return Array.isArray(key) && key.length >= 3 && key[0] === 'projects' && key[2] === 'features';
+  //   };
 
-    const isSourceReposQuery = (query: { queryKey: unknown }) => {
-      const key = query.queryKey;
-      return Array.isArray(key) && key.length >= 3 && key[0] === 'projects' && key[2] === 'source-repos';
-    };
+  //   const isSourceReposQuery = (query: { queryKey: unknown }) => {
+  //     const key = query.queryKey;
+  //     return Array.isArray(key) && key.length >= 3 && key[0] === 'projects' && key[2] === 'source-repos';
+  //   };
 
-    const handleFocus = () => {
-      // Skip if already fetching features
-      const alreadyFetching = queryClient.isFetching({ predicate: isFeaturesQuery }) > 0;
-      if (alreadyFetching) return;
+  //   const handleFocus = () => {
+  //     // Skip if already fetching features
+  //     const alreadyFetching = queryClient.isFetching({ predicate: isFeaturesQuery }) > 0;
+  //     if (alreadyFetching) return;
 
-      // Refetch all features queries (matches any project's features)
-      queryClient.invalidateQueries({ predicate: isFeaturesQuery });
-      // Also refresh source repo status (triggers git fetch to check behind/ahead)
-      queryClient.invalidateQueries({ predicate: isSourceReposQuery });
-    };
+  //     // Refetch all features queries (matches any project's features)
+  //     queryClient.invalidateQueries({ predicate: isFeaturesQuery });
+  //     // Also refresh source repo status (triggers git fetch to check behind/ahead)
+  //     queryClient.invalidateQueries({ predicate: isSourceReposQuery });
+  //   };
 
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        handleFocus();
-      }
-    };
+  //   const handleVisibilityChange = () => {
+  //     if (document.visibilityState === 'visible') {
+  //       handleFocus();
+  //     }
+  //   };
 
-    window.addEventListener('focus', handleFocus);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
+  //   window.addEventListener('focus', handleFocus);
+  //   document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    return () => {
-      window.removeEventListener('focus', handleFocus);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [queryClient]);
+  //   return () => {
+  //     window.removeEventListener('focus', handleFocus);
+  //     document.removeEventListener('visibilitychange', handleVisibilityChange);
+  //   };
+  // }, [queryClient]);
 
   // Initialize selection from saved settings (runs once when both data sources are ready)
   useEffect(() => {

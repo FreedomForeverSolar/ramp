@@ -19,6 +19,9 @@ type UpOptions struct {
 	Config      *config.Config
 	Progress    ProgressReporter
 
+	// Optional - output streaming for setup script
+	Output OutputStreamer // For streaming setup script stdout/stderr
+
 	// Optional - branch configuration
 	Prefix   string // Branch prefix override (empty = use config default)
 	NoPrefix bool   // Explicitly disable prefix
@@ -339,7 +342,7 @@ func Up(opts UpOptions) (*UpResult, error) {
 	if cfg.Setup != "" {
 		progress.UpdateWithProgress("Running setup script...", 80)
 
-		if err := RunSetupScript(projectDir, treesDir, featureName, cfg, allocatedPorts, repos, progress); err != nil {
+		if err := RunSetupScript(projectDir, treesDir, featureName, cfg, allocatedPorts, repos, progress, opts.Output); err != nil {
 			progress.Error("Setup script failed")
 			for _, state := range states {
 				state.setupRan = true
