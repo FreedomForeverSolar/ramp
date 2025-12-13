@@ -48,3 +48,4 @@ publish:
   owner: FreedomForeverSolar
   repo: ramp
   releaseType: release
+  releaseTag: ui-v${version}
