@@ -1,11 +1,20 @@
 package uiapi
 
 import (
+	"fmt"
 	"net/http"
+	"os/exec"
 	"sync"
 
 	"github.com/gorilla/websocket"
 )
+
+// RunningCommand tracks a running command process for cancellation
+type RunningCommand struct {
+	Cmd    *exec.Cmd
+	Cancel chan struct{}
+	PGID   int
+}
 
 // Server holds the API server state
 type Server struct {
@@ -19,12 +28,18 @@ type Server struct {
 	// Per-project locks for serializing feature operations
 	// Prevents concurrent create/delete operations from conflicting at git level
 	projectLocks sync.Map // map[projectID]*sync.Mutex
+
+	// Running commands registry for cancellation support
+	// Key format: "{projectID}:{commandName}:{target}"
+	runningCommands map[string]*RunningCommand
+	runningCmdMutex sync.RWMutex
 }
 
 // NewServer creates a new API server
 func NewServer() *Server {
 	return &Server{
-		wsConnections: make(map[*websocket.Conn]bool),
+		wsConnections:   make(map[*websocket.Conn]bool),
+		runningCommands: make(map[string]*RunningCommand),
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool {
 				// Allow connections from our frontend
@@ -70,4 +85,40 @@ func (s *Server) acquireProjectLock(projectID string) func() {
 	mu := lock.(*sync.Mutex)
 	mu.Lock()
 	return func() { mu.Unlock() }
+}
+
+// commandKey generates a unique key for a running command
+func commandKey(projectID, commandName, target string) string {
+	return fmt.Sprintf("%s:%s:%s", projectID, commandName, target)
+}
+
+// registerCommand registers a running command in the registry
+func (s *Server) registerCommand(key string, cmd *RunningCommand) {
+	s.runningCmdMutex.Lock()
+	defer s.runningCmdMutex.Unlock()
+	s.runningCommands[key] = cmd
+}
+
+// unregisterCommand removes a command from the registry
+func (s *Server) unregisterCommand(key string) {
+	s.runningCmdMutex.Lock()
+	defer s.runningCmdMutex.Unlock()
+	delete(s.runningCommands, key)
+}
+
+// getRunningCommand retrieves a running command by key
+func (s *Server) getRunningCommand(key string) *RunningCommand {
+	s.runningCmdMutex.RLock()
+	defer s.runningCmdMutex.RUnlock()
+	return s.runningCommands[key]
+}
+
+// updateRunningCommand updates the Cmd and PGID of a running command
+func (s *Server) updateRunningCommand(key string, cmd *exec.Cmd, pgid int) {
+	s.runningCmdMutex.Lock()
+	defer s.runningCmdMutex.Unlock()
+	if rc, ok := s.runningCommands[key]; ok {
+		rc.Cmd = cmd
+		rc.PGID = pgid
+	}
 }

@@ -161,6 +161,11 @@ type RunCommandRequest struct {
 	FeatureName string `json:"featureName,omitempty"` // Optional - if empty, runs against source
 }
 
+// CancelCommandRequest is the request body for cancelling a command
+type CancelCommandRequest struct {
+	Target string `json:"target,omitempty"` // "source" or feature name
+}
+
 // RunCommandResponse is the response for command execution
 type RunCommandResponse struct {
 	Success  bool   `json:"success"`

@@ -75,7 +75,7 @@ export interface SuccessResponse {
 
 // WebSocket Messages
 export interface WSMessage {
-  type: 'progress' | 'error' | 'complete' | 'connected' | 'output' | 'warning' | 'info';
+  type: 'progress' | 'error' | 'complete' | 'connected' | 'output' | 'warning' | 'info' | 'cancelled';
   operation?: string;
   message: string;
   percentage?: number;
@@ -95,6 +95,10 @@ export interface CommandsResponse {
 
 export interface RunCommandRequest {
   featureName?: string; // Optional - if empty, runs against source
+}
+
+export interface CancelCommandRequest {
+  target?: string; // "source" or feature name
 }
 
 export interface RunCommandResponse {

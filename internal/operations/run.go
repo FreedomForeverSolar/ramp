@@ -2,15 +2,20 @@ package operations
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"ramp/internal/config"
 	"ramp/internal/ports"
 )
+
+// ErrCommandCancelled is returned when a command is cancelled
+var ErrCommandCancelled = errors.New("command cancelled")
 
 // RunOptions configures custom command execution.
 type RunOptions struct {
@@ -20,6 +25,13 @@ type RunOptions struct {
 	FeatureName string           // Empty = run against source
 	Progress    ProgressReporter
 	Output      OutputStreamer   // For streaming stdout/stderr
+
+	// Cancel channel - when closed, the command will be killed
+	Cancel <-chan struct{}
+
+	// ProcessCallback is called after the process starts with the exec.Cmd and PGID
+	// This allows the caller to track the process for cancellation
+	ProcessCallback func(cmd *exec.Cmd, pgid int)
 }
 
 // RunResult contains the results of command execution.
@@ -145,7 +157,7 @@ func runInFeature(opts RunOptions, scriptPath, treesDir string) (int, error) {
 		}
 	}
 
-	return executeWithStreaming(cmd, opts.Output)
+	return executeWithStreaming(cmd, opts.Output, opts.Cancel, opts.ProcessCallback)
 }
 
 // runInSource executes a command in source mode against the project directory.
@@ -179,11 +191,17 @@ func runInSource(opts RunOptions, scriptPath string) (int, error) {
 		}
 	}
 
-	return executeWithStreaming(cmd, opts.Output)
+	return executeWithStreaming(cmd, opts.Output, opts.Cancel, opts.ProcessCallback)
 }
 
 // executeWithStreaming runs a command and streams output via OutputStreamer.
-func executeWithStreaming(cmd *exec.Cmd, output OutputStreamer) (int, error) {
+// Supports cancellation via the cancel channel and process tracking via processCallback.
+func executeWithStreaming(cmd *exec.Cmd, output OutputStreamer, cancel <-chan struct{}, processCallback func(*exec.Cmd, int)) (int, error) {
+	// Create new process group so we can kill all child processes
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setpgid: true,
+	}
+
 	// Set up pipes for stdout and stderr
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -198,6 +216,14 @@ func executeWithStreaming(cmd *exec.Cmd, output OutputStreamer) (int, error) {
 	// Start the command
 	if err := cmd.Start(); err != nil {
 		return -1, fmt.Errorf("failed to start command: %w", err)
+	}
+
+	// Get process group ID (on macOS/Unix, this is the PID of the process leader)
+	pgid := cmd.Process.Pid
+
+	// Notify caller of process details for cancellation tracking
+	if processCallback != nil {
+		processCallback(cmd, pgid)
 	}
 
 	// Stream stdout
@@ -220,16 +246,33 @@ func executeWithStreaming(cmd *exec.Cmd, output OutputStreamer) (int, error) {
 		}
 	}()
 
-	// Wait for command to complete
-	err = cmd.Wait()
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			return exitErr.ExitCode(), nil
-		}
-		return -1, err
-	}
+	// Wait for command in a goroutine
+	resultCh := make(chan error, 1)
+	go func() {
+		resultCh <- cmd.Wait()
+	}()
 
-	return 0, nil
+	// Wait for completion or cancellation
+	select {
+	case err := <-resultCh:
+		if err != nil {
+			if exitErr, ok := err.(*exec.ExitError); ok {
+				return exitErr.ExitCode(), nil
+			}
+			return -1, err
+		}
+		return 0, nil
+
+	case <-cancel:
+		// Kill entire process group with SIGKILL
+		// Negative PID kills all processes in the process group
+		syscall.Kill(-pgid, syscall.SIGKILL)
+
+		// Wait for the process to actually terminate
+		<-resultCh
+
+		return -1, ErrCommandCancelled
+	}
 }
 
 // addPortEnvVars adds port environment variables to a command.

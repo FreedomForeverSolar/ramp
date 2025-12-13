@@ -60,6 +60,7 @@ func main() {
 	// Command routes
 	apiRouter.HandleFunc("/projects/{id}/commands", server.ListCommands).Methods("GET")
 	apiRouter.HandleFunc("/projects/{id}/commands/{commandName}/run", server.RunCommand).Methods("POST")
+	apiRouter.HandleFunc("/projects/{id}/commands/{commandName}/cancel", server.CancelCommand).Methods("POST")
 
 	// Source repos routes
 	apiRouter.HandleFunc("/projects/{id}/source-repos", server.GetSourceRepos).Methods("GET")
