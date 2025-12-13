@@ -7,8 +7,8 @@ import http from 'http';
 let mainWindow: BrowserWindow | null = null;
 let backendProcess: ChildProcess | null = null;
 
-const BACKEND_PORT = 37429;
 const isDev = !app.isPackaged;
+const BACKEND_PORT = isDev ? 37430 : 37429;
 
 /**
  * Get environment variables from the user's login shell.
