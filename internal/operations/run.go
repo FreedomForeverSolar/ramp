@@ -45,6 +45,15 @@ func RunCommand(opts RunOptions) (*RunResult, error) {
 		return nil, fmt.Errorf("command '%s' not found in configuration", commandName)
 	}
 
+	// Validate scope compatibility
+	isSourceMode := featureName == ""
+	if command.Scope == "source" && !isSourceMode {
+		return nil, fmt.Errorf("command '%s' can only run against source repos", commandName)
+	}
+	if command.Scope == "feature" && isSourceMode {
+		return nil, fmt.Errorf("command '%s' requires a feature name", commandName)
+	}
+
 	scriptPath := filepath.Join(projectDir, ".ramp", command.Command)
 
 	// Validate script exists
