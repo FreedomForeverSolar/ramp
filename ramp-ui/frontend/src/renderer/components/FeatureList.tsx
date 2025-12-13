@@ -151,7 +151,9 @@ export default function FeatureList({
 
   // Helper to get menu items for a feature
   const getMenuItems = (feature: Feature): DropdownMenuItem[] => {
-    const items: DropdownMenuItem[] = commands.map((cmd) => ({
+    // Filter commands to only show those with scope 'feature' or no scope (available everywhere)
+    const featureCommands = commands.filter(cmd => !cmd.scope || cmd.scope === 'feature');
+    const items: DropdownMenuItem[] = featureCommands.map((cmd) => ({
       label: cmd.name,
       icon: MenuIcons.play,
       onClick: () => setRunningCommand({ commandName: cmd.name, featureName: feature.name }),
