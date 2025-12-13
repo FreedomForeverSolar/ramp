@@ -35,6 +35,7 @@ func (s *Server) ListCommands(w http.ResponseWriter, r *http.Request) {
 		commands = append(commands, Command{
 			Name:    cmd.Name,
 			Command: cmd.Command,
+			Scope:   cmd.Scope,
 		})
 	}
 

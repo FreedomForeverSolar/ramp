@@ -92,6 +92,15 @@ func runCustomCommand(commandName, featureName string) error {
 		}
 	}
 
+	// Validate scope compatibility
+	isSourceMode := featureName == ""
+	if command.Scope == "source" && !isSourceMode {
+		return fmt.Errorf("command '%s' can only run against source repos (remove the feature argument)", commandName)
+	}
+	if command.Scope == "feature" && isSourceMode {
+		return fmt.Errorf("command '%s' requires a feature name (e.g., ramp run %s <feature-name>)", commandName, commandName)
+	}
+
 	// If no feature name provided (and not auto-detected), run against source directory
 	if featureName == "" {
 		fmt.Printf("Running command '%s' against source repositories\n", commandName)

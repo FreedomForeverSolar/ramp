@@ -51,6 +51,7 @@ type Repo struct {
 type Command struct {
 	Name    string `yaml:"name"`
 	Command string `yaml:"command"`
+	Scope   string `yaml:"scope,omitempty"` // "source", "feature", or empty (both)
 }
 
 type PromptOption struct {
@@ -102,6 +103,18 @@ func (c *Config) GetCommand(name string) *Command {
 		}
 	}
 	return nil
+}
+
+// GetCommandsForScope returns commands filtered by scope.
+// Commands with an empty scope are included in all contexts.
+func (c *Config) GetCommandsForScope(scope string) []*Command {
+	var filtered []*Command
+	for _, cmd := range c.Commands {
+		if cmd.Scope == "" || cmd.Scope == scope {
+			filtered = append(filtered, cmd)
+		}
+	}
+	return filtered
 }
 
 func (c *Config) GetBasePort() int {
@@ -316,6 +329,9 @@ func SaveConfig(cfg *Config, projectDir string) error {
 		for _, cmd := range cfg.Commands {
 			yamlBuilder.WriteString(fmt.Sprintf("  - name: %s\n", cmd.Name))
 			yamlBuilder.WriteString(fmt.Sprintf("    command: %s\n", cmd.Command))
+			if cmd.Scope != "" {
+				yamlBuilder.WriteString(fmt.Sprintf("    scope: %s\n", cmd.Scope))
+			}
 		}
 	}
 

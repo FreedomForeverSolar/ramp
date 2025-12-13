@@ -87,6 +87,7 @@ export interface WSMessage {
 export interface Command {
   name: string;
   command: string;
+  scope?: 'source' | 'feature'; // Optional - undefined means available everywhere
 }
 
 export interface CommandsResponse {
