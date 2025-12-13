@@ -6,6 +6,7 @@ import http from 'http';
 
 let mainWindow: BrowserWindow | null = null;
 let backendProcess: ChildProcess | null = null;
+let lastUpdateCheck = 0;
 
 const isDev = !app.isPackaged;
 const BACKEND_PORT = isDev ? 37430 : 37429;
@@ -182,6 +183,21 @@ function createWindow(): void {
     mainWindow = null;
   });
 
+  // Check for updates when window regains focus (debounced to once per hour)
+  mainWindow.on('focus', () => {
+    if (!app.isPackaged) return;
+
+    const now = Date.now();
+    const oneHour = 60 * 60 * 1000;
+
+    if (now - lastUpdateCheck > oneHour) {
+      lastUpdateCheck = now;
+      autoUpdater.checkForUpdates().catch((err) => {
+        console.error('Focus-triggered update check failed:', err);
+      });
+    }
+  });
+
   // Application menu with keyboard shortcuts
   const menu = Menu.buildFromTemplate([
     {
@@ -276,6 +292,10 @@ ipcMain.handle('get-backend-port', () => {
   return BACKEND_PORT;
 });
 
+ipcMain.handle('get-version', () => {
+  return app.getVersion();
+});
+
 // Auto-updater IPC handlers
 ipcMain.handle('check-for-updates', async () => {
   if (!app.isPackaged) {
@@ -344,10 +364,19 @@ function setupAutoUpdater(): void {
 
   // Check for updates after a short delay (don't block startup)
   setTimeout(() => {
+    lastUpdateCheck = Date.now();
     autoUpdater.checkForUpdates().catch((err) => {
       console.error('Initial update check failed:', err);
     });
   }, 3000);
+
+  // Periodic check every 4 hours while running
+  setInterval(() => {
+    lastUpdateCheck = Date.now();
+    autoUpdater.checkForUpdates().catch((err) => {
+      console.error('Periodic update check failed:', err);
+    });
+  }, 4 * 60 * 60 * 1000);
 }
 
 // App lifecycle

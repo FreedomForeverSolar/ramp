@@ -21,6 +21,7 @@ export interface UpdateCheckResult {
 export interface ElectronAPI {
   selectDirectory: () => Promise<string | null>;
   getBackendPort: () => Promise<number>;
+  getVersion: () => Promise<string>;
   platform: NodeJS.Platform;
 
   // Auto-updater methods

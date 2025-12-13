@@ -5,6 +5,7 @@ import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
 contextBridge.exposeInMainWorld('electronAPI', {
   selectDirectory: () => ipcRenderer.invoke('select-directory'),
   getBackendPort: () => ipcRenderer.invoke('get-backend-port'),
+  getVersion: () => ipcRenderer.invoke('get-version'),
   platform: process.platform,
 
   // Auto-updater methods
