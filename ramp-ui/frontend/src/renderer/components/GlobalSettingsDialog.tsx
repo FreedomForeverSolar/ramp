@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAppSettings, useSaveAppSettings } from '../hooks/useRampAPI';
 import { themes, getThemeById, applyTheme } from '../themes';
+import type { UpdateInfo, UpdateProgress } from '../types/electron';
 
 interface GlobalSettingsDialogProps {
   onClose: () => void;
@@ -21,6 +22,12 @@ export default function GlobalSettingsDialog({ onClose }: GlobalSettingsDialogPr
   const [selectedTheme, setSelectedTheme] = useState('github-dark');
   const [isSaving, setIsSaving] = useState(false);
 
+  // Version and update state
+  const [version, setVersion] = useState<string>('');
+  const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'available' | 'downloading' | 'ready'>('idle');
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState<UpdateProgress | null>(null);
+
   // Revert theme and close
   const handleClose = () => {
     if (settings?.theme && settings.theme !== selectedTheme) {
@@ -40,6 +47,37 @@ export default function GlobalSettingsDialog({ onClose }: GlobalSettingsDialogPr
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [onClose, isSaving, settings?.theme, selectedTheme]);
+
+  // Fetch version and set up update listeners
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (!api) return;
+
+    // Get current version
+    api.getVersion().then(setVersion);
+
+    // Set up update event listeners
+    const cleanupAvailable = api.onUpdateAvailable((info) => {
+      setUpdateStatus('available');
+      setUpdateInfo(info);
+    });
+
+    const cleanupProgress = api.onUpdateDownloadProgress((progress) => {
+      setUpdateStatus('downloading');
+      setDownloadProgress(progress);
+    });
+
+    const cleanupDownloaded = api.onUpdateDownloaded((info) => {
+      setUpdateStatus('ready');
+      setUpdateInfo(info);
+    });
+
+    return () => {
+      cleanupAvailable();
+      cleanupProgress();
+      cleanupDownloaded();
+    };
+  }, []);
 
   // Initialize form with current settings
   useEffect(() => {
@@ -93,6 +131,32 @@ export default function GlobalSettingsDialog({ onClose }: GlobalSettingsDialogPr
       setIsCustom(false);
       setTerminalApp(value);
     }
+  };
+
+  const handleCheckForUpdates = async () => {
+    const api = window.electronAPI;
+    if (!api) return;
+
+    setUpdateStatus('checking');
+    try {
+      const result = await api.checkForUpdates();
+      if (result.status === 'dev-mode') {
+        setUpdateStatus('idle');
+      } else if (result.status === 'error') {
+        setUpdateStatus('idle');
+      }
+      // If an update is available, the event listener will handle it
+      // If no update, status will remain 'checking' briefly then we reset
+      setTimeout(() => {
+        setUpdateStatus((current) => current === 'checking' ? 'idle' : current);
+      }, 3000);
+    } catch {
+      setUpdateStatus('idle');
+    }
+  };
+
+  const handleInstallUpdate = () => {
+    window.electronAPI?.quitAndInstall();
   };
 
   return (
@@ -251,6 +315,55 @@ export default function GlobalSettingsDialog({ onClose }: GlobalSettingsDialogPr
                       </svg>
                     )}
                   </label>
+                </div>
+              </div>
+
+              {/* Version and Updates */}
+              <div className="pt-4 border-t border-[var(--color-border)]">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                      Version
+                    </div>
+                    <div className="text-sm text-gray-500 dark:text-gray-400">
+                      {version || 'Loading...'}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {updateStatus === 'idle' && (
+                      <button
+                        type="button"
+                        onClick={handleCheckForUpdates}
+                        className="px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors"
+                      >
+                        Check for Updates
+                      </button>
+                    )}
+                    {updateStatus === 'checking' && (
+                      <span className="text-sm text-gray-500 dark:text-gray-400">
+                        Checking...
+                      </span>
+                    )}
+                    {updateStatus === 'available' && (
+                      <span className="text-sm text-green-600 dark:text-green-400">
+                        v{updateInfo?.version} downloading...
+                      </span>
+                    )}
+                    {updateStatus === 'downloading' && downloadProgress && (
+                      <span className="text-sm text-blue-600 dark:text-blue-400">
+                        Downloading... {downloadProgress.percent.toFixed(0)}%
+                      </span>
+                    )}
+                    {updateStatus === 'ready' && (
+                      <button
+                        type="button"
+                        onClick={handleInstallUpdate}
+                        className="px-3 py-1.5 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-md transition-colors"
+                      >
+                        Install v{updateInfo?.version}
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
