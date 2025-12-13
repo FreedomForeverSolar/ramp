@@ -37,7 +37,7 @@ func RunSetupScript(projectDir, treesDir, featureName string, cfg *config.Config
 
 	// If output streamer provided, stream output in real-time
 	if output != nil {
-		exitCode, err := executeWithStreaming(cmd, output)
+		exitCode, err := executeWithStreaming(cmd, output, nil, nil)
 		if err != nil {
 			return err
 		}

@@ -14,6 +14,7 @@ import {
   CommandsResponse,
   RunCommandRequest,
   RunCommandResponse,
+  CancelCommandRequest,
   ToggleFavoriteResponse,
   SourceReposResponse,
   OpenTerminalRequest,
@@ -255,6 +256,16 @@ export function useRunCommand(projectId: string) {
       fetchAPI<RunCommandResponse>(`/projects/${projectId}/commands/${commandName}/run`, {
         method: 'POST',
         body: JSON.stringify({ featureName }),
+      }),
+  });
+}
+
+export function useCancelCommand(projectId: string) {
+  return useMutation<SuccessResponse, Error, { commandName: string } & CancelCommandRequest>({
+    mutationFn: ({ commandName, target }) =>
+      fetchAPI<SuccessResponse>(`/projects/${projectId}/commands/${commandName}/cancel`, {
+        method: 'POST',
+        body: JSON.stringify({ target }),
       }),
   });
 }

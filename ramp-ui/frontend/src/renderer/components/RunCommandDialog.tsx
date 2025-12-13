@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { useRunCommand, useWebSocket } from '../hooks/useRampAPI';
+import { useRunCommand, useCancelCommand, useWebSocket } from '../hooks/useRampAPI';
 import { WSMessage, Feature } from '../types';
 import Convert from 'ansi-to-html';
 
@@ -35,7 +35,9 @@ export default function RunCommandDialog({
   const [outputLines, setOutputLines] = useState<{ text: string; isError: boolean }[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [cancelled, setCancelled] = useState(false);
   const runCommand = useRunCommand(projectId);
+  const cancelCommand = useCancelCommand(projectId);
   const outputRef = useRef<HTMLDivElement>(null);
   const hasStartedRef = useRef(false);
 
@@ -81,6 +83,10 @@ export default function RunCommandDialog({
     } else if (msg.type === 'error') {
       setError(msg.message);
       setIsRunning(false);
+    } else if (msg.type === 'cancelled') {
+      setCancelled(true);
+      setIsRunning(false);
+      setOutputLines(prev => [...prev, { text: msg.message, isError: false }]);
     }
   }, [commandName, targetForFiltering]);
 
@@ -108,6 +114,7 @@ export default function RunCommandDialog({
     setOutputLines([]);
     setError(null);
     setSuccess(false);
+    setCancelled(false);
 
     try {
       const featureToRun = target || undefined; // Empty string = source mode
@@ -125,6 +132,18 @@ export default function RunCommandDialog({
 
   const handleRetry = () => {
     executeCommand(selectedTarget);
+  };
+
+  const handleCancel = async () => {
+    try {
+      await cancelCommand.mutateAsync({
+        commandName,
+        target: targetForFiltering,
+      });
+    } catch (err) {
+      // If cancel fails, log but don't show error to user
+      console.error('Failed to cancel command:', err);
+    }
   };
 
   // Selection view (choose target)
@@ -220,6 +239,13 @@ export default function RunCommandDialog({
             </svg>
             <span>Completed successfully</span>
           </div>
+        ) : cancelled ? (
+          <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 002 0V8a1 1 0 00-1-1zm4 0a1 1 0 00-1 1v4a1 1 0 002 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+            </svg>
+            <span>Cancelled</span>
+          </div>
         ) : error ? (
           <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400">
             <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
@@ -239,15 +265,14 @@ export default function RunCommandDialog({
             </button>
           )}
           <button
-            onClick={onClose}
-            disabled={isRunning}
+            onClick={isRunning ? handleCancel : onClose}
             className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
               isRunning
-                ? 'text-gray-400 cursor-not-allowed'
+                ? 'text-white bg-red-600 hover:bg-red-700'
                 : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600'
             }`}
           >
-            {success || error ? 'Close' : 'Cancel'}
+            {isRunning ? 'Cancel' : success || error || cancelled ? 'Close' : 'Cancel'}
           </button>
         </div>
       </div>

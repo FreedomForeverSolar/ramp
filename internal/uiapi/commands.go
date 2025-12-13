@@ -2,7 +2,10 @@ package uiapi
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
+	"os/exec"
 
 	"ramp/internal/config"
 	"ramp/internal/operations"
@@ -81,6 +84,27 @@ func (s *Server) RunCommand(w http.ResponseWriter, r *http.Request) {
 		target = "source"
 	}
 
+	// Create unique key for this command instance
+	key := commandKey(id, commandName, target)
+
+	// Check if command is already running
+	if existing := s.getRunningCommand(key); existing != nil {
+		writeError(w, http.StatusConflict, "Command already running", key)
+		return
+	}
+
+	// Create cancel channel
+	cancel := make(chan struct{})
+
+	// Create running command entry (will be updated with process info)
+	runningCmd := &RunningCommand{
+		Cancel: cancel,
+	}
+	s.registerCommand(key, runningCmd)
+
+	// Ensure cleanup on completion
+	defer s.unregisterCommand(key)
+
 	// Create progress reporter with command context
 	progress := operations.NewWSProgressReporterWithCommand("run", target, commandName, func(msg interface{}) {
 		s.broadcast(msg)
@@ -91,7 +115,7 @@ func (s *Server) RunCommand(w http.ResponseWriter, r *http.Request) {
 		s.broadcast(msg)
 	})
 
-	// Execute the command
+	// Execute the command with cancellation support
 	result, err := operations.RunCommand(operations.RunOptions{
 		ProjectDir:  ref.Path,
 		Config:      cfg,
@@ -99,7 +123,23 @@ func (s *Server) RunCommand(w http.ResponseWriter, r *http.Request) {
 		FeatureName: req.FeatureName,
 		Progress:    progress,
 		Output:      output,
+		Cancel:      cancel,
+		ProcessCallback: func(cmd *exec.Cmd, pgid int) {
+			s.updateRunningCommand(key, cmd, pgid)
+		},
 	})
+
+	// Check if command was cancelled
+	if err != nil && errors.Is(err, operations.ErrCommandCancelled) {
+		// Don't send error response for cancellation - the cancel handler already
+		// broadcast the cancellation message
+		writeJSON(w, http.StatusOK, RunCommandResponse{
+			Success:  false,
+			ExitCode: -1,
+			Error:    "command cancelled",
+		})
+		return
+	}
 
 	// Always return a response (even on error, for exit code)
 	if result != nil {
@@ -122,4 +162,43 @@ func (s *Server) RunCommand(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, RunCommandResponse{Success: true})
+}
+
+// CancelCommand cancels a running command
+func (s *Server) CancelCommand(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id := vars["id"]
+	commandName := vars["commandName"]
+
+	var req CancelCommandRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		req = CancelCommandRequest{}
+	}
+
+	target := req.Target
+	if target == "" {
+		target = "source"
+	}
+
+	key := commandKey(id, commandName, target)
+
+	runningCmd := s.getRunningCommand(key)
+	if runningCmd == nil {
+		writeError(w, http.StatusNotFound, "Command not running", key)
+		return
+	}
+
+	// Signal cancellation by closing the cancel channel
+	close(runningCmd.Cancel)
+
+	// Broadcast cancellation message
+	s.broadcast(operations.WSMessage{
+		Type:      "cancelled",
+		Operation: "run",
+		Message:   fmt.Sprintf("Command '%s' cancelled", commandName),
+		Target:    target,
+		Command:   commandName,
+	})
+
+	writeJSON(w, http.StatusOK, SuccessResponse{Success: true, Message: "Command cancelled"})
 }
