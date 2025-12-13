@@ -73,6 +73,16 @@ ramp init         # Interactive setup
 ramp up my-feature # Start coding!
 ```
 
+## Desktop App
+
+<img src="docs/images/app-icon.png" width="64" align="left" style="margin-right: 16px">
+
+Prefer a GUI? The Ramp desktop app provides a visual interface for managing your multi-repo projects with real-time progress updates, one-click feature creation, and custom command execution.
+
+**[Download for macOS](https://github.com/FreedomForeverSolar/ramp/releases)**
+
+<br clear="left">
+
 ## How It Works
 
 Ramp creates isolated workspaces for each feature using git worktrees:

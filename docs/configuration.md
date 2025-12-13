@@ -63,9 +63,10 @@ cleanup: scripts/cleanup.sh
 # Optional: Branch naming
 default-branch-prefix: feature/
 
-# Optional: Port management (one port per feature)
+# Optional: Port management
 base_port: 3000
 max_ports: 100
+ports_per_feature: 3  # Allocate multiple ports per feature (default: 1)
 
 # Optional: Custom commands
 commands:
@@ -268,7 +269,7 @@ Starting port number for allocation. Defaults to `3000` if not specified.
 base_port: 3000
 ```
 
-**Important**: Ramp allocates **one port per feature**, not per repository.
+**Important**: Ramp allocates ports **per feature**, not per repository. Use `ports_per_feature` to allocate multiple ports per feature for multi-service setups.
 
 ### `max_ports` (optional)
 
@@ -280,10 +281,61 @@ max_ports: 100
 
 This creates a port range from `base_port` to `base_port + max_ports - 1`.
 
-Example with `base_port: 3000` and `max_ports: 100`:
-- First feature: port 3000
-- Second feature: port 3001
-- Last available: port 3099
+### `ports_per_feature` (optional)
+
+Number of ports to allocate per feature. Defaults to `1` if not specified.
+
+```yaml
+ports_per_feature: 3
+```
+
+This is useful for multi-service setups where each feature needs multiple dedicated ports (e.g., frontend, API, database).
+
+**Example Configuration:**
+```yaml
+base_port: 3000
+max_ports: 100
+ports_per_feature: 3
+```
+
+With this configuration:
+- First feature: ports 3000, 3001, 3002
+- Second feature: ports 3003, 3004, 3005
+- And so on...
+
+**Environment Variables:**
+
+When `ports_per_feature` is set, Ramp provides indexed port variables:
+
+| Variable | Description |
+|----------|-------------|
+| `RAMP_PORT` | First allocated port (backward compatible) |
+| `RAMP_PORT_1` | First allocated port |
+| `RAMP_PORT_2` | Second allocated port |
+| `RAMP_PORT_3` | Third allocated port (if `ports_per_feature: 3`) |
+
+**Usage in Scripts:**
+```bash
+#!/bin/bash
+# Start multiple services on dedicated ports
+docker run -p "$RAMP_PORT_1:3000" frontend-app
+docker run -p "$RAMP_PORT_2:8080" api-server
+docker run -p "$RAMP_PORT_3:5432" postgres
+```
+
+**Usage in env_files:**
+```yaml
+repos:
+  - path: repos
+    git: git@github.com:org/app.git
+    env_files:
+      - source: .env.example
+        dest: .env
+        replace:
+          FRONTEND_PORT: "${RAMP_PORT_1}"
+          API_PORT: "${RAMP_PORT_2}"
+          DB_PORT: "${RAMP_PORT_3}"
+```
 
 See [Port Management Guide](advanced/port-management.md) for multi-service strategies.
 
@@ -511,7 +563,10 @@ All scripts (setup, cleanup, custom commands) receive these environment variable
 | `RAMP_PROJECT_DIR` | Absolute path to project root | `/home/user/my-project` |
 | `RAMP_TREES_DIR` | Path to feature's trees directory | `/home/user/my-project/trees/my-feature` |
 | `RAMP_WORKTREE_NAME` | Feature name | `my-feature` |
-| `RAMP_PORT` | Allocated port number | `3000` |
+| `RAMP_PORT` | First allocated port (backward compatible) | `3000` |
+| `RAMP_PORT_1` | First allocated port | `3000` |
+| `RAMP_PORT_2` | Second allocated port (if `ports_per_feature >= 2`) | `3001` |
+| `RAMP_PORT_N` | Nth allocated port (if `ports_per_feature >= N`) | `3002` |
 
 ### Repository Path Variables
 
@@ -537,7 +592,7 @@ Repository names are converted to valid environment variable names:
 # .ramp/scripts/setup.sh
 
 echo "Setting up feature: $RAMP_WORKTREE_NAME"
-echo "Port: $RAMP_PORT"
+echo "Ports: $RAMP_PORT_1 (frontend), $RAMP_PORT_2 (api), $RAMP_PORT_3 (db)"
 
 # Install frontend dependencies
 cd "$RAMP_TREES_DIR/frontend"
@@ -547,8 +602,10 @@ npm install
 cd "$RAMP_REPO_PATH_API_SERVER"
 go mod download
 
-# Start database on feature-specific port
-docker run -p "$RAMP_PORT:5432" postgres
+# Start services on feature-specific ports (when using ports_per_feature: 3)
+docker run -d -p "$RAMP_PORT_1:3000" frontend-app
+docker run -d -p "$RAMP_PORT_2:8080" api-server
+docker run -d -p "$RAMP_PORT_3:5432" postgres
 ```
 
 ## Directory Structure
