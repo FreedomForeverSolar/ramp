@@ -46,5 +46,5 @@ afterSign: scripts/notarize.js
 publish:
   provider: github
   owner: FreedomForeverSolar
-  repo: ramp
+  repo: ramp-desktop  # Separate repo for desktop releases (code stays in ramp)
   releaseType: release

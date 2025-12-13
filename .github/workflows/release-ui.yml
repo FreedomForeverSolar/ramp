@@ -85,7 +85,8 @@ jobs:
         working-directory: ramp-ui/frontend
         run: bun run package:publish
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Use PAT with write access to ramp-desktop repo (GITHUB_TOKEN only works for current repo)
+          GH_TOKEN: ${{ secrets.DESKTOP_RELEASE_TOKEN }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
