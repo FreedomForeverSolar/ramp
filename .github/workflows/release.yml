@@ -3,7 +3,8 @@ name: Release
 on:
   push:
     tags:
-      - 'v[1-9]*'
+      # Matches v0.x.x, v1.x.x, etc. (excludes ui-v* desktop app tags)
+      - 'v[0-9]*'
 
 permissions:
   contents: write

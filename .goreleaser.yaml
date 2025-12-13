@@ -1,5 +1,11 @@
 version: 2
 
+git:
+  # Ignore desktop app tags when calculating PreviousTag for changelogs
+  # This prevents ui-v* tags from breaking the CLI release changelog links
+  ignore_tags:
+    - "ui-v*"
+
 before:
   hooks:
     # Run tests before building
