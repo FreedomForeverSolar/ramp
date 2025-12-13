@@ -23,14 +23,26 @@ import {
   PruneResponse,
 } from '../types';
 
-const API_BASE = 'http://localhost:37429/api';
+// Dynamic port configuration - fetched from Electron IPC
+// Defaults to production port (37429), dev uses 37430
+let backendPort = 37429;
+const portInitPromise = window.electronAPI?.getBackendPort().then(port => {
+  backendPort = port;
+}).catch(() => {
+  // Fallback to default port if IPC fails
+});
+
+const getApiBase = () => `http://localhost:${backendPort}/api`;
+const getWsUrl = () => `ws://localhost:${backendPort}/ws/logs`;
 
 // Helper function for API calls
 async function fetchAPI<T>(
   endpoint: string,
   options?: RequestInit
 ): Promise<T> {
-  const response = await fetch(`${API_BASE}${endpoint}`, {
+  // Ensure port is initialized before making requests
+  await portInitPromise;
+  const response = await fetch(`${getApiBase()}${endpoint}`, {
     headers: {
       'Content-Type': 'application/json',
     },
@@ -277,34 +289,38 @@ export function useWebSocket(
     const connect = () => {
       if (!isMounted) return;
 
-      ws = new WebSocket('ws://localhost:37429/ws/logs');
-
-      ws.onopen = () => {
-        wasConnected = true;
-      };
-
-      ws.onmessage = (event) => {
-        // Guard against messages arriving after cleanup (React StrictMode)
+      // Wait for port initialization before connecting
+      portInitPromise?.then(() => {
         if (!isMounted) return;
-        try {
-          const message = JSON.parse(event.data);
-          onMessageRef.current(message);
-        } catch (e) {
-          console.error('Failed to parse WebSocket message:', e);
-        }
-      };
+        ws = new WebSocket(getWsUrl());
 
-      ws.onclose = () => {
-        // Only reconnect if we were actually connected and still mounted
-        // (avoids noise from React Strict Mode double-mounting)
-        if (wasConnected && isMounted) {
-          reconnectTimeout = setTimeout(connect, 2000);
-        }
-      };
+        ws.onopen = () => {
+          wasConnected = true;
+        };
 
-      ws.onerror = () => {
-        // Suppress error logging - onclose handles reconnection
-      };
+        ws.onmessage = (event) => {
+          // Guard against messages arriving after cleanup (React StrictMode)
+          if (!isMounted) return;
+          try {
+            const message = JSON.parse(event.data);
+            onMessageRef.current(message);
+          } catch (e) {
+            console.error('Failed to parse WebSocket message:', e);
+          }
+        };
+
+        ws.onclose = () => {
+          // Only reconnect if we were actually connected and still mounted
+          // (avoids noise from React Strict Mode double-mounting)
+          if (wasConnected && isMounted) {
+            reconnectTimeout = setTimeout(connect, 2000);
+          }
+        };
+
+        ws.onerror = () => {
+          // Suppress error logging - onclose handles reconnection
+        };
+      });
     };
 
     connect();

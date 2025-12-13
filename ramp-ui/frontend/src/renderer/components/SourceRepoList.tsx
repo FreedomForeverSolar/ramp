@@ -223,35 +223,39 @@ export default function SourceRepoList({
           </button>
 
           {/* Run command dropdown */}
-          {commands.length > 0 && (
-            <>
-              <button
-                ref={runButtonRef}
-                onClick={() => setShowCommandDropdown(!showCommandDropdown)}
-                className="flex items-center gap-1 px-2 py-1 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors"
-              >
-                Run
-                <svg
-                  className={`w-3 h-3 transition-transform ${showCommandDropdown ? 'rotate-180' : ''}`}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
+          {(() => {
+            // Filter commands to only show those with scope 'source' or no scope (available everywhere)
+            const sourceCommands = commands.filter(cmd => !cmd.scope || cmd.scope === 'source');
+            return sourceCommands.length > 0 && (
+              <>
+                <button
+                  ref={runButtonRef}
+                  onClick={() => setShowCommandDropdown(!showCommandDropdown)}
+                  className="flex items-center gap-1 px-2 py-1 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors"
                 >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-              <DropdownMenu
-                items={commands.map((cmd): DropdownMenuItem => ({
-                  label: cmd.name,
-                  icon: MenuIcons.play,
-                  onClick: () => handleRunCommand(cmd.name),
-                }))}
-                isOpen={showCommandDropdown}
-                onClose={() => setShowCommandDropdown(false)}
-                triggerRef={runButtonRef}
-              />
-            </>
-          )}
+                  Run
+                  <svg
+                    className={`w-3 h-3 transition-transform ${showCommandDropdown ? 'rotate-180' : ''}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                <DropdownMenu
+                  items={sourceCommands.map((cmd): DropdownMenuItem => ({
+                    label: cmd.name,
+                    icon: MenuIcons.play,
+                    onClick: () => handleRunCommand(cmd.name),
+                  }))}
+                  isOpen={showCommandDropdown}
+                  onClose={() => setShowCommandDropdown(false)}
+                  triggerRef={runButtonRef}
+                />
+              </>
+            );
+          })()}
         </div>
       </div>
 

@@ -72,12 +72,15 @@ ports_per_feature: 3  # Allocate multiple ports per feature (default: 1)
 commands:
   - name: dev
     command: scripts/dev.sh
+    scope: feature              # Only available for features
   - name: test
     command: scripts/test.sh
   - name: deploy
     command: scripts/deploy.sh
+    scope: feature
   - name: doctor
     command: scripts/doctor.sh
+    scope: source               # Only available for source repos
 ```
 
 ## Configuration Fields
@@ -362,19 +365,61 @@ commands:
     command: scripts/dev.sh
 ```
 
+#### `scope` (optional)
+
+Restricts where the command can be run. If not specified, the command is available in both contexts.
+
+- `source` - Command only available when running against source repositories (`ramp run <cmd>`)
+- `feature` - Command only available when running against a feature (`ramp run <cmd> <feature>`)
+
+```yaml
+commands:
+  - name: doctor
+    command: scripts/doctor.sh
+    scope: source     # Only: ramp run doctor
+
+  - name: dev
+    command: scripts/dev.sh
+    scope: feature    # Only: ramp run dev my-feature
+
+  - name: logs
+    command: scripts/logs.sh
+    # No scope = available everywhere
+```
+
+**Why use scope?**
+- Source-only commands: environment checks, dependency updates, global setup scripts
+- Feature-only commands: dev servers, feature-specific tests, deployment scripts
+- In the desktop app, commands are automatically filtered based on context
+
+**CLI Behavior:**
+```bash
+# If doctor has scope: source
+ramp run doctor              # Works
+ramp run doctor my-feature   # Error: command 'doctor' can only run against source repos
+
+# If dev has scope: feature
+ramp run dev my-feature      # Works
+ramp run dev                 # Error: command 'dev' requires a feature name
+```
+
 Example custom commands:
 ```yaml
 commands:
   - name: dev
     command: scripts/dev.sh           # Start dev servers
+    scope: feature
   - name: test
-    command: scripts/test.sh          # Run tests
+    command: scripts/test.sh          # Run tests (both contexts)
   - name: deploy
     command: scripts/deploy.sh        # Deploy feature
+    scope: feature
   - name: doctor
     command: scripts/doctor.sh        # Check environment
+    scope: source
   - name: open
     command: scripts/open.sh          # Open in browser/editor
+    scope: feature
 ```
 
 ### `prompts` (optional)

@@ -75,7 +75,8 @@ export default function RunCommandDialog({
       const text = isError ? msg.message.replace('[stderr] ', '') : msg.message;
       setOutputLines(prev => [...prev, { text, isError }]);
     } else if (msg.type === 'progress') {
-      setOutputLines(prev => [...prev, { text: msg.message, isError: false }]);
+      // Don't add progress messages to outputLines - they're status updates,
+      // not actual command output. This ensures auto-close works correctly.
     } else if (msg.type === 'complete') {
       setSuccess(true);
       setIsRunning(false);

@@ -149,6 +149,7 @@ type WSMessage struct {
 type Command struct {
 	Name    string `json:"name"`
 	Command string `json:"command"`
+	Scope   string `json:"scope,omitempty"` // "source", "feature", or empty (both)
 }
 
 // CommandsResponse is the response for listing commands
