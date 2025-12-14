@@ -177,6 +177,12 @@ export interface SourceReposResponse {
   repos: SourceRepoStatus[];
 }
 
+export interface InstallResponse {
+  clonedRepos: string[];
+  skippedRepos: string[];
+  message: string;
+}
+
 // Terminal types
 export interface OpenTerminalRequest {
   path: string;

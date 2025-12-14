@@ -64,6 +64,7 @@ func main() {
 
 	// Source repos routes
 	apiRouter.HandleFunc("/projects/{id}/source-repos", server.GetSourceRepos).Methods("GET")
+	apiRouter.HandleFunc("/projects/{id}/source-repos/install", server.InstallSourceRepos).Methods("POST")
 	apiRouter.HandleFunc("/projects/{id}/source-repos/refresh", server.RefreshSourceRepos).Methods("POST")
 
 	// Terminal routes
