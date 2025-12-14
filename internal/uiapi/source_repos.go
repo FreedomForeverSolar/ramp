@@ -106,6 +106,58 @@ func (s *Server) GetSourceRepos(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, SourceReposResponse{Repos: statuses})
 }
 
+// InstallSourceRepos clones all configured repositories that aren't yet installed
+func (s *Server) InstallSourceRepos(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id := vars["id"]
+
+	// Acquire project lock to prevent concurrent operations
+	unlock := s.acquireProjectLock(id)
+	defer unlock()
+
+	// Get project reference
+	ref, err := GetProjectRefByID(id)
+	if err != nil || ref == nil {
+		writeError(w, http.StatusNotFound, "Project not found", "")
+		return
+	}
+
+	// Load project config
+	cfg, err := config.LoadConfig(ref.Path)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to load project config", err.Error())
+		return
+	}
+
+	// Create progress reporter that broadcasts via WebSocket
+	progress := operations.NewWSProgressReporter("install", "source", s.broadcast)
+
+	progress.Start("Installing repositories...")
+
+	// Run install
+	result, err := operations.Install(operations.InstallOptions{
+		ProjectDir: ref.Path,
+		Config:     cfg,
+		Progress:   progress,
+	})
+
+	if err != nil {
+		progress.Error(err.Error())
+		progress.Complete("Install failed")
+		writeError(w, http.StatusInternalServerError, "Failed to install repositories", err.Error())
+		return
+	}
+
+	progress.Success("Repositories installed")
+	progress.Complete("Install complete")
+
+	writeJSON(w, http.StatusOK, InstallResponse{
+		ClonedRepos:  result.ClonedRepos,
+		SkippedRepos: result.SkippedRepos,
+		Message:      "Installation complete",
+	})
+}
+
 // RefreshSourceRepos refreshes all source repositories
 func (s *Server) RefreshSourceRepos(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)

@@ -17,6 +17,7 @@ import {
   CancelCommandRequest,
   ToggleFavoriteResponse,
   SourceReposResponse,
+  InstallResponse,
   OpenTerminalRequest,
   AppSettingsResponse,
   SaveAppSettingsRequest,
@@ -355,6 +356,17 @@ export function useRefreshSourceRepos(projectId: string) {
         method: 'POST',
       }),
     // No onSuccess invalidation - refresh is async and the WebSocket handler
+    // in SourceRepoList refetches when the operation actually completes
+  });
+}
+
+export function useInstallRepos(projectId: string) {
+  return useMutation<InstallResponse, Error, void>({
+    mutationFn: () =>
+      fetchAPI<InstallResponse>(`/projects/${projectId}/source-repos/install`, {
+        method: 'POST',
+      }),
+    // No onSuccess invalidation - install is async and the WebSocket handler
     // in SourceRepoList refetches when the operation actually completes
   });
 }

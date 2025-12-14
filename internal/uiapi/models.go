@@ -232,6 +232,13 @@ type SourceReposResponse struct {
 	Repos []SourceRepoStatus `json:"repos"`
 }
 
+// InstallResponse is the response for installing source repos
+type InstallResponse struct {
+	ClonedRepos  []string `json:"clonedRepos"`
+	SkippedRepos []string `json:"skippedRepos"`
+	Message      string   `json:"message"`
+}
+
 // OpenTerminalRequest is the request body for opening a terminal
 type OpenTerminalRequest struct {
 	Path string `json:"path"`

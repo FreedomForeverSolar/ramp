@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { useSourceRepos, useRefreshSourceRepos, useOpenTerminal, useWebSocket } from '../hooks/useRampAPI';
+import { useSourceRepos, useRefreshSourceRepos, useInstallRepos, useOpenTerminal, useWebSocket } from '../hooks/useRampAPI';
 import { Command, Feature, Repo, WSMessage } from '../types';
 import RunCommandDialog from './RunCommandDialog';
 import DropdownMenu, { DropdownMenuItem, MenuIcons } from './DropdownMenu';
@@ -23,27 +23,34 @@ export default function SourceRepoList({
   const queryClient = useQueryClient();
   const { data: sourceReposData, isLoading, refetch } = useSourceRepos(projectId);
   const refreshSourceRepos = useRefreshSourceRepos(projectId);
+  const installRepos = useInstallRepos(projectId);
   const openTerminal = useOpenTerminal();
   const [showCommandDropdown, setShowCommandDropdown] = useState(false);
   const [selectedCommand, setSelectedCommand] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isInstalling, setIsInstalling] = useState(false);
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
   const runButtonRef = useRef<HTMLButtonElement>(null);
 
-  // Handle WebSocket messages for refresh operation
+  // Handle WebSocket messages for refresh/install operations
   const handleWSMessage = useCallback((message: unknown) => {
     const msg = message as WSMessage;
-    if (msg.operation !== 'refresh' || msg.target !== 'source') return;
+    if (msg.target !== 'source') return;
 
-    if (msg.type === 'complete' || msg.type === 'error') {
+    if (msg.operation === 'refresh' && (msg.type === 'complete' || msg.type === 'error')) {
       setIsRefreshing(false);
       refetch();
       // Also refresh features since branch status may have changed
       queryClient.refetchQueries({ queryKey: ['projects', projectId, 'features'] });
     }
+
+    if (msg.operation === 'install' && (msg.type === 'complete' || msg.type === 'error')) {
+      setIsInstalling(false);
+      refetch();
+    }
   }, [refetch, queryClient, projectId]);
 
-  useWebSocket(handleWSMessage, isRefreshing);
+  useWebSocket(handleWSMessage, isRefreshing || isInstalling);
 
   const handleCheckStatus = async () => {
     setIsCheckingStatus(true);
@@ -63,6 +70,16 @@ export default function SourceRepoList({
       setIsRefreshing(false);
     }
   }, [isRefreshing, refreshSourceRepos]);
+
+  const handleInstall = useCallback(async () => {
+    if (isInstalling) return;
+    setIsInstalling(true);
+    try {
+      await installRepos.mutateAsync();
+    } catch {
+      setIsInstalling(false);
+    }
+  }, [isInstalling, installRepos]);
 
   // Listen for keyboard shortcut from menu (CMD+R)
   useEffect(() => {
@@ -89,6 +106,7 @@ export default function SourceRepoList({
   };
 
   const repos = sourceReposData?.repos ?? [];
+  const hasUninstalledRepos = repos.some(r => !r.isInstalled);
 
   // Helper to render status indicator
   const renderStatus = (repo: typeof repos[0]) => {
@@ -162,10 +180,34 @@ export default function SourceRepoList({
           Source Repositories
         </h3>
         <div className="flex items-center gap-2">
+          {/* Install button - only show when repos are missing */}
+          {hasUninstalledRepos && (
+            <button
+              onClick={handleInstall}
+              disabled={isInstalling || isRefreshing || isCheckingStatus}
+              className="p-1.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors disabled:opacity-50"
+              title="Install missing repositories"
+            >
+              <svg
+                className={`w-4 h-4 ${isInstalling ? 'animate-pulse' : ''}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                />
+              </svg>
+            </button>
+          )}
+
           {/* Check status button */}
           <button
             onClick={handleCheckStatus}
-            disabled={isCheckingStatus || isRefreshing}
+            disabled={isCheckingStatus || isRefreshing || isInstalling}
             className="p-1.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors disabled:opacity-50"
             title="Check status (fetch without pull)"
           >
@@ -187,7 +229,7 @@ export default function SourceRepoList({
           {/* Refresh button */}
           <button
             onClick={handleRefresh}
-            disabled={isRefreshing || isCheckingStatus}
+            disabled={isRefreshing || isCheckingStatus || isInstalling}
             className="p-1.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors disabled:opacity-50"
             title="Refresh repositories (pull changes)"
           >
