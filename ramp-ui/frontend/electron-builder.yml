@@ -48,4 +48,5 @@ publish:
   owner: FreedomForeverSolar
   repo: ramp-desktop  # Separate repo for desktop releases (code stays in ramp)
   releaseType: release
-  tag: ui-v${version}  # Explicitly use ui-v prefix to avoid triggering CLI workflows
+  # Tags will be v{version} (e.g., v0.1.0) in ramp-desktop repo
+  # This won't trigger CLI workflows since they only run in the ramp repo
