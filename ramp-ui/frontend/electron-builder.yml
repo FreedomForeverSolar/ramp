@@ -48,3 +48,4 @@ publish:
   owner: FreedomForeverSolar
   repo: ramp-desktop  # Separate repo for desktop releases (code stays in ramp)
   releaseType: release
+  tag: ui-v${version}  # Explicitly use ui-v prefix to avoid triggering CLI workflows
