@@ -1,11 +1,13 @@
 ---
-allowed-tools: Bash(git describe:*), Bash(git tag:*), Bash(git push:*)
+allowed-tools: Bash(git fetch:*), Bash(git describe:*), Bash(git tag:*), Bash(git push:*)
 argument-hint: <cli|desktop> [major|minor|patch]
 description: Create and push a new semver git tag
 model: claude-haiku-4-5-20251001
 ---
 
 ## Current State
+
+First, fetch all tags from remote: !`git fetch --tags --quiet 2>/dev/null`
 
 - Latest CLI tag: !`git describe --tags --abbrev=0 --match "v[0-9]*" 2>/dev/null || echo "v1.0.0"`
 - Latest Desktop tag: !`git describe --tags --abbrev=0 --match "ui-v[0-9]*" 2>/dev/null || echo "ui-v0.0.0"`
