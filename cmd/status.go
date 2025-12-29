@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -15,6 +17,11 @@ import (
 	"ramp/internal/git"
 	"ramp/internal/ports"
 	"ramp/internal/ui"
+)
+
+var (
+	statusTreeOnly bool
+	statusJSON     bool
 )
 
 var statusCmd = &cobra.Command{
@@ -34,6 +41,8 @@ active features, and project configuration details.`,
 
 func init() {
 	rootCmd.AddCommand(statusCmd)
+	statusCmd.Flags().BoolVar(&statusTreeOnly, "tree", false, "Output only the current tree/feature name (if in one)")
+	statusCmd.Flags().BoolVar(&statusJSON, "json", false, "Output status as JSON (useful for scripts)")
 }
 
 type repoStatus struct {
@@ -72,6 +81,16 @@ func runStatus() error {
 	projectDir, err := config.FindRampProject(wd)
 	if err != nil {
 		return err
+	}
+
+	// Handle --tree flag: just output the tree name
+	if statusTreeOnly {
+		return runStatusTreeOnly(projectDir)
+	}
+
+	// Handle --json flag: output structured JSON
+	if statusJSON {
+		return runStatusJSON(projectDir)
 	}
 
 	cfg, err := config.LoadConfig(projectDir)
@@ -644,5 +663,223 @@ func displayActiveFeatures(projectDir string, cfg *config.Config, progress *ui.P
 
 
 	return nil
+}
+
+// runStatusTreeOnly outputs just the current tree/feature name
+func runStatusTreeOnly(projectDir string) error {
+	featureName, err := config.DetectFeatureFromWorkingDir(projectDir)
+	if err != nil {
+		return err
+	}
+
+	if featureName != "" {
+		fmt.Println(featureName)
+	}
+	// If not in a tree, output nothing (exit 0)
+	return nil
+}
+
+// JSON output types
+type jsonRepoStatus struct {
+	Name         string `json:"name"`
+	HasChanges   bool   `json:"hasChanges"`
+	FilesChanged int    `json:"filesChanged"`
+	LinesAdded   int    `json:"linesAdded"`
+	LinesRemoved int    `json:"linesRemoved"`
+}
+
+type jsonSummary struct {
+	ReposWithChanges int `json:"reposWithChanges"`
+	TotalFiles       int `json:"totalFiles"`
+	TotalAdded       int `json:"totalAdded"`
+	TotalRemoved     int `json:"totalRemoved"`
+}
+
+type jsonStatusOutput struct {
+	Tree    string           `json:"tree"`
+	InTree  bool             `json:"inTree"`
+	Repos   []jsonRepoStatus `json:"repos"`
+	Summary jsonSummary      `json:"summary"`
+}
+
+// runStatusJSON outputs status as JSON for scripting
+func runStatusJSON(projectDir string) error {
+	// Detect if we're in a tree
+	featureName, err := config.DetectFeatureFromWorkingDir(projectDir)
+	if err != nil {
+		return err
+	}
+
+	output := jsonStatusOutput{
+		Tree:   featureName,
+		InTree: featureName != "",
+		Repos:  []jsonRepoStatus{},
+	}
+
+	// If not in a tree, just output the basic info
+	if featureName == "" {
+		return outputJSON(output)
+	}
+
+	// Load config to get repo information
+	cfg, err := config.LoadConfig(projectDir)
+	if err != nil {
+		return err
+	}
+
+	repos := cfg.GetRepos()
+	treePath := filepath.Join(projectDir, "trees", featureName)
+
+	// Gather stats for each repo in the tree
+	for repoName := range repos {
+		worktreePath := filepath.Join(treePath, repoName)
+
+		repoStatus := jsonRepoStatus{
+			Name: repoName,
+		}
+
+		// Check if worktree exists
+		if _, err := os.Stat(worktreePath); os.IsNotExist(err) {
+			output.Repos = append(output.Repos, repoStatus)
+			continue
+		}
+
+		// Check for uncommitted changes
+		hasChanges, err := git.HasUncommittedChanges(worktreePath)
+		if err != nil {
+			output.Repos = append(output.Repos, repoStatus)
+			continue
+		}
+		repoStatus.HasChanges = hasChanges
+
+		if hasChanges {
+			// Get status stats (file counts including untracked)
+			statusStats, err := git.GetStatusStats(worktreePath)
+			if err == nil {
+				repoStatus.FilesChanged = statusStats.UntrackedFiles + statusStats.ModifiedFiles + statusStats.StagedFiles
+			}
+
+			// Get diff stats for tracked file changes
+			diffStats, err := git.GetDiffStats(worktreePath)
+			if err == nil {
+				repoStatus.LinesAdded = diffStats.Insertions
+				repoStatus.LinesRemoved = diffStats.Deletions
+			}
+
+			// Also get staged diff stats
+			stagedStats, err := getStagedDiffStats(worktreePath)
+			if err == nil {
+				repoStatus.LinesAdded += stagedStats.Insertions
+				repoStatus.LinesRemoved += stagedStats.Deletions
+			}
+
+			// Count lines in untracked files
+			untrackedLines, err := countUntrackedFileLines(worktreePath)
+			if err == nil {
+				repoStatus.LinesAdded += untrackedLines
+			}
+
+			// Update summary
+			output.Summary.ReposWithChanges++
+			output.Summary.TotalFiles += repoStatus.FilesChanged
+			output.Summary.TotalAdded += repoStatus.LinesAdded
+			output.Summary.TotalRemoved += repoStatus.LinesRemoved
+		}
+
+		output.Repos = append(output.Repos, repoStatus)
+	}
+
+	return outputJSON(output)
+}
+
+func outputJSON(output jsonStatusOutput) error {
+	encoder := json.NewEncoder(os.Stdout)
+	encoder.SetIndent("", "  ")
+	return encoder.Encode(output)
+}
+
+func getStagedDiffStats(repoDir string) (*git.DiffStats, error) {
+	cmd := exec.Command("git", "diff", "--cached", "--shortstat")
+	cmd.Dir = repoDir
+
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get staged diff stats: %w", err)
+	}
+
+	stats := &git.DiffStats{}
+	outputStr := strings.TrimSpace(string(output))
+
+	if outputStr == "" {
+		return stats, nil
+	}
+
+	// Parse output like: " 2 files changed, 15 insertions(+), 3 deletions(-)"
+	fmt.Sscanf(outputStr, "%d file", &stats.FilesChanged)
+
+	if strings.Contains(outputStr, "insertion") {
+		insertionIdx := strings.Index(outputStr, "insertion")
+		parts := strings.Fields(outputStr[:insertionIdx])
+		if len(parts) > 0 {
+			fmt.Sscanf(parts[len(parts)-1], "%d", &stats.Insertions)
+		}
+	}
+
+	if strings.Contains(outputStr, "deletion") {
+		deletionIdx := strings.Index(outputStr, "deletion")
+		parts := strings.Fields(outputStr[:deletionIdx])
+		if len(parts) > 0 {
+			fmt.Sscanf(parts[len(parts)-1], "%d", &stats.Deletions)
+		}
+	}
+
+	return stats, nil
+}
+
+func countUntrackedFileLines(repoDir string) (int, error) {
+	cmd := exec.Command("git", "status", "--porcelain")
+	cmd.Dir = repoDir
+
+	output, err := cmd.Output()
+	if err != nil {
+		return 0, err
+	}
+
+	totalLines := 0
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+
+	for _, line := range lines {
+		if len(line) < 3 {
+			continue
+		}
+		// Untracked files start with "??"
+		if line[0] == '?' && line[1] == '?' {
+			filename := strings.TrimSpace(line[3:])
+			filePath := filepath.Join(repoDir, filename)
+
+			// Check if it's a file (not directory)
+			info, err := os.Stat(filePath)
+			if err != nil || info.IsDir() {
+				continue
+			}
+
+			// Count lines in the file
+			content, err := os.ReadFile(filePath)
+			if err != nil {
+				continue
+			}
+
+			// Count newlines (add 1 if file doesn't end with newline but has content)
+			if len(content) > 0 {
+				lineCount := strings.Count(string(content), "\n")
+				if content[len(content)-1] != '\n' {
+					lineCount++
+				}
+				totalLines += lineCount
+			}
+		}
+	}
+
+	return totalLines, nil
 }
 
