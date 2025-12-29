@@ -4,58 +4,55 @@ This guide explains how Ramp's port allocation system works and strategies for m
 
 ## Overview
 
-Ramp allocates **exactly one port per feature** from a configured range. This unique port is available to all scripts via the `RAMP_PORT` environment variable.
+Ramp allocates ports per feature from a configured range. You can configure how many ports each feature receives using `ports_per_feature`. These ports are available to all scripts via the `RAMP_PORT` and `RAMP_PORT_N` environment variables.
 
 ## Configuration
 
 ```yaml
-base_port: 3000   # Starting port (default: 3000)
-max_ports: 100    # Maximum features (default: 100)
+base_port: 3000        # Starting port (default: 3000)
+max_ports: 100         # Maximum ports available (default: 100)
+ports_per_feature: 3   # Ports per feature (default: 1)
 ```
 
-This creates a port range from `3000` to `3099` (base_port + max_ports - 1).
+This creates a port range from `3000` to `3099` (base_port + max_ports - 1), with 3 consecutive ports allocated per feature.
 
 ## How Port Allocation Works
 
 ### Allocation on `ramp up`
 
-When you create a feature:
+When you create a feature (with `ports_per_feature: 3`):
 
 ```bash
-ramp up feature-a  # Allocated port: 3000
-ramp up feature-b  # Allocated port: 3001
-ramp up feature-c  # Allocated port: 3002
+ramp up feature-a  # Allocated ports: 3000, 3001, 3002
+ramp up feature-b  # Allocated ports: 3003, 3004, 3005
+ramp up feature-c  # Allocated ports: 3006, 3007, 3008
 ```
 
 Ramp:
-1. Scans `.ramp/port_allocations.json` for the next available port
-2. Assigns the port to the feature
+1. Scans `.ramp/port_allocations.json` for the next available consecutive ports
+2. Assigns the ports to the feature
 3. Persists the allocation to disk
-4. Sets `RAMP_PORT` environment variable for scripts
+4. Sets `RAMP_PORT`, `RAMP_PORT_1`, `RAMP_PORT_2`, etc. environment variables for scripts
 
 ### Deallocation on `ramp down`
 
 When you remove a feature:
 
 ```bash
-ramp down feature-b  # Port 3001 released
+ramp down feature-b  # Ports 3003, 3004, 3005 released
 ```
 
 Ramp:
 1. Removes the port allocation entry
-2. Makes the port available for future features
+2. Makes all allocated ports available for future features
 3. Updates `.ramp/port_allocations.json`
 
 ### Port Allocations File
 
 ```json
 {
-  "base_port": 3000,
-  "max_ports": 100,
-  "allocations": {
-    "feature-a": 3000,
-    "feature-c": 3002
-  }
+  "feature-a": [3000, 3001, 3002],
+  "feature-c": [3006, 3007, 3008]
 }
 ```
 
@@ -63,9 +60,59 @@ Ramp:
 
 ## Multi-Service Strategy
 
-Since each feature gets **one** port, use a deterministic offset strategy for multiple services.
+For projects with multiple services (frontend, API, database, etc.), use `ports_per_feature` to allocate dedicated ports for each service.
 
-### Simple Offset Pattern
+### Native Multi-Port (Recommended)
+
+Configure `ports_per_feature` in your `ramp.yaml`:
+
+```yaml
+base_port: 3000
+max_ports: 100
+ports_per_feature: 3  # Allocate 3 ports per feature
+```
+
+Access ports in your scripts using indexed environment variables:
+
+```bash
+#!/bin/bash
+# .ramp/scripts/setup.sh
+
+# Each variable is a dedicated port
+FRONTEND_PORT=$RAMP_PORT_1    # 3000
+API_PORT=$RAMP_PORT_2         # 3001
+DB_PORT=$RAMP_PORT_3          # 3002
+
+# Start services
+docker run -d -p "$FRONTEND_PORT:3000" frontend-app
+docker run -d -p "$API_PORT:8080" api-server
+docker run -d -p "$DB_PORT:5432" postgres
+```
+
+### Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `RAMP_PORT` | First allocated port (backward compatible) |
+| `RAMP_PORT_1` | First allocated port |
+| `RAMP_PORT_2` | Second allocated port |
+| `RAMP_PORT_N` | Nth allocated port (if `ports_per_feature >= N`) |
+
+### How Multi-Port Allocation Works
+
+With `ports_per_feature: 3`:
+
+| Feature | RAMP_PORT_1 | RAMP_PORT_2 | RAMP_PORT_3 |
+|---------|-------------|-------------|-------------|
+| feature-a | 3000 | 3001 | 3002 |
+| feature-b | 3003 | 3004 | 3005 |
+| feature-c | 3006 | 3007 | 3008 |
+
+Services never conflict because each feature gets its own consecutive port range.
+
+### Alternative: Offset Pattern
+
+For projects that only need a single allocated port but want to derive additional ports, you can use offset calculations:
 
 ```bash
 #!/bin/bash
@@ -73,113 +120,62 @@ Since each feature gets **one** port, use a deterministic offset strategy for mu
 
 BASE=$RAMP_PORT
 
-# Service ports (offset by 1-10)
-FRONTEND_PORT=$((BASE + 1))      # 3001
-API_PORT=$((BASE + 2))           # 3002
-WORKER_PORT=$((BASE + 3))        # 3003
-
-# Infrastructure ports (offset by 30+)
-POSTGRES_PORT=$((BASE + 32))     # 3032
-REDIS_PORT=$((BASE + 79))        # 3079
-RABBITMQ_PORT=$((BASE + 72))     # 3072
+# Derive ports from base
+FRONTEND_PORT=$((BASE + 0))
+API_PORT=$((BASE + 1))
+DB_PORT=$((BASE + 2))
 ```
 
-### Why This Works
-
-Each feature uses the same offset pattern:
-
-| Feature | RAMP_PORT | Frontend | API | Postgres | Redis |
-|---------|-----------|----------|-----|----------|-------|
-| feature-a | 3000 | 3001 | 3002 | 3032 | 3079 |
-| feature-b | 3100 | 3101 | 3102 | 3132 | 3179 |
-| feature-c | 3200 | 3201 | 3202 | 3232 | 3279 |
-
-Services never conflict because each feature has a unique base port.
-
-### Recommended Offsets
-
-Choose offsets that won't collide:
-
-```bash
-# Application services: +1 to +9
-FRONTEND_PORT=$((RAMP_PORT + 1))
-API_PORT=$((RAMP_PORT + 2))
-ADMIN_PORT=$((RAMP_PORT + 3))
-WORKER_PORT=$((RAMP_PORT + 4))
-
-# Databases: +30 to +39
-POSTGRES_PORT=$((RAMP_PORT + 32))
-MYSQL_PORT=$((RAMP_PORT + 33))
-MONGO_PORT=$((RAMP_PORT + 34))
-
-# Caches: +70 to +79
-REDIS_PORT=$((RAMP_PORT + 79))
-MEMCACHED_PORT=$((RAMP_PORT + 78))
-
-# Message queues: +40 to +49
-RABBITMQ_PORT=$((RAMP_PORT + 72))
-KAFKA_PORT=$((RAMP_PORT + 73))
-```
+**Note:** This approach requires careful coordination to avoid port collisions between features. The native `ports_per_feature` approach is recommended for most multi-service setups.
 
 ## Advanced Patterns
 
-### Port Range Helper Function
+### Using Ports in env_files
+
+Instead of shell scripts, you can reference port variables directly in env file templates:
+
+```yaml
+# ramp.yaml
+repos:
+  - path: repos
+    git: git@github.com:org/app.git
+    env_files:
+      - source: .env.example
+        dest: .env
+        replace:
+          FRONTEND_PORT: "${RAMP_PORT_1}"
+          API_PORT: "${RAMP_PORT_2}"
+          DB_PORT: "${RAMP_PORT_3}"
+```
+
+### Port Helper Function (Legacy)
+
+For projects using the offset pattern, a helper function can centralize port assignments:
 
 ```bash
 # .ramp/scripts/common.sh
-
 get_port() {
   local service=$1
-  local base=$RAMP_PORT
-
   case "$service" in
-    frontend)   echo $((base + 1)) ;;
-    api)        echo $((base + 2)) ;;
-    admin)      echo $((base + 3)) ;;
-    worker)     echo $((base + 4)) ;;
-    postgres)   echo $((base + 32)) ;;
-    redis)      echo $((base + 79)) ;;
+    frontend)   echo $RAMP_PORT_1 ;;
+    api)        echo $RAMP_PORT_2 ;;
+    db)         echo $RAMP_PORT_3 ;;
     *)          echo "Unknown service: $service" >&2; return 1 ;;
   esac
 }
 ```
 
-```bash
-# .ramp/scripts/setup.sh
-source "$(dirname "$0")/common.sh"
+### Test-Specific Ports
 
-FRONTEND_PORT=$(get_port frontend)
-API_PORT=$(get_port api)
-```
-
-### Configuration File Approach
-
-```bash
-# .ramp/port-map.env
-FRONTEND_OFFSET=1
-API_OFFSET=2
-WORKER_OFFSET=3
-POSTGRES_OFFSET=32
-REDIS_OFFSET=79
-```
-
-```bash
-# .ramp/scripts/setup.sh
-source "$(dirname "$0")/../port-map.env"
-
-FRONTEND_PORT=$((RAMP_PORT + FRONTEND_OFFSET))
-API_PORT=$((RAMP_PORT + API_OFFSET))
-```
-
-### Dynamic Port Allocation for Tests
+For test services that need additional ports beyond your configured `ports_per_feature`, increase the value or derive test ports:
 
 ```bash
 #!/bin/bash
 # .ramp/scripts/test.sh
 
-# Use higher offsets for test services to avoid conflicts
-TEST_DB_PORT=$((RAMP_PORT + 100))
-TEST_REDIS_PORT=$((RAMP_PORT + 179))
+# If ports_per_feature: 5, use ports 4-5 for testing
+TEST_DB_PORT=$RAMP_PORT_4
+TEST_REDIS_PORT=$RAMP_PORT_5
 
 docker run -d \
   --name "test-db-${RAMP_WORKTREE_NAME}" \
@@ -189,7 +185,7 @@ docker run -d \
 npm test -- --db-port="$TEST_DB_PORT"
 ```
 
-## Choosing base_port and max_ports
+## Choosing base_port, max_ports, and ports_per_feature
 
 ### Guidelines
 
@@ -201,32 +197,41 @@ npm test -- --db-port="$TEST_DB_PORT"
 **max_ports**: Based on:
 - Team size
 - Average active features per developer
-- Port offset strategy (how many ports each feature uses)
+- Number of ports per feature (`ports_per_feature` × expected features)
+
+**ports_per_feature**: Based on:
+- Number of services in your stack (frontend, API, database, etc.)
+- Test service requirements
+- Generally 1-5 ports per feature is typical
 
 ### Examples
 
-**Small team (1-3 developers):**
+**Single service (default):**
 ```yaml
 base_port: 3000
-max_ports: 30    # 30 features max
+max_ports: 100
+# ports_per_feature defaults to 1
 ```
 
-**Medium team (5-10 developers):**
+**Multi-service stack (frontend + API + DB):**
 ```yaml
-base_port: 4000
-max_ports: 100   # 100 features max
+base_port: 3000
+max_ports: 300          # 100 features × 3 ports each
+ports_per_feature: 3
 ```
 
-**Large team (10+ developers) or heavy port usage:**
+**Large team with microservices:**
 ```yaml
 base_port: 10000
-max_ports: 500   # 500 features max, ports 10000-10499
+max_ports: 500
+ports_per_feature: 5    # More ports for complex stacks
 ```
 
 **Avoiding conflicts with common ports:**
 ```yaml
-base_port: 30000  # Well above common ports
-max_ports: 1000   # Ports 30000-30999
+base_port: 30000        # Well above common ports
+max_ports: 300
+ports_per_feature: 3
 ```
 
 ## Port Conflict Resolution
@@ -275,19 +280,22 @@ Add to `ramp status` workflow:
 #!/bin/bash
 # .ramp/scripts/doctor.sh
 
-echo "📊 Port allocation status:"
+echo "Port allocation status:"
 echo ""
 
 # Check allocated ports
 if [ -f ".ramp/port_allocations.json" ]; then
-  # Parse JSON and check each port
-  jq -r '.allocations | to_entries[] | "\(.key): \(.value)"' .ramp/port_allocations.json | \
-    while IFS=: read feature port; do
-      if lsof -Pi :$port -sTCP:LISTEN -t >/dev/null 2>&1; then
-        echo "✅ $feature: $port (in use)"
-      else
-        echo "⚠️  $feature: $port (allocated but not in use)"
-      fi
+  # Parse JSON and check each feature's ports
+  jq -r 'to_entries[] | "\(.key):\(.value | join(","))"' .ramp/port_allocations.json | \
+    while IFS=: read feature ports; do
+      echo "Feature: $feature"
+      for port in ${ports//,/ }; do
+        if lsof -Pi :$port -sTCP:LISTEN -t >/dev/null 2>&1; then
+          echo "  $port (in use)"
+        else
+          echo "  $port (allocated but not in use)"
+        fi
+      done
     done
 fi
 ```
@@ -378,13 +386,13 @@ docker rm -f $(docker ps -a -q -f "name=ramp-")
 
 ## Best Practices
 
-1. **Document your offset strategy** - Add comments to setup scripts
-2. **Use consistent offsets** - Don't change offsets between features
-3. **Choose high base_port** - Avoid conflicts with system services
-4. **Clean up regularly** - Use `ramp prune` to release ports
+1. **Use `ports_per_feature`** - Configure the number of ports you need upfront rather than using offset calculations
+2. **Choose high base_port** - Avoid conflicts with system services (3000+)
+3. **Size max_ports appropriately** - Account for `ports_per_feature` × expected concurrent features
+4. **Clean up regularly** - Use `ramp prune` to release ports from merged features
 5. **Check for conflicts** - Add port checks to `doctor` script
-6. **Automate cleanup** - Ensure cleanup script stops all services
-7. **Test port allocation** - Verify scripts work with different RAMP_PORT values
+6. **Automate cleanup** - Ensure cleanup script stops all services on allocated ports
+7. **Use env_files** - Reference `${RAMP_PORT_N}` in env file templates for cleaner configuration
 
 ## Next Steps
 

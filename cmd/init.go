@@ -262,7 +262,7 @@ func collectOptionalFeatures(data *scaffold.ProjectData) error {
 	data.IncludeCleanup = includeCleanup
 	data.EnablePorts = enablePorts
 
-	// If port management enabled, ask for base port
+	// If port management enabled, ask for base port and ports per feature
 	if enablePorts {
 		portForm := huh.NewForm(
 			huh.NewGroup(
@@ -295,6 +295,41 @@ func collectOptionalFeatures(data *scaffold.ProjectData) error {
 			basePort, _ = strconv.Atoi(basePortStr)
 		}
 		data.BasePort = basePort
+
+		// Ask for ports per feature
+		var portsPerFeatureStr string
+		portsPerFeatureForm := huh.NewForm(
+			huh.NewGroup(
+				huh.NewInput().
+					Title("Ports per feature").
+					Description("Number of ports to allocate per feature (1 for single service, 2+ for multi-service)").
+					Value(&portsPerFeatureStr).
+					Placeholder("1").
+					Validate(func(s string) error {
+						if s == "" {
+							return nil
+						}
+						n, err := strconv.Atoi(s)
+						if err != nil {
+							return fmt.Errorf("must be a number")
+						}
+						if n < 1 || n > 10 {
+							return fmt.Errorf("must be between 1 and 10")
+						}
+						return nil
+					}),
+			),
+		)
+
+		if err := portsPerFeatureForm.Run(); err != nil {
+			return err
+		}
+
+		portsPerFeature := 1
+		if portsPerFeatureStr != "" {
+			portsPerFeature, _ = strconv.Atoi(portsPerFeatureStr)
+		}
+		data.PortsPerFeature = portsPerFeature
 	}
 
 	return nil

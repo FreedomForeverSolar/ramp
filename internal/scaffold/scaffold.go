@@ -16,14 +16,15 @@ type RepoData struct {
 
 // ProjectData holds all information collected during interactive init
 type ProjectData struct {
-	Name             string
-	Repos            []RepoData
-	IncludeSetup     bool
-	IncludeCleanup   bool
-	EnablePorts      bool
-	BasePort         int
-	BranchPrefix     string
-	SampleCommands   []string
+	Name            string
+	Repos           []RepoData
+	IncludeSetup    bool
+	IncludeCleanup  bool
+	EnablePorts     bool
+	BasePort        int
+	PortsPerFeature int
+	BranchPrefix    string
+	SampleCommands  []string
 }
 
 // CreateProject orchestrates the creation of a new ramp project
@@ -135,6 +136,9 @@ func GenerateConfigFile(projectDir string, data ProjectData) error {
 	if data.EnablePorts {
 		cfg.BasePort = data.BasePort
 		cfg.MaxPorts = 100 // Default max ports
+		if data.PortsPerFeature > 1 {
+			cfg.PortsPerFeature = data.PortsPerFeature
+		}
 	}
 
 	// Add sample commands

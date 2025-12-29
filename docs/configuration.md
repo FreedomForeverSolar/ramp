@@ -18,8 +18,8 @@ repos:
       - source: ../configs/frontend.env     # Advanced: copy with templating
         dest: .env
         replace:
-          PORT: "${RAMP_PORT}"
-          API_URL: "http://localhost:${RAMP_PORT}1"
+          PORT: "${RAMP_PORT_1}"
+          API_URL: "http://localhost:${RAMP_PORT_2}"
   - path: repos
     git: https://github.com/org/api.git
     auto_refresh: true
@@ -27,7 +27,7 @@ repos:
       - source: ../configs/api.env
         dest: .env
         replace:
-          PORT: "${RAMP_PORT}1"
+          PORT: "${RAMP_PORT_2}"
   - path: repos
     git: git@github.com:org/shared-library.git
     auto_refresh: false
@@ -169,8 +169,8 @@ repos:
       - source: ../configs/app.env   # Can reference files outside repo
         dest: .env.production
         replace:                     # Template variable substitution
-          PORT: "${RAMP_PORT}"
-          API_PORT: "${RAMP_PORT}1"
+          PORT: "${RAMP_PORT_1}"
+          API_PORT: "${RAMP_PORT_2}"
           APP_NAME: "myapp-${RAMP_WORKTREE_NAME}"
           DATABASE_URL: "${RAMP_DATABASE_URL}"
 ```
@@ -200,18 +200,18 @@ env_files:
       IDE: "${RAMP_IDE}"              # From prompts
       DATABASE: "${RAMP_DATABASE}"    # From prompts
 
-  # Multi-service port allocation
+  # Multi-service port allocation (requires ports_per_feature: 3)
   - source: docker-compose.env
     dest: .env
     replace:
-      FRONTEND_PORT: "${RAMP_PORT}"
-      API_PORT: "${RAMP_PORT}1"
-      DB_PORT: "${RAMP_PORT}2"
+      FRONTEND_PORT: "${RAMP_PORT_1}"
+      API_PORT: "${RAMP_PORT_2}"
+      DB_PORT: "${RAMP_PORT_3}"
 ```
 
 **Best Practices:**
 - Store template files outside repos in `../configs/` to keep them centralized
-- Use `${RAMP_PORT}` and derivatives (`${RAMP_PORT}1`, `${RAMP_PORT}2`) for multi-service setups
+- Use `ports_per_feature` in your config and reference `${RAMP_PORT_1}`, `${RAMP_PORT_2}`, etc. for multi-service setups
 - Reference custom prompt variables for team-specific configurations
 - Keep sensitive values in templated files, not committed `.env` files
 
