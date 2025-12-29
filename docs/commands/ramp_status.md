@@ -17,6 +17,8 @@ ramp status [flags]
 
 ```
   -h, --help   help for status
+      --json   Output status as JSON (useful for scripts)
+      --tree   Output only the current tree/feature name (if in one)
 ```
 
 ### Options inherited from parent commands
