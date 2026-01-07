@@ -55,12 +55,8 @@ func openTerminalApp(terminalApp, path string) error {
 
 	switch terminalApp {
 	case "terminal":
-		// macOS Terminal.app
-		script := fmt.Sprintf(`tell application "Terminal"
-			activate
-			do script "cd %q"
-		end tell`, path)
-		cmd = exec.Command("osascript", "-e", script)
+		// macOS Terminal.app - use open command like Warp
+		cmd = exec.Command("open", "-a", "Terminal", path)
 
 	case "iterm":
 		// iTerm2
