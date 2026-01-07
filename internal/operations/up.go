@@ -7,6 +7,7 @@ import (
 
 	"ramp/internal/config"
 	"ramp/internal/envfile"
+	"ramp/internal/features"
 	"ramp/internal/git"
 	"ramp/internal/ports"
 )
@@ -35,11 +36,15 @@ type UpOptions struct {
 	// Use these flags to override:
 	ForceRefresh bool // Force refresh ALL repos regardless of per-repo config
 	SkipRefresh  bool // Skip refresh for ALL repos regardless of per-repo config
+
+	// Optional - display name
+	DisplayName string // Human-readable display name (different from feature directory/branch name)
 }
 
 // UpResult contains the results of feature creation.
 type UpResult struct {
 	FeatureName    string
+	DisplayName    string
 	TreesDir       string
 	BranchName     string
 	Repos          []string
@@ -357,10 +362,23 @@ func Up(opts UpOptions) (*UpResult, error) {
 		progress.Success("Ran setup script")
 	}
 
+	// Phase 7: Store display name metadata (if provided)
+	if opts.DisplayName != "" {
+		metadataStore, err := features.NewMetadataStore(projectDir)
+		if err != nil {
+			progress.Warning(fmt.Sprintf("Failed to initialize metadata store: %v", err))
+		} else {
+			if err := metadataStore.SetDisplayName(featureName, opts.DisplayName); err != nil {
+				progress.Warning(fmt.Sprintf("Failed to save display name: %v", err))
+			}
+		}
+	}
+
 	progress.Complete(fmt.Sprintf("Feature '%s' created successfully", featureName))
 
 	return &UpResult{
 		FeatureName:    featureName,
+		DisplayName:    opts.DisplayName,
 		TreesDir:       treesDir,
 		BranchName:     branchName,
 		Repos:          repoNames,

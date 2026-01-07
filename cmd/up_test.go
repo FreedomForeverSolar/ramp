@@ -20,7 +20,7 @@ func TestUpBasic(t *testing.T) {
 	defer cleanup()
 
 	// Create feature
-	err := runUp("my-feature", "", "")
+	err := runUp("my-feature", "", "", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}
@@ -60,7 +60,7 @@ func TestUpWithCustomPrefix(t *testing.T) {
 	defer cleanup()
 
 	// Create feature with custom prefix
-	err := runUp("test-feature", "bugfix/", "")
+	err := runUp("test-feature", "bugfix/", "", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}
@@ -90,7 +90,7 @@ func TestUpWithNoPrefix(t *testing.T) {
 	defer func() { noPrefixFlag = false }()
 
 	// Create feature without prefix
-	err := runUp("plain-branch", "", "")
+	err := runUp("plain-branch", "", "", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}
@@ -116,13 +116,13 @@ func TestUpDuplicateFeature(t *testing.T) {
 	defer cleanup()
 
 	// Create feature first time
-	err := runUp("duplicate", "", "")
+	err := runUp("duplicate", "", "", "")
 	if err != nil {
 		t.Fatalf("first runUp() error = %v", err)
 	}
 
 	// Try to create again - should fail
-	err = runUp("duplicate", "", "")
+	err = runUp("duplicate", "", "", "")
 	if err == nil {
 		t.Error("runUp() should return error for duplicate feature")
 	}
@@ -147,7 +147,7 @@ func TestUpWithTarget(t *testing.T) {
 	defer cleanup()
 
 	// Create new feature from source
-	err := runUp("derived", "", "source")
+	err := runUp("derived", "", "source", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}
@@ -178,7 +178,7 @@ func TestUpWithTargetRemoteBranch(t *testing.T) {
 	defer cleanup()
 
 	// Create from remote branch
-	err := runUp("from-remote", "", "origin/feature/remote-source")
+	err := runUp("from-remote", "", "origin/feature/remote-source", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}
@@ -200,13 +200,13 @@ func TestUpPortAllocation(t *testing.T) {
 	defer cleanup()
 
 	// Create first feature
-	err := runUp("feature1", "", "")
+	err := runUp("feature1", "", "", "")
 	if err != nil {
 		t.Fatalf("runUp() feature1 error = %v", err)
 	}
 
 	// Create second feature
-	err = runUp("feature2", "", "")
+	err = runUp("feature2", "", "", "")
 	if err != nil {
 		t.Fatalf("runUp() feature2 error = %v", err)
 	}
@@ -232,7 +232,7 @@ func TestUpCreatesTreesDirectory(t *testing.T) {
 	cleanup := tp.ChangeToProjectDir()
 	defer cleanup()
 
-	err := runUp("test", "", "")
+	err := runUp("test", "", "", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}
@@ -252,7 +252,7 @@ func TestUpInvalidFeatureName(t *testing.T) {
 	defer cleanup()
 
 	// Test empty name (should be caught by cobra, but test the function)
-	err := runUp("", "", "")
+	err := runUp("", "", "", "")
 	if err == nil {
 		t.Error("runUp() should fail with empty feature name")
 	}
@@ -269,7 +269,7 @@ func TestUpMultipleRepos(t *testing.T) {
 	cleanup := tp.ChangeToProjectDir()
 	defer cleanup()
 
-	err := runUp("multi", "", "")
+	err := runUp("multi", "", "", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}
@@ -301,7 +301,7 @@ func TestUpWithExistingLocalBranch(t *testing.T) {
 	defer cleanup()
 
 	// Create feature - should use existing branch
-	err := runUp("existing", "", "")
+	err := runUp("existing", "", "", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}
@@ -332,7 +332,7 @@ func TestUpWithExistingRemoteBranch(t *testing.T) {
 	defer cleanup()
 
 	// Create feature - should track remote branch
-	err := runUp("remote", "", "")
+	err := runUp("remote", "", "", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}
@@ -357,7 +357,7 @@ func TestUpRejectsSlashInFeatureName(t *testing.T) {
 	defer cleanup()
 
 	// Try to create feature with slash in name - should fail
-	err := runUp("epic/sub-feature", "", "")
+	err := runUp("epic/sub-feature", "", "", "")
 	if err == nil {
 		t.Fatal("runUp() should return error for feature name with slash")
 	}
@@ -387,7 +387,7 @@ func TestUpWithNestedBranchViaPrefix(t *testing.T) {
 
 	// Create feature using prefix to achieve nested branch name
 	// Feature name is just "sub-feature", prefix creates the nesting
-	err := runUp("sub-feature", "epic/", "")
+	err := runUp("sub-feature", "epic/", "", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}
@@ -431,7 +431,7 @@ echo "worktree_name=$RAMP_WORKTREE_NAME" >> "$RAMP_TREES_DIR/setup-marker.txt"
 	cfg.Setup = "scripts/setup.sh"
 	config.SaveConfig(cfg, tp.Dir)
 
-	err := runUp("test-feature", "", "")
+	err := runUp("test-feature", "", "", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}
@@ -477,7 +477,7 @@ exit 1
 	cfg.Setup = "scripts/setup.sh"
 	config.SaveConfig(cfg, tp.Dir)
 
-	err := runUp("test-feature", "", "")
+	err := runUp("test-feature", "", "", "")
 	if err == nil {
 		t.Error("runUp() should fail when setup script fails")
 	}
@@ -510,7 +510,7 @@ echo "port=$RAMP_PORT" > "$RAMP_TREES_DIR/port-marker.txt"
 	cfg.MaxPorts = 100
 	config.SaveConfig(cfg, tp.Dir)
 
-	err := runUp("test-feature", "", "")
+	err := runUp("test-feature", "", "", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}
@@ -549,7 +549,7 @@ APP_NAME=myapp-${RAMP_WORKTREE_NAME}
 	config.SaveConfig(cfg, tp.Dir)
 
 	// Create feature
-	err := runUp("my-feature", "", "")
+	err := runUp("my-feature", "", "", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}
@@ -606,7 +606,7 @@ API_URL=http://localhost:3000
 	config.SaveConfig(cfg, tp.Dir)
 
 	// Create feature
-	err := runUp("my-feature", "", "")
+	err := runUp("my-feature", "", "", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}
@@ -658,7 +658,7 @@ APP_NAME=default
 	config.SaveConfig(cfg, tp.Dir)
 
 	// Create feature
-	err := runUp("my-feature", "", "")
+	err := runUp("my-feature", "", "", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}
@@ -702,7 +702,7 @@ func TestUpWithEnvFilesMultiple(t *testing.T) {
 	config.SaveConfig(cfg, tp.Dir)
 
 	// Create feature
-	err := runUp("my-feature", "", "")
+	err := runUp("my-feature", "", "", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}
@@ -743,7 +743,7 @@ func TestUpWithEnvFilesMissing(t *testing.T) {
 	config.SaveConfig(cfg, tp.Dir)
 
 	// Create feature - should succeed with warning
-	err := runUp("my-feature", "", "")
+	err := runUp("my-feature", "", "", "")
 	if err != nil {
 		t.Fatalf("runUp() should not error on missing env file, got: %v", err)
 	}

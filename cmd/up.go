@@ -17,6 +17,7 @@ var targetFlag string
 var fromFlag string
 var refreshFlag bool
 var noRefreshFlag bool
+var displayNameFlag string
 
 var upCmd = &cobra.Command{
 	Use:   "up [feature-name]",
@@ -83,7 +84,7 @@ After creating worktrees, runs any setup script specified in the configuration.`
 			derivedTarget = targetFlag
 		}
 
-		if err := runUp(featureName, derivedPrefix, derivedTarget); err != nil {
+		if err := runUp(featureName, derivedPrefix, derivedTarget, displayNameFlag); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -98,9 +99,10 @@ func init() {
 	upCmd.Flags().StringVar(&fromFlag, "from", "", "Create from remote branch with automatic prefix/name derivation (mutually exclusive with --target, --prefix, --no-prefix)")
 	upCmd.Flags().BoolVar(&refreshFlag, "refresh", false, "Force refresh all repositories before creating feature (overrides auto_refresh config)")
 	upCmd.Flags().BoolVar(&noRefreshFlag, "no-refresh", false, "Skip refresh for all repositories (overrides auto_refresh config)")
+	upCmd.Flags().StringVar(&displayNameFlag, "name", "", "Set a human-readable display name for this feature")
 }
 
-func runUp(featureName, prefix, target string) error {
+func runUp(featureName, prefix, target, displayName string) error {
 	wd, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)
@@ -164,6 +166,8 @@ func runUp(featureName, prefix, target string) error {
 		AutoInstall:  true,          // CLI always auto-installs if needed
 		ForceRefresh: refreshFlag,   // --refresh forces all repos to refresh
 		SkipRefresh:  noRefreshFlag, // --no-refresh skips all refresh
+		// Display name (optional human-readable name)
+		DisplayName: displayName,
 	})
 
 	if err != nil {

@@ -50,6 +50,7 @@ func main() {
 	apiRouter.HandleFunc("/projects/{id}/features", server.CreateFeature).Methods("POST")
 	apiRouter.HandleFunc("/projects/{id}/features/prune", server.PruneFeatures).Methods("POST")
 	apiRouter.HandleFunc("/projects/{id}/features/{name}", server.DeleteFeature).Methods("DELETE")
+	apiRouter.HandleFunc("/projects/{id}/features/{name}/rename", server.RenameFeature).Methods("PUT")
 
 	// Config routes (local preferences)
 	apiRouter.HandleFunc("/projects/{id}/config/status", server.GetConfigStatus).Methods("GET")

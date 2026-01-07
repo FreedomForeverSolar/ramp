@@ -4,6 +4,7 @@ import { Feature, FeatureWorktreeStatus, Command, WSMessage } from '../types';
 import { useOpenTerminal, usePruneFeatures, useWebSocket } from '../hooks/useRampAPI';
 import DeleteFeatureDialog from './DeleteFeatureDialog';
 import RunCommandDialog from './RunCommandDialog';
+import RenameFeatureDialog from './RenameFeatureDialog';
 import DropdownMenu, { DropdownMenuItem, MenuIcons } from './DropdownMenu';
 
 interface FeatureListProps {
@@ -72,6 +73,14 @@ function hasLocalWork(status: FeatureWorktreeStatus): boolean {
   return status.hasUncommitted || status.aheadCount > 0;
 }
 
+// Format feature name with display name if set
+function formatFeatureName(feature: Feature): string {
+  if (feature.displayName && feature.displayName !== feature.name) {
+    return `${feature.displayName} (${feature.name})`;
+  }
+  return feature.name;
+}
+
 export default function FeatureList({
   projectId,
   projectPath,
@@ -80,6 +89,7 @@ export default function FeatureList({
   isLoading,
 }: FeatureListProps) {
   const [deletingFeature, setDeletingFeature] = useState<Feature | null>(null);
+  const [renamingFeature, setRenamingFeature] = useState<Feature | null>(null);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [runningCommand, setRunningCommand] = useState<{ commandName: string; featureName: string } | null>(null);
   const [showPruneDialog, setShowPruneDialog] = useState(false);
@@ -158,6 +168,11 @@ export default function FeatureList({
       icon: MenuIcons.play,
       onClick: () => setRunningCommand({ commandName: cmd.name, featureName: feature.name }),
     }));
+    items.push({
+      label: 'Rename',
+      icon: MenuIcons.edit,
+      onClick: () => setRenamingFeature(feature),
+    });
     items.push({
       label: 'Delete',
       icon: MenuIcons.trash,
@@ -242,7 +257,7 @@ export default function FeatureList({
         <div className="flex items-center justify-between p-4">
           <div className="flex-1">
             <h3 className="font-medium text-gray-900 dark:text-white">
-              {feature.name}
+              {formatFeatureName(feature)}
             </h3>
             {/* Show status summary for repos with local work */}
             {workingStatuses.length > 0 && (
@@ -330,7 +345,7 @@ export default function FeatureList({
                 key={feature.name}
                 className="group relative inline-flex items-center gap-1 px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded text-sm text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700"
               >
-                {feature.name}
+                {formatFeatureName(feature)}
                 {/* Terminal button - visible on hover */}
                 <button
                   onClick={() => handleOpenTerminal(feature.name)}
@@ -407,6 +422,16 @@ export default function FeatureList({
           featureName={runningCommand.featureName}
           features={features}
           onClose={() => setRunningCommand(null)}
+        />
+      )}
+
+      {/* Rename Feature Dialog */}
+      {renamingFeature && (
+        <RenameFeatureDialog
+          projectId={projectId}
+          featureName={renamingFeature.name}
+          currentDisplayName={renamingFeature.displayName || ''}
+          onClose={() => setRenamingFeature(null)}
         />
       )}
 

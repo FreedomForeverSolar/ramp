@@ -52,6 +52,7 @@ export type FeatureCategory = 'in_flight' | 'merged' | 'clean';
 
 export interface Feature {
   name: string;
+  displayName?: string;
   repos: string[];
   created?: string;
   hasUncommittedChanges: boolean;
@@ -116,6 +117,7 @@ export interface AddProjectRequest {
 
 export interface CreateFeatureRequest {
   name?: string; // Required unless fromBranch is set (auto-derived)
+  displayName?: string; // Human-readable display name
   // Optional - branch configuration
   prefix?: string;
   noPrefix?: boolean;
@@ -126,6 +128,10 @@ export interface CreateFeatureRequest {
   skipRefresh?: boolean;
   // For "From Branch" flow - when set, name is auto-derived if not provided
   fromBranch?: string;
+}
+
+export interface RenameFeatureRequest {
+  displayName: string; // New display name (empty string to clear)
 }
 
 // Config types for local preferences

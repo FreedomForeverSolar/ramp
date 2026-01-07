@@ -24,6 +24,7 @@ export default function NewFeatureDialog({
   onClose,
 }: NewFeatureDialogProps) {
   const [name, setName] = useState('');
+  const [displayName, setDisplayName] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [prefix, setPrefix] = useState(defaultBranchPrefix || '');
   const [noPrefix, setNoPrefix] = useState(false);
@@ -149,6 +150,7 @@ export default function NewFeatureDialog({
     try {
       await createFeature.mutateAsync({
         name: name.trim(),
+        displayName: displayName.trim() || undefined,
         prefix: prefix !== defaultBranchPrefix ? prefix : undefined,
         noPrefix: noPrefix || undefined,
         target: target.trim() || undefined,
@@ -168,6 +170,7 @@ export default function NewFeatureDialog({
     // isCreating is already true, no need to set it again
     createFeature.mutateAsync({
       name: name.trim(),
+      displayName: displayName.trim() || undefined,
       prefix: prefix !== defaultBranchPrefix ? prefix : undefined,
       noPrefix: noPrefix || undefined,
       target: target.trim() || undefined,
@@ -314,6 +317,27 @@ export default function NewFeatureDialog({
               {branchPreview}
             </span>
           </div>
+        </div>
+
+        {/* Display Name (optional) */}
+        <div className="mt-4">
+          <label
+            htmlFor="display-name"
+            className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+          >
+            Display Name <span className="text-gray-400 font-normal">(optional)</span>
+          </label>
+          <input
+            type="text"
+            id="display-name"
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            placeholder="e.g., User Authentication Feature"
+            className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+          />
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            Human-readable name shown in the UI. Leave empty to use feature name.
+          </p>
         </div>
 
         {/* Advanced Options Toggle */}
