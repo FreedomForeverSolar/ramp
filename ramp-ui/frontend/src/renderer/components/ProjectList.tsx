@@ -16,7 +16,7 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { useAddProject, useReorderProjects, useToggleFavorite } from '../hooks/useRampAPI';
+import { useAddProject, useReorderProjects, useToggleFavorite, useRemoveProject } from '../hooks/useRampAPI';
 import { Project } from '../types';
 import GlobalSettingsDialog from './GlobalSettingsDialog';
 
@@ -50,6 +50,7 @@ interface SortableProjectItemProps {
   isSelected: boolean;
   onSelect: () => void;
   onToggleFavorite: () => void;
+  onContextMenu: (e: React.MouseEvent) => void;
 }
 
 function SortableProjectItem({
@@ -57,6 +58,7 @@ function SortableProjectItem({
   isSelected,
   onSelect,
   onToggleFavorite,
+  onContextMenu,
 }: SortableProjectItemProps) {
   const {
     attributes,
@@ -88,6 +90,7 @@ function SortableProjectItem({
         }`}
         {...listeners}
         onClick={onSelect}
+        onContextMenu={onContextMenu}
       >
         {/* Star button */}
         <button
@@ -134,7 +137,9 @@ export default function ProjectList({
   const addProject = useAddProject();
   const reorderProjects = useReorderProjects();
   const toggleFavorite = useToggleFavorite();
+  const removeProject = useRemoveProject();
   const [showSettings, setShowSettings] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; project: Project } | null>(null);
 
   // Sort projects: favorites first, then by order
   const sortedProjects = useMemo(() => {
@@ -210,6 +215,37 @@ export default function ProjectList({
     }
   };
 
+  const handleContextMenu = (e: React.MouseEvent, project: Project) => {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY, project });
+  };
+
+  const handleRemoveProject = async () => {
+    if (!contextMenu) return;
+    const { project } = contextMenu;
+    setContextMenu(null);
+    if (confirm(`Remove "${project.name}" from Ramp UI?\n\nThis will not delete any files.`)) {
+      await removeProject.mutateAsync(project.id);
+    }
+  };
+
+  // Close context menu on click outside or Escape
+  useEffect(() => {
+    if (!contextMenu) return;
+
+    const handleClickOutside = () => setContextMenu(null);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setContextMenu(null);
+    };
+
+    document.addEventListener('click', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('click', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [contextMenu]);
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -269,6 +305,7 @@ export default function ProjectList({
                     isSelected={selectedId === project.id}
                     onSelect={() => onSelect(project.id)}
                     onToggleFavorite={() => handleToggleFavorite(project.id)}
+                    onContextMenu={(e) => handleContextMenu(e, project)}
                   />
                 ))}
               </ul>
@@ -309,6 +346,34 @@ export default function ProjectList({
       {/* Global Settings Dialog */}
       {showSettings && (
         <GlobalSettingsDialog onClose={() => setShowSettings(false)} />
+      )}
+
+      {/* Context Menu */}
+      {contextMenu && (
+        <div
+          className="fixed z-50 bg-white dark:bg-gray-800 rounded-md shadow-lg border border-gray-200 dark:border-gray-700 py-1 min-w-[140px]"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+        >
+          <button
+            onClick={handleRemoveProject}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+          >
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+              />
+            </svg>
+            Remove
+          </button>
+        </div>
       )}
     </div>
   );
