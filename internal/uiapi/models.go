@@ -54,6 +54,7 @@ type FeatureWorktreeStatus struct {
 // Feature represents a feature/worktree in a project
 type Feature struct {
 	Name                  string                  `json:"name"`
+	DisplayName           string                  `json:"displayName,omitempty"`
 	Repos                 []string                `json:"repos"`
 	Created               time.Time               `json:"created,omitempty"`
 	HasUncommittedChanges bool                    `json:"hasUncommittedChanges"`
@@ -93,7 +94,8 @@ type AddProjectRequest struct {
 
 // CreateFeatureRequest is the request body for creating a feature
 type CreateFeatureRequest struct {
-	Name string `json:"name"`
+	Name        string `json:"name"`
+	DisplayName string `json:"displayName,omitempty"` // Human-readable display name
 
 	// Optional - branch configuration (mirrors operations.UpOptions)
 	Prefix   string `json:"prefix,omitempty"`   // Branch prefix override (empty = use config default)
@@ -109,6 +111,11 @@ type CreateFeatureRequest struct {
 	AutoInstall  bool `json:"autoInstall,omitempty"`  // Auto-install repos if not present
 	ForceRefresh bool `json:"forceRefresh,omitempty"` // Force refresh ALL repos (override per-repo config)
 	SkipRefresh  bool `json:"skipRefresh,omitempty"`  // Skip refresh for ALL repos (override per-repo config)
+}
+
+// RenameFeatureRequest is the request body for renaming a feature's display name
+type RenameFeatureRequest struct {
+	DisplayName string `json:"displayName"` // New display name (empty string to clear)
 }
 
 // ProjectsResponse is the response for listing projects

@@ -7,6 +7,7 @@ import {
   Feature,
   AddProjectRequest,
   CreateFeatureRequest,
+  RenameFeatureRequest,
   SuccessResponse,
   ConfigStatusResponse,
   ConfigResponse,
@@ -189,6 +190,21 @@ export function usePruneFeatures(projectId: string) {
     },
     onError: () => {
       // Invalidate on error to ensure fresh state (operation may have partially completed)
+      queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'features'] });
+    },
+  });
+}
+
+export function useRenameFeature(projectId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation<SuccessResponse, Error, { featureName: string } & RenameFeatureRequest>({
+    mutationFn: ({ featureName, displayName }) =>
+      fetchAPI<SuccessResponse>(`/projects/${projectId}/features/${featureName}/rename`, {
+        method: 'PUT',
+        body: JSON.stringify({ displayName }),
+      }),
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'features'] });
     },
   });

@@ -48,7 +48,7 @@ func TestStatusWithFeatures(t *testing.T) {
 	defer cleanup()
 
 	// Create a feature
-	err := runUp("test-feature", "", "")
+	err := runUp("test-feature", "", "", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}
@@ -138,7 +138,7 @@ func TestGetFeatureWorktreeStatus(t *testing.T) {
 	defer cleanup()
 
 	// Create a feature
-	err := runUp("test-feature", "", "")
+	err := runUp("test-feature", "", "", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}
@@ -496,7 +496,7 @@ func TestStatusWithMergedFeature(t *testing.T) {
 	defer cleanup()
 
 	// Create a feature
-	err := runUp("merged-feature", "", "")
+	err := runUp("merged-feature", "", "", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}
@@ -528,7 +528,7 @@ func TestStatusWithOrphanedWorktree(t *testing.T) {
 	defer cleanup()
 
 	// Create a feature
-	err := runUp("orphaned", "", "")
+	err := runUp("orphaned", "", "", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}
@@ -563,7 +563,7 @@ func TestGetFeatureWorktreeStatusOrphaned(t *testing.T) {
 	defer cleanup()
 
 	// Create a feature
-	err := runUp("orphaned-status", "", "")
+	err := runUp("orphaned-status", "", "", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}

@@ -46,7 +46,7 @@ func TestPruneWithUnmergedFeatures(t *testing.T) {
 	defer cleanup()
 
 	// Create a feature
-	err := runUp("unmerged-feature", "", "")
+	err := runUp("unmerged-feature", "", "", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}
@@ -86,7 +86,7 @@ func TestPruneWithMergedFeature(t *testing.T) {
 	defer cleanup()
 
 	// Create a feature
-	err := runUp("to-merge", "", "")
+	err := runUp("to-merge", "", "", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}
@@ -134,7 +134,7 @@ func TestPruneMultipleFeaturesPartiallyMerged(t *testing.T) {
 	defer cleanup()
 
 	// Create feature1 - will be merged
-	err := runUp("merged-feature", "", "")
+	err := runUp("merged-feature", "", "", "")
 	if err != nil {
 		t.Fatalf("runUp(merged-feature) error = %v", err)
 	}
@@ -150,7 +150,7 @@ func TestPruneMultipleFeaturesPartiallyMerged(t *testing.T) {
 	runGitCmd(t, repo1.SourceDir, "merge", "feature/merged-feature", "--no-ff", "-m", "merge 1")
 
 	// Create feature2 - will NOT be merged
-	err = runUp("unmerged-feature", "", "")
+	err = runUp("unmerged-feature", "", "", "")
 	if err != nil {
 		t.Fatalf("runUp(unmerged-feature) error = %v", err)
 	}
@@ -191,7 +191,7 @@ func TestPruneCleanFeature(t *testing.T) {
 	defer cleanup()
 
 	// Create a feature but don't add any commits
-	err := runUp("clean-feature", "", "")
+	err := runUp("clean-feature", "", "", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}
@@ -226,7 +226,7 @@ func TestPruneWithNestedBranchViaPrefix(t *testing.T) {
 
 	// Create feature using prefix to create nested branch name
 	// Feature name is simple "task", prefix creates the nested branch "epic/task"
-	err := runUp("task", "epic/", "")
+	err := runUp("task", "epic/", "", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}
@@ -306,7 +306,7 @@ func TestPruneWithMultipleRepos(t *testing.T) {
 	defer cleanup()
 
 	// Create feature across both repos
-	err := runUp("multi-repo-feature", "", "")
+	err := runUp("multi-repo-feature", "", "", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}
@@ -379,7 +379,7 @@ func TestCleanupFeature(t *testing.T) {
 	defer cleanup()
 
 	// Create and merge a feature
-	err := runUp("to-cleanup", "", "")
+	err := runUp("to-cleanup", "", "", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}
@@ -440,7 +440,7 @@ echo "cleanup executed for $RAMP_WORKTREE_NAME" > "$RAMP_PROJECT_DIR/.ramp/prune
 	config.SaveConfig(cfg, tp.Dir)
 
 	// Create feature
-	runUp("scripted-cleanup", "", "")
+	runUp("scripted-cleanup", "", "", "")
 
 	// Cleanup the feature
 	cfg, _ = config.LoadConfig(tp.Dir)
@@ -500,7 +500,7 @@ exit 0
 	os.WriteFile(scriptPath, []byte(scriptContent), 0755)
 
 	// Create feature
-	runUp("quiet-test", "", "")
+	runUp("quiet-test", "", "", "")
 	treesDir := filepath.Join(tp.Dir, "trees", "quiet-test")
 
 	// Run cleanup script quietly
@@ -533,7 +533,7 @@ exit 1
 	os.WriteFile(scriptPath, []byte(scriptContent), 0755)
 
 	// Create feature
-	runUp("fail-test", "", "")
+	runUp("fail-test", "", "", "")
 	treesDir := filepath.Join(tp.Dir, "trees", "fail-test")
 
 	// Run cleanup script - should return error
@@ -552,7 +552,7 @@ func TestRunCleanupScriptQuietMissingScript(t *testing.T) {
 	defer cleanup()
 
 	// Create feature
-	runUp("missing-script", "", "")
+	runUp("missing-script", "", "", "")
 	treesDir := filepath.Join(tp.Dir, "trees", "missing-script")
 
 	// Run non-existent cleanup script
@@ -580,7 +580,7 @@ func TestCreateCleanupCommand(t *testing.T) {
 	os.WriteFile(scriptPath, []byte("#!/bin/bash\necho test\n"), 0755)
 
 	// Create feature to get proper environment
-	runUp("cmd-test", "", "")
+	runUp("cmd-test", "", "", "")
 	treesDir := filepath.Join(tp.Dir, "trees", "cmd-test")
 
 	// Create cleanup command
@@ -624,7 +624,7 @@ func TestPruneOrphanedWorktree(t *testing.T) {
 	defer cleanup()
 
 	// Create a feature
-	err := runUp("orphaned-merge", "", "")
+	err := runUp("orphaned-merge", "", "", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}

@@ -31,6 +31,7 @@ commands to manage repositories and create feature branches.
 * [ramp prune](ramp_prune.md)	 - Clean up merged feature branches automatically
 * [ramp rebase](ramp_rebase.md)	 - Switch all source repositories to the specified branch
 * [ramp refresh](ramp_refresh.md)	 - Update all source repositories by pulling changes from their remotes
+* [ramp rename](ramp_rename.md)	 - Set or change the display name of a feature
 * [ramp run](ramp_run.md)	 - Run a custom command defined in the configuration
 * [ramp status](ramp_status.md)	 - Show project and repository status
 * [ramp up](ramp_up.md)	 - Create a new feature branch with git worktrees for all repositories

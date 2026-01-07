@@ -19,7 +19,7 @@ func TestDownBasic(t *testing.T) {
 	defer cleanup()
 
 	// Create feature
-	err := runUp("test-feature", "", "")
+	err := runUp("test-feature", "", "", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}
@@ -89,7 +89,7 @@ func TestDownReleasesPort(t *testing.T) {
 	defer cleanup()
 
 	// Create feature (allocates port)
-	err := runUp("with-port", "", "")
+	err := runUp("with-port", "", "", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}
@@ -136,7 +136,7 @@ func TestDownWithUncommittedChanges(t *testing.T) {
 	defer cleanup()
 
 	// Create feature
-	err := runUp("dirty", "", "")
+	err := runUp("dirty", "", "", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}
@@ -169,7 +169,7 @@ func TestDownCleansUpPartialState(t *testing.T) {
 	defer cleanup()
 
 	// Create feature
-	err := runUp("partial", "", "")
+	err := runUp("partial", "", "", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}
@@ -213,7 +213,7 @@ func TestDownMultipleFeatures(t *testing.T) {
 	// Create multiple features
 	features := []string{"feature1", "feature2", "feature3"}
 	for _, name := range features {
-		err := runUp(name, "", "")
+		err := runUp(name, "", "", "")
 		if err != nil {
 			t.Fatalf("runUp(%s) error = %v", name, err)
 		}
@@ -249,7 +249,7 @@ func TestDownRemovesBranchesWithDifferentPrefix(t *testing.T) {
 	defer cleanup()
 
 	// Create feature with custom prefix
-	err := runUp("test", "bugfix/", "")
+	err := runUp("test", "bugfix/", "", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}
@@ -282,7 +282,7 @@ func TestDownWithNoPrefixBranch(t *testing.T) {
 
 	// Create feature without prefix
 	noPrefixFlag = true
-	err := runUp("plain", "", "")
+	err := runUp("plain", "", "", "")
 	noPrefixFlag = false
 
 	if err != nil {
@@ -321,7 +321,7 @@ func TestDownPrunesRemoteTracking(t *testing.T) {
 	defer cleanup()
 
 	// Create and push feature
-	err := runUp("to-prune", "", "")
+	err := runUp("to-prune", "", "", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}
@@ -363,7 +363,7 @@ func TestDownPreservesSourceRepos(t *testing.T) {
 	defer cleanup()
 
 	// Create and delete feature
-	err := runUp("temp", "", "")
+	err := runUp("temp", "", "", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}
@@ -394,7 +394,7 @@ func TestDownWithNestedBranchViaPrefix(t *testing.T) {
 
 	// Create feature using prefix to create nested branch name
 	// Feature name is simple, but branch name will be nested via prefix
-	err := runUp("subtask", "epic/task/", "")
+	err := runUp("subtask", "epic/task/", "", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}
@@ -449,7 +449,7 @@ echo "feature=$RAMP_WORKTREE_NAME" >> "$RAMP_PROJECT_DIR/.ramp/cleanup-marker.tx
 	config.SaveConfig(cfg, tp.Dir)
 
 	// Create feature first
-	runUp("test-feature", "", "")
+	runUp("test-feature", "", "", "")
 
 	// Delete feature
 	err := runDown("test-feature")
@@ -496,7 +496,7 @@ exit 1
 	config.SaveConfig(cfg, tp.Dir)
 
 	// Create feature first
-	runUp("test-feature", "", "")
+	runUp("test-feature", "", "", "")
 
 	// Delete feature - should continue despite cleanup script failure
 	err := runDown("test-feature")
@@ -521,7 +521,7 @@ func TestDownOrphanedWorktree(t *testing.T) {
 	defer cleanup()
 
 	// Create feature
-	err := runUp("orphaned", "", "")
+	err := runUp("orphaned", "", "", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}
@@ -582,7 +582,7 @@ func TestDownAutoDetectFromWorkingDir(t *testing.T) {
 	defer cleanup()
 
 	// Create a feature
-	err := runUp("auto-detect-down", "", "")
+	err := runUp("auto-detect-down", "", "", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}
@@ -626,7 +626,7 @@ func TestDownAutoDetectFromNestedPath(t *testing.T) {
 	defer cleanup()
 
 	// Create a feature
-	err := runUp("nested-down", "", "")
+	err := runUp("nested-down", "", "", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}
@@ -691,12 +691,12 @@ func TestDownAutoDetectWithExplicitNameOverridesDetection(t *testing.T) {
 	defer cleanup()
 
 	// Create two features
-	err := runUp("feature-a", "", "")
+	err := runUp("feature-a", "", "", "")
 	if err != nil {
 		t.Fatalf("runUp() feature-a error = %v", err)
 	}
 
-	err = runUp("feature-b", "", "")
+	err = runUp("feature-b", "", "", "")
 	if err != nil {
 		t.Fatalf("runUp() feature-b error = %v", err)
 	}

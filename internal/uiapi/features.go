@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"ramp/internal/config"
+	"ramp/internal/features"
 	"ramp/internal/git"
 	"ramp/internal/operations"
 
@@ -130,6 +131,8 @@ func (s *Server) CreateFeature(w http.ResponseWriter, r *http.Request) {
 		AutoInstall:  true,
 		ForceRefresh: req.ForceRefresh,
 		SkipRefresh:  req.SkipRefresh,
+		// Display name (optional human-readable name)
+		DisplayName: req.DisplayName,
 	})
 
 	if err != nil {
@@ -140,6 +143,7 @@ func (s *Server) CreateFeature(w http.ResponseWriter, r *http.Request) {
 	// Return the created feature
 	feature := Feature{
 		Name:                  result.FeatureName,
+		DisplayName:           result.DisplayName,
 		Repos:                 result.Repos,
 		HasUncommittedChanges: false,
 	}
@@ -197,18 +201,61 @@ func (s *Server) DeleteFeature(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, SuccessResponse{Success: true, Message: "Feature deleted"})
 }
 
+// RenameFeature updates the display name of a feature
+func (s *Server) RenameFeature(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id := vars["id"]
+	name := vars["name"]
+
+	var req RenameFeatureRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body", err.Error())
+		return
+	}
+
+	ref, err := GetProjectRefByID(id)
+	if err != nil || ref == nil {
+		writeError(w, http.StatusNotFound, "Project not found", id)
+		return
+	}
+
+	// Verify feature exists
+	treesDir := filepath.Join(ref.Path, "trees", name)
+	if _, err := os.Stat(treesDir); os.IsNotExist(err) {
+		writeError(w, http.StatusNotFound, "Feature not found", name)
+		return
+	}
+
+	// Update metadata
+	metadataStore, err := features.NewMetadataStore(ref.Path)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to initialize metadata store", err.Error())
+		return
+	}
+
+	if err := metadataStore.SetDisplayName(name, req.DisplayName); err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to set display name", err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, SuccessResponse{Success: true, Message: "Display name updated"})
+}
+
 // getProjectFeatures returns detailed feature information for a project
 func getProjectFeatures(projectPath string) ([]Feature, error) {
 	treesDir := filepath.Join(projectPath, "trees")
-	features := []Feature{}
+	featuresList := []Feature{}
 
 	entries, err := os.ReadDir(treesDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return features, nil
+			return featuresList, nil
 		}
 		return nil, err
 	}
+
+	// Load feature metadata for display names
+	metadataStore, _ := features.NewMetadataStore(projectPath)
 
 	// Try to load project config for detailed status
 	// If config loading fails, we'll fall back to basic feature info
@@ -284,8 +331,15 @@ func getProjectFeatures(projectPath string) ([]Feature, error) {
 		// Categorize the feature
 		category := categorizeFeature(worktreeStatuses)
 
-		features = append(features, Feature{
+		// Get display name from metadata
+		var displayName string
+		if metadataStore != nil {
+			displayName = metadataStore.GetDisplayName(featureName)
+		}
+
+		featuresList = append(featuresList, Feature{
 			Name:                  featureName,
+			DisplayName:           displayName,
 			Repos:                 repoNames,
 			Created:               created,
 			HasUncommittedChanges: hasUncommitted,
@@ -294,7 +348,7 @@ func getProjectFeatures(projectPath string) ([]Feature, error) {
 		})
 	}
 
-	return features, nil
+	return featuresList, nil
 }
 
 // getFeatureWorktreeStatus collects detailed status for a single repo worktree

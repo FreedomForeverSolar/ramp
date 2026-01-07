@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"ramp/internal/config"
+	"ramp/internal/features"
 	"ramp/internal/git"
 	"ramp/internal/ports"
 	"ramp/internal/ui"
@@ -499,6 +500,20 @@ func displayActiveFeatures(projectDir string, cfg *config.Config, progress *ui.P
 		return nil
 	}
 
+	// Load feature metadata for display names
+	metadataStore, _ := features.NewMetadataStore(projectDir)
+
+	// Helper to format feature name with display name
+	formatFeatureName := func(featureName string) string {
+		if metadataStore != nil {
+			displayName := metadataStore.GetDisplayName(featureName)
+			if displayName != "" && displayName != featureName {
+				return fmt.Sprintf("%s (%s)", displayName, featureName)
+			}
+		}
+		return featureName
+	}
+
 	// Read all feature directories
 	entries, err := os.ReadDir(treesDir)
 	if err != nil {
@@ -601,7 +616,7 @@ func displayActiveFeatures(projectDir string, cfg *config.Config, progress *ui.P
 		fmt.Println("━━━ IN FLIGHT ━━━")
 		fmt.Println()
 		for _, feature := range inFlightFeatures {
-			fmt.Printf("%s\n", feature.name)
+			fmt.Printf("%s\n", formatFeatureName(feature.name))
 			for _, status := range feature.statuses {
 				// Only show repos with local work (uncommitted or ahead)
 				hasLocalWork := status.hasUncommitted || status.aheadCount > 0
@@ -623,14 +638,15 @@ func displayActiveFeatures(projectDir string, cfg *config.Config, progress *ui.P
 		const maxWidth = 70
 		line := ""
 		for i, name := range mergedFeatures {
+			displayName := formatFeatureName(name)
 			if i > 0 {
 				line += ", "
 			}
-			if len(line)+len(name) > maxWidth && line != "" {
+			if len(line)+len(displayName) > maxWidth && line != "" {
 				fmt.Println(line)
-				line = name
+				line = displayName
 			} else {
-				line += name
+				line += displayName
 			}
 		}
 		if line != "" {
@@ -645,14 +661,15 @@ func displayActiveFeatures(projectDir string, cfg *config.Config, progress *ui.P
 		const maxWidth = 70
 		line := ""
 		for i, name := range cleanFeatures {
+			displayName := formatFeatureName(name)
 			if i > 0 {
 				line += ", "
 			}
-			if len(line)+len(name) > maxWidth && line != "" {
+			if len(line)+len(displayName) > maxWidth && line != "" {
 				fmt.Println(line)
-				line = name
+				line = displayName
 			} else {
-				line += name
+				line += displayName
 			}
 		}
 		if line != "" {

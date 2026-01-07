@@ -289,7 +289,7 @@ func TestRefreshWithStashInWorktree(t *testing.T) {
 	defer cleanup()
 
 	// Create a feature with worktree
-	err := runUp("test-feature", "", "")
+	err := runUp("test-feature", "", "", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}
@@ -369,7 +369,7 @@ func TestRefreshWithStashAndAutoStashConfig(t *testing.T) {
 	runGitCmd(t, repo1.SourceDir, "config", "rebase.autoStash", "true")
 
 	// Create a feature with worktree
-	err := runUp("test-feature", "", "")
+	err := runUp("test-feature", "", "", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}
@@ -434,7 +434,7 @@ func TestStashesAreSharedAcrossWorktrees(t *testing.T) {
 	defer cleanup()
 
 	// Create a feature with worktree
-	err := runUp("test-feature", "", "")
+	err := runUp("test-feature", "", "", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}

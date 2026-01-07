@@ -34,6 +34,7 @@ ramp up [feature-name] [flags]
 ```
       --from string     Create from remote branch with automatic prefix/name derivation (mutually exclusive with --target, --prefix, --no-prefix)
   -h, --help            help for up
+      --name string     Set a human-readable display name for this feature
       --no-prefix       Disable branch prefix for this feature (mutually exclusive with --prefix)
       --no-refresh      Skip refresh for all repositories (overrides auto_refresh config)
       --prefix string   Override the branch prefix (defaults to config default_branch_prefix)

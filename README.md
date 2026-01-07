@@ -119,6 +119,7 @@ Each feature gets:
 | `ramp install` | Clone all configured repositories |
 | `ramp up <feature>` | Create feature branches across all repos |
 | `ramp down <feature>` | Remove feature branches and cleanup |
+| `ramp rename <feature> <name>` | Set a display name for a feature |
 | `ramp prune` | Batch remove all merged features |
 | `ramp status` | Show project status and active features |
 | `ramp run <cmd>` | Run custom commands (dev, test, etc.) |

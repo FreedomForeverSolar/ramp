@@ -36,7 +36,7 @@ exit 0
 	defer cleanup()
 
 	// Create a feature first
-	err := runUp("test-feature", "", "")
+	err := runUp("test-feature", "", "", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}
@@ -209,7 +209,7 @@ exit 0
 	defer cleanup()
 
 	// Create a feature
-	err := runUp("env-test", "", "")
+	err := runUp("env-test", "", "", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}
@@ -255,7 +255,7 @@ exit 0
 	defer cleanup()
 
 	// Create a feature (which allocates a port)
-	err := runUp("port-test", "", "")
+	err := runUp("port-test", "", "", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}
@@ -441,7 +441,7 @@ exit 0
 	defer cleanup()
 
 	// Create a feature
-	err := runUp("auto-detect-test", "", "")
+	err := runUp("auto-detect-test", "", "", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}
@@ -486,7 +486,7 @@ exit 0
 	defer cleanup()
 
 	// Create a feature
-	err := runUp("nested-test", "", "")
+	err := runUp("nested-test", "", "", "")
 	if err != nil {
 		t.Fatalf("runUp() error = %v", err)
 	}

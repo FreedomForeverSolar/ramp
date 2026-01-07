@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"ramp/internal/config"
+	"ramp/internal/features"
 	"ramp/internal/git"
 	"ramp/internal/ports"
 )
@@ -204,6 +205,16 @@ func Down(opts DownOptions) (*DownResult, error) {
 		} else {
 			progress.Info("Port released successfully")
 			result.ReleasedPort = true
+		}
+	}
+
+	// Remove feature metadata (display name, etc.)
+	metadataStore, err := features.NewMetadataStore(projectDir)
+	if err != nil {
+		progress.Warning(fmt.Sprintf("Failed to initialize metadata store for cleanup: %v", err))
+	} else {
+		if err := metadataStore.RemoveFeature(featureName); err != nil {
+			progress.Warning(fmt.Sprintf("Failed to remove feature metadata: %v", err))
 		}
 	}
 

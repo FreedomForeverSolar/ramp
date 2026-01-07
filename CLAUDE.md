@@ -21,8 +21,9 @@ Ramp is a CLI tool for managing multi-repository development workflows using git
 ### Key Commands
 - `ramp init` - Interactive project setup (uses huh forms library)
 - `ramp install` - Clone all configured repositories
-- `ramp up <feature>` - Create feature worktrees across all repos
+- `ramp up <feature>` - Create feature worktrees across all repos (supports `--name` for display name)
 - `ramp down <feature>` - Clean up feature worktrees and branches
+- `ramp rename <feature> <name>` - Set or change display name for a feature
 - `ramp config` - Manage local preferences
 - `ramp status` - Show project and worktree status
 - `ramp refresh` - Update all source repositories
@@ -40,6 +41,7 @@ cmd/              # Cobra CLI commands (root.go, up.go, down.go, etc.)
 cmd/ramp-ui/      # HTTP server entry point for desktop app
 internal/
   config/         # YAML parsing, project discovery
+  features/       # Feature metadata (display names)
   git/            # Git operations and worktree management
   scaffold/       # Project initialization templates
   envfile/        # Environment file processing
@@ -79,6 +81,8 @@ commands:                  # Custom commands for 'ramp run'
 .ramp/
   ├── ramp.yaml              # Main config
   ├── local.yaml             # Local preferences (gitignored)
+  ├── feature_metadata.json  # Feature display names (gitignored)
+  ├── port_allocations.json  # Port assignments (gitignored)
   └── scripts/               # Setup/cleanup scripts
 repos/                       # Source clones (gitignored)
 trees/                       # Feature worktrees (gitignored)
@@ -126,6 +130,13 @@ Configuration management and project discovery.
 - `FindRampProject()` - Recursively searches for `.ramp/ramp.yaml`
 - `LoadConfig()`, `SaveConfig()` - YAML persistence
 - `DetectFeatureFromWorkingDir()` - Auto-detect current feature
+
+### `internal/features/`
+Feature metadata management (display names, etc.):
+- `MetadataStore` - JSON-based persistence at `.ramp/feature_metadata.json`
+- `GetDisplayName()`, `SetDisplayName()` - Read/write display names
+- `RemoveFeature()` - Clean up metadata when feature is deleted
+- `ListMetadata()` - Get all feature metadata
 
 ### `internal/git/`
 Git operations with two variants for each operation:
@@ -261,8 +272,9 @@ ramp-ui/frontend/src/
     │   ├── ProjectView.tsx      # Main content area for selected project
     │   ├── FeatureList.tsx      # Feature cards with status indicators
     │   ├── SourceRepoList.tsx   # Source repo status and refresh
-    │   ├── NewFeatureDialog.tsx # Create feature (ramp up)
+    │   ├── NewFeatureDialog.tsx # Create feature (ramp up), includes display name
     │   ├── DeleteFeatureDialog.tsx
+    │   ├── RenameFeatureDialog.tsx # Change feature display name
     │   ├── RunCommandDialog.tsx # Execute custom commands
     │   └── ...
     ├── hooks/
