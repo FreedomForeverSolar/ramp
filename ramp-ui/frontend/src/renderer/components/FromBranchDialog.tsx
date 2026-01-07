@@ -224,32 +224,26 @@ export default function FromBranchDialog({
         {remoteBranch.trim() && (
           <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-2">
             <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">Preview</h3>
-            <div className="text-sm space-y-1">
-              <div className="flex justify-between">
-                <span className="text-gray-500 dark:text-gray-400">Feature name:</span>
-                <span className="font-mono text-gray-900 dark:text-white">
-                  {effectiveFeatureName || '(invalid)'}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500 dark:text-gray-400">Worktree path:</span>
-                <span className="font-mono text-gray-900 dark:text-white">
-                  trees/{effectiveFeatureName || '...'}/
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500 dark:text-gray-400">From remote:</span>
-                <span className="font-mono text-gray-900 dark:text-white">
-                  {parsed.target}
-                </span>
-              </div>
+            <div className="text-sm grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 items-baseline">
+              <span className="text-gray-500 dark:text-gray-400">Feature name:</span>
+              <span className="font-mono text-gray-900 dark:text-white truncate" title={effectiveFeatureName || '(invalid)'}>
+                {effectiveFeatureName || '(invalid)'}
+              </span>
+              <span className="text-gray-500 dark:text-gray-400">Worktree path:</span>
+              <span className="font-mono text-gray-900 dark:text-white truncate" title={`trees/${effectiveFeatureName || '...'}/`}>
+                trees/{effectiveFeatureName || '...'}/
+              </span>
+              <span className="text-gray-500 dark:text-gray-400">From remote:</span>
+              <span className="font-mono text-gray-900 dark:text-white truncate" title={parsed.target}>
+                {parsed.target}
+              </span>
               {parsed.prefix && (
-                <div className="flex justify-between">
+                <>
                   <span className="text-gray-500 dark:text-gray-400">Branch prefix:</span>
-                  <span className="font-mono text-gray-900 dark:text-white">
+                  <span className="font-mono text-gray-900 dark:text-white truncate" title={parsed.prefix}>
                     {parsed.prefix}
                   </span>
-                </div>
+                </>
               )}
             </div>
           </div>
@@ -281,7 +275,7 @@ export default function FromBranchDialog({
         className="absolute inset-0 bg-black/50"
         onClick={isCreating ? undefined : onClose}
       />
-      <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md mx-4">
+      <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-xl mx-4">
         {isCreating ? renderProgressView() : renderFormView()}
       </div>
     </div>
