@@ -816,7 +816,7 @@ func outputJSON(output jsonStatusOutput) error {
 }
 
 func getStagedDiffStats(repoDir string) (*git.DiffStats, error) {
-	cmd := exec.Command("git", "diff", "--cached", "--shortstat")
+	cmd := exec.Command("git", "--no-optional-locks", "diff", "--cached", "--shortstat")
 	cmd.Dir = repoDir
 
 	output, err := cmd.Output()
@@ -854,7 +854,7 @@ func getStagedDiffStats(repoDir string) (*git.DiffStats, error) {
 }
 
 func countUntrackedFileLines(repoDir string) (int, error) {
-	cmd := exec.Command("git", "status", "--porcelain")
+	cmd := exec.Command("git", "--no-optional-locks", "status", "--porcelain")
 	cmd.Dir = repoDir
 
 	output, err := cmd.Output()
