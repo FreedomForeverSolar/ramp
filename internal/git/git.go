@@ -198,7 +198,7 @@ func CreateWorktreeQuiet(repoDir, worktreeDir, branchName, repoName string) erro
 
 func getRemoteBranchName(repoDir, branchName string) (string, error) {
 	// Get all remote branches and check for exact matches
-	cmd := exec.Command("git", "branch", "-r")
+	cmd := exec.Command("git", "--no-optional-locks", "branch", "-r")
 	cmd.Dir = repoDir
 
 	output, err := cmd.Output()
@@ -235,7 +235,7 @@ func BranchExists(repoDir, branchName string) (bool, error) {
 }
 
 func LocalBranchExists(repoDir, branchName string) (bool, error) {
-	cmd := exec.Command("git", "branch", "--list", branchName)
+	cmd := exec.Command("git", "--no-optional-locks", "branch", "--list", branchName)
 	cmd.Dir = repoDir
 
 	output, err := cmd.Output()
@@ -248,7 +248,7 @@ func LocalBranchExists(repoDir, branchName string) (bool, error) {
 
 func RemoteBranchExists(repoDir, branchName string) (bool, error) {
 	// Get all remote branches and check for exact matches
-	cmd := exec.Command("git", "branch", "-r")
+	cmd := exec.Command("git", "--no-optional-locks", "branch", "-r")
 	cmd.Dir = repoDir
 
 	output, err := cmd.Output()
@@ -273,7 +273,7 @@ func RemoteBranchExists(repoDir, branchName string) (bool, error) {
 }
 
 func HasUncommittedChanges(repoDir string) (bool, error) {
-	cmd := exec.Command("git", "status", "--porcelain")
+	cmd := exec.Command("git", "--no-optional-locks", "status", "--porcelain")
 	cmd.Dir = repoDir
 
 	output, err := cmd.Output()
@@ -342,7 +342,7 @@ func DeleteBranchQuiet(repoDir, branchName string) error {
 }
 
 func GetWorktreeBranch(worktreeDir string) (string, error) {
-	cmd := exec.Command("git", "symbolic-ref", "HEAD")
+	cmd := exec.Command("git", "--no-optional-locks", "symbolic-ref", "HEAD")
 	cmd.Dir = worktreeDir
 
 	output, err := cmd.Output()
@@ -360,7 +360,7 @@ func GetWorktreeBranch(worktreeDir string) (string, error) {
 }
 
 func GetCurrentBranch(repoDir string) (string, error) {
-	cmd := exec.Command("git", "symbolic-ref", "--short", "HEAD")
+	cmd := exec.Command("git", "--no-optional-locks", "symbolic-ref", "--short", "HEAD")
 	cmd.Dir = repoDir
 
 	output, err := cmd.Output()
@@ -418,7 +418,7 @@ func PullQuiet(repoDir string) error {
 }
 
 func HasRemoteTrackingBranch(repoDir string) (bool, error) {
-	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
+	cmd := exec.Command("git", "--no-optional-locks", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
 	cmd.Dir = repoDir
 
 	_, err := cmd.Output()
@@ -643,7 +643,7 @@ func validateSourceBranch(repoDir, sourceBranch string) error {
 }
 
 func validateRemoteBranch(repoDir, remoteBranch string) error {
-	cmd := exec.Command("git", "show-ref", "--verify", "refs/remotes/"+remoteBranch)
+	cmd := exec.Command("git", "--no-optional-locks", "show-ref", "--verify", "refs/remotes/"+remoteBranch)
 	cmd.Dir = repoDir
 
 	if err := cmd.Run(); err != nil {
@@ -725,7 +725,7 @@ func GetRemoteTrackingStatus(repoDir string) (string, error) {
 	}
 
 	// Get ahead/behind status using git rev-list
-	cmd := exec.Command("git", "rev-list", "--count", "--left-right", "HEAD...@{upstream}")
+	cmd := exec.Command("git", "--no-optional-locks", "rev-list", "--count", "--left-right", "HEAD...@{upstream}")
 	cmd.Dir = repoDir
 
 	output, err := cmd.Output()
@@ -761,7 +761,7 @@ func GetRemoteTrackingStatus(repoDir string) (string, error) {
 
 func GetDefaultBranch(repoDir string) (string, error) {
 	// Try to get the default branch from remote's HEAD
-	cmd := exec.Command("git", "symbolic-ref", "refs/remotes/origin/HEAD")
+	cmd := exec.Command("git", "--no-optional-locks", "symbolic-ref", "refs/remotes/origin/HEAD")
 	cmd.Dir = repoDir
 
 	output, err := cmd.Output()
@@ -791,7 +791,7 @@ func GetDefaultBranch(repoDir string) (string, error) {
 
 func GetAheadBehindCount(worktreeDir, baseBranch string) (ahead int, behind int, err error) {
 	// Get ahead/behind status compared to base branch
-	cmd := exec.Command("git", "rev-list", "--count", "--left-right", fmt.Sprintf("HEAD...%s", baseBranch))
+	cmd := exec.Command("git", "--no-optional-locks", "rev-list", "--count", "--left-right", fmt.Sprintf("HEAD...%s", baseBranch))
 	cmd.Dir = worktreeDir
 
 	output, err := cmd.Output()
@@ -822,7 +822,7 @@ func GetAheadBehindCount(worktreeDir, baseBranch string) (ahead int, behind int,
 func IsMergedInto(worktreeDir, targetBranch string) (bool, error) {
 	// Use git merge-base to check if HEAD is an ancestor of targetBranch
 	// This means all commits from current branch are in targetBranch
-	cmd := exec.Command("git", "merge-base", "--is-ancestor", "HEAD", targetBranch)
+	cmd := exec.Command("git", "--no-optional-locks", "merge-base", "--is-ancestor", "HEAD", targetBranch)
 	cmd.Dir = worktreeDir
 
 	err := cmd.Run()
@@ -852,7 +852,7 @@ type StatusStats struct {
 }
 
 func GetDiffStats(repoDir string) (*DiffStats, error) {
-	cmd := exec.Command("git", "diff", "--shortstat")
+	cmd := exec.Command("git", "--no-optional-locks", "diff", "--shortstat")
 	cmd.Dir = repoDir
 
 	output, err := cmd.Output()
@@ -892,7 +892,7 @@ func GetDiffStats(repoDir string) (*DiffStats, error) {
 }
 
 func GetStatusStats(repoDir string) (*StatusStats, error) {
-	cmd := exec.Command("git", "status", "--porcelain")
+	cmd := exec.Command("git", "--no-optional-locks", "status", "--porcelain")
 	cmd.Dir = repoDir
 
 	output, err := cmd.Output()
@@ -928,7 +928,7 @@ func GetStatusStats(repoDir string) (*StatusStats, error) {
 
 // WorktreeRegistered checks if a worktree path is registered with git, even if the directory doesn't exist
 func WorktreeRegistered(repoDir, worktreeDir string) bool {
-	cmd := exec.Command("git", "worktree", "list", "--porcelain")
+	cmd := exec.Command("git", "--no-optional-locks", "worktree", "list", "--porcelain")
 	cmd.Dir = repoDir
 
 	output, err := cmd.Output()
