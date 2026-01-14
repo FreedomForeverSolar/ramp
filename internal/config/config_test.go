@@ -1277,3 +1277,310 @@ func TestSaveConfigWithPrompts(t *testing.T) {
 		t.Fatalf("got %d options, want 2", len(prompt.Options))
 	}
 }
+
+// TestRepoName tests the Name() method that returns local_name or extracted name
+func TestRepoName(t *testing.T) {
+	tests := []struct {
+		name     string
+		repo     *Repo
+		wantName string
+	}{
+		{
+			name:     "uses local_name when set",
+			repo:     &Repo{Git: "git@github.com:owner/agent-docs.git", LocalName: "docs"},
+			wantName: "docs",
+		},
+		{
+			name:     "extracts from git URL when local_name not set",
+			repo:     &Repo{Git: "git@github.com:owner/agent-docs.git"},
+			wantName: "agent-docs",
+		},
+		{
+			name:     "handles empty local_name",
+			repo:     &Repo{Git: "git@github.com:owner/repo.git", LocalName: ""},
+			wantName: "repo",
+		},
+		{
+			name:     "local_name with special characters",
+			repo:     &Repo{Git: "git@github.com:owner/some-long-name.git", LocalName: "short"},
+			wantName: "short",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.repo.Name()
+			if got != tt.wantName {
+				t.Errorf("Name() = %q, want %q", got, tt.wantName)
+			}
+		})
+	}
+}
+
+// TestGetRepoPathWithLocalName tests that GetRepoPath uses local_name
+func TestGetRepoPathWithLocalName(t *testing.T) {
+	tests := []struct {
+		name       string
+		repo       *Repo
+		projectDir string
+		want       string
+	}{
+		{
+			name: "uses local_name for path",
+			repo: &Repo{
+				Path:      "repos",
+				Git:       "git@github.com:owner/agent-docs.git",
+				LocalName: "docs",
+			},
+			projectDir: "/home/user/project",
+			want:       "/home/user/project/repos/docs",
+		},
+		{
+			name: "falls back to extracted name without local_name",
+			repo: &Repo{
+				Path: "repos",
+				Git:  "git@github.com:owner/agent-docs.git",
+			},
+			projectDir: "/home/user/project",
+			want:       "/home/user/project/repos/agent-docs",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.repo.GetRepoPath(tt.projectDir)
+			if got != tt.want {
+				t.Errorf("GetRepoPath() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestGetReposWithLocalName tests that GetRepos uses local_name as map key
+func TestGetReposWithLocalName(t *testing.T) {
+	cfg := &Config{
+		Repos: []*Repo{
+			{Path: "repos", Git: "git@github.com:owner/agent-docs.git", LocalName: "docs"},
+			{Path: "repos", Git: "git@github.com:owner/repo2.git"},
+		},
+	}
+
+	repos := cfg.GetRepos()
+
+	if len(repos) != 2 {
+		t.Fatalf("GetRepos() returned %d repos, want 2", len(repos))
+	}
+
+	// Check that local_name is used as key
+	if _, exists := repos["docs"]; !exists {
+		t.Error("GetRepos() should have key 'docs' (from local_name)")
+	}
+
+	// Check that agent-docs does NOT exist as key
+	if _, exists := repos["agent-docs"]; exists {
+		t.Error("GetRepos() should NOT have key 'agent-docs' when local_name is set")
+	}
+
+	// Check that repo2 uses extracted name
+	if _, exists := repos["repo2"]; !exists {
+		t.Error("GetRepos() should have key 'repo2' (extracted from git URL)")
+	}
+}
+
+// TestValidateRepoNames tests duplicate name detection
+func TestValidateRepoNames(t *testing.T) {
+	t.Run("no duplicates", func(t *testing.T) {
+		cfg := &Config{
+			Repos: []*Repo{
+				{Path: "repos", Git: "git@github.com:owner/repo1.git"},
+				{Path: "repos", Git: "git@github.com:owner/repo2.git"},
+			},
+		}
+		if err := cfg.ValidateRepoNames(); err != nil {
+			t.Errorf("ValidateRepoNames() unexpected error: %v", err)
+		}
+	})
+
+	t.Run("duplicate extracted names", func(t *testing.T) {
+		cfg := &Config{
+			Repos: []*Repo{
+				{Path: "repos", Git: "git@github.com:owner/repo.git"},
+				{Path: "repos", Git: "git@gitlab.com:other/repo.git"},
+			},
+		}
+		if err := cfg.ValidateRepoNames(); err == nil {
+			t.Error("ValidateRepoNames() should return error for duplicate names")
+		}
+	})
+
+	t.Run("local_name collision with extracted name", func(t *testing.T) {
+		cfg := &Config{
+			Repos: []*Repo{
+				{Path: "repos", Git: "git@github.com:owner/agent-docs.git", LocalName: "docs"},
+				{Path: "repos", Git: "git@github.com:owner/docs.git"},
+			},
+		}
+		if err := cfg.ValidateRepoNames(); err == nil {
+			t.Error("ValidateRepoNames() should return error when local_name collides with extracted name")
+		}
+	})
+
+	t.Run("duplicate local_names", func(t *testing.T) {
+		cfg := &Config{
+			Repos: []*Repo{
+				{Path: "repos", Git: "git@github.com:owner/repo1.git", LocalName: "same"},
+				{Path: "repos", Git: "git@github.com:owner/repo2.git", LocalName: "same"},
+			},
+		}
+		if err := cfg.ValidateRepoNames(); err == nil {
+			t.Error("ValidateRepoNames() should return error for duplicate local_names")
+		}
+	})
+
+	t.Run("local_name avoids collision", func(t *testing.T) {
+		cfg := &Config{
+			Repos: []*Repo{
+				{Path: "repos", Git: "git@github.com:owner/docs.git", LocalName: "owner-docs"},
+				{Path: "repos", Git: "git@github.com:other/docs.git", LocalName: "other-docs"},
+			},
+		}
+		if err := cfg.ValidateRepoNames(); err != nil {
+			t.Errorf("ValidateRepoNames() unexpected error: %v", err)
+		}
+	})
+}
+
+// TestLoadConfigWithLocalName tests YAML parsing with local_name
+func TestLoadConfigWithLocalName(t *testing.T) {
+	tempDir := t.TempDir()
+
+	configContent := `name: test-project
+repos:
+  - path: repos
+    git: git@github.com:owner/agent-docs.git
+    local_name: docs
+  - path: repos
+    git: git@github.com:owner/another-repo.git
+`
+
+	rampDir := filepath.Join(tempDir, ".ramp")
+	if err := os.MkdirAll(rampDir, 0755); err != nil {
+		t.Fatalf("failed to create .ramp dir: %v", err)
+	}
+
+	configPath := filepath.Join(rampDir, "ramp.yaml")
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+
+	cfg, err := LoadConfig(tempDir)
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v", err)
+	}
+
+	if len(cfg.Repos) != 2 {
+		t.Fatalf("expected 2 repos, got %d", len(cfg.Repos))
+	}
+
+	// Check first repo has local_name
+	if cfg.Repos[0].LocalName != "docs" {
+		t.Errorf("Repos[0].LocalName = %q, want %q", cfg.Repos[0].LocalName, "docs")
+	}
+
+	// Check second repo has empty local_name
+	if cfg.Repos[1].LocalName != "" {
+		t.Errorf("Repos[1].LocalName = %q, want empty string", cfg.Repos[1].LocalName)
+	}
+
+	// Verify Name() works correctly
+	if cfg.Repos[0].Name() != "docs" {
+		t.Errorf("Repos[0].Name() = %q, want %q", cfg.Repos[0].Name(), "docs")
+	}
+	if cfg.Repos[1].Name() != "another-repo" {
+		t.Errorf("Repos[1].Name() = %q, want %q", cfg.Repos[1].Name(), "another-repo")
+	}
+}
+
+// TestSaveConfigWithLocalName tests that SaveConfig preserves local_name
+func TestSaveConfigWithLocalName(t *testing.T) {
+	tempDir := t.TempDir()
+
+	cfg := &Config{
+		Name: "test-project",
+		Repos: []*Repo{
+			{
+				Path:      "repos",
+				Git:       "git@github.com:owner/agent-docs.git",
+				LocalName: "docs",
+			},
+			{
+				Path: "repos",
+				Git:  "git@github.com:owner/another-repo.git",
+			},
+		},
+	}
+
+	// Save
+	if err := SaveConfig(cfg, tempDir); err != nil {
+		t.Fatalf("SaveConfig() error = %v", err)
+	}
+
+	// Load back
+	loaded, err := LoadConfig(tempDir)
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v", err)
+	}
+
+	// Verify local_name was preserved
+	if len(loaded.Repos) != 2 {
+		t.Fatalf("expected 2 repos, got %d", len(loaded.Repos))
+	}
+
+	if loaded.Repos[0].LocalName != "docs" {
+		t.Errorf("Repos[0].LocalName = %q, want %q", loaded.Repos[0].LocalName, "docs")
+	}
+
+	// Second repo should not have local_name
+	if loaded.Repos[1].LocalName != "" {
+		t.Errorf("Repos[1].LocalName = %q, want empty string", loaded.Repos[1].LocalName)
+	}
+
+	// Verify file content has local_name
+	configPath := filepath.Join(tempDir, ".ramp", "ramp.yaml")
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("failed to read config: %v", err)
+	}
+
+	if !contains(string(content), "local_name: docs") {
+		t.Errorf("saved config should contain 'local_name: docs'\nGot:\n%s", string(content))
+	}
+}
+
+// TestLoadConfigRejectsDuplicateNames tests that LoadConfig rejects configs with duplicate repo names
+func TestLoadConfigRejectsDuplicateNames(t *testing.T) {
+	tempDir := t.TempDir()
+
+	configContent := `name: test-project
+repos:
+  - path: repos
+    git: git@github.com:owner/repo.git
+  - path: repos
+    git: git@gitlab.com:other/repo.git
+`
+
+	rampDir := filepath.Join(tempDir, ".ramp")
+	if err := os.MkdirAll(rampDir, 0755); err != nil {
+		t.Fatalf("failed to create .ramp dir: %v", err)
+	}
+
+	configPath := filepath.Join(rampDir, "ramp.yaml")
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+
+	_, err := LoadConfig(tempDir)
+	if err == nil {
+		t.Error("LoadConfig() should return error for duplicate repo names")
+	}
+}

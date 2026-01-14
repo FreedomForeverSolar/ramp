@@ -44,6 +44,7 @@ func (e *EnvFile) UnmarshalYAML(node *yaml.Node) error {
 type Repo struct {
 	Path        string    `yaml:"path"`
 	Git         string    `yaml:"git"`
+	LocalName   string    `yaml:"local_name,omitempty"`
 	AutoRefresh *bool     `yaml:"auto_refresh,omitempty"`
 	EnvFiles    []EnvFile `yaml:"env_files,omitempty"`
 }
@@ -86,7 +87,7 @@ type LocalConfig struct {
 func (c *Config) GetRepos() map[string]*Repo {
 	result := make(map[string]*Repo)
 	for _, repo := range c.Repos {
-		name := extractRepoName(repo.Git)
+		name := repo.Name()
 		result[name] = repo
 	}
 	return result
@@ -154,17 +155,39 @@ func extractRepoName(repoPath string) string {
 			repoPath = parts[1]
 		}
 	}
-	
+
 	// Remove .git suffix
 	repoPath = strings.TrimSuffix(repoPath, ".git")
-	
+
 	// Extract repo name from owner/repo format
 	parts := strings.Split(repoPath, "/")
 	if len(parts) > 0 {
 		return parts[len(parts)-1]
 	}
-	
+
 	return repoPath
+}
+
+// Name returns the effective name for this repository.
+// If LocalName is set, it returns that; otherwise, it extracts the name from the Git URL.
+func (r *Repo) Name() string {
+	if r.LocalName != "" {
+		return r.LocalName
+	}
+	return extractRepoName(r.Git)
+}
+
+// ValidateRepoNames checks that all repository names are unique within the configuration.
+func (c *Config) ValidateRepoNames() error {
+	seen := make(map[string]string)
+	for _, repo := range c.Repos {
+		name := repo.Name()
+		if existingGit, exists := seen[name]; exists {
+			return fmt.Errorf("duplicate repository name %q: both %s and %s resolve to the same name", name, existingGit, repo.Git)
+		}
+		seen[name] = repo.Git
+	}
+	return nil
 }
 
 func LoadConfig(projectDir string) (*Config, error) {
@@ -178,6 +201,10 @@ func LoadConfig(projectDir string) (*Config, error) {
 	var config Config
 	if err := yaml.Unmarshal(data, &config); err != nil {
 		return nil, fmt.Errorf("failed to parse config file %s: %w", configPath, err)
+	}
+
+	if err := config.ValidateRepoNames(); err != nil {
+		return nil, fmt.Errorf("invalid config %s: %w", configPath, err)
 	}
 
 	return &config, nil
@@ -213,8 +240,7 @@ func FindRampProject(startDir string) (string, error) {
 
 // GetRepoPath returns the absolute path where a repository should be located
 func (r *Repo) GetRepoPath(projectDir string) string {
-	repoName := extractRepoName(r.Git)
-	return filepath.Join(projectDir, r.Path, repoName)
+	return filepath.Join(projectDir, r.Path, r.Name())
 }
 
 // GetGitURL returns the git URL for cloning
@@ -270,6 +296,9 @@ func SaveConfig(cfg *Config, projectDir string) error {
 		for _, repo := range cfg.Repos {
 			yamlBuilder.WriteString(fmt.Sprintf("  - path: %s\n", repo.Path))
 			yamlBuilder.WriteString(fmt.Sprintf("    git: %s\n", repo.Git))
+			if repo.LocalName != "" {
+				yamlBuilder.WriteString(fmt.Sprintf("    local_name: %s\n", repo.LocalName))
+			}
 			if repo.AutoRefresh != nil {
 				yamlBuilder.WriteString(fmt.Sprintf("    auto_refresh: %t\n", *repo.AutoRefresh))
 			}
