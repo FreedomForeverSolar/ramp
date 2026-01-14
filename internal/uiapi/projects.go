@@ -147,6 +147,7 @@ func loadProjectFromPath(ref ProjectRef) (*Project, error) {
 			Name:        repoName,
 			Path:        repo.Path,
 			Git:         repo.Git,
+			LocalName:   repo.LocalName,
 			AutoRefresh: autoRefresh,
 		})
 	}

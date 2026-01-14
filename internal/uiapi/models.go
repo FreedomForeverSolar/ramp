@@ -21,6 +21,7 @@ type Repo struct {
 	Name        string `json:"name"`
 	Path        string `json:"path"`
 	Git         string `json:"git"`
+	LocalName   string `json:"localName,omitempty"`
 	AutoRefresh bool   `json:"autoRefresh"`
 }
 

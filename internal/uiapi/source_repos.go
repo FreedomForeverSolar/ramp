@@ -2,7 +2,6 @@ package uiapi
 
 import (
 	"net/http"
-	"strings"
 	"sync"
 
 	"ramp/internal/config"
@@ -11,28 +10,6 @@ import (
 
 	"github.com/gorilla/mux"
 )
-
-// extractRepoName extracts the repository name from a git URL
-func extractRepoName(repoPath string) string {
-	// Handle git@github.com:owner/repo.git format
-	if strings.Contains(repoPath, ":") {
-		parts := strings.Split(repoPath, ":")
-		if len(parts) > 1 {
-			repoPath = parts[1]
-		}
-	}
-
-	// Remove .git suffix
-	repoPath = strings.TrimSuffix(repoPath, ".git")
-
-	// Extract repo name from owner/repo format
-	parts := strings.Split(repoPath, "/")
-	if len(parts) > 0 {
-		return parts[len(parts)-1]
-	}
-
-	return repoPath
-}
 
 // GetSourceRepos returns git status for all source repositories in a project
 func (s *Server) GetSourceRepos(w http.ResponseWriter, r *http.Request) {
@@ -63,7 +40,7 @@ func (s *Server) GetSourceRepos(w http.ResponseWriter, r *http.Request) {
 		go func(idx int, r *config.Repo) {
 			defer wg.Done()
 
-			repoName := extractRepoName(r.Git)
+			repoName := r.Name()
 			repoDir := r.GetRepoPath(ref.Path)
 			status := SourceRepoStatus{
 				Name:        repoName,

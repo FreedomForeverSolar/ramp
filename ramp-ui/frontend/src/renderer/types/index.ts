@@ -17,6 +17,7 @@ export interface Repo {
   name: string;
   path: string;
   git: string;
+  localName?: string;
   autoRefresh: boolean;
 }
 

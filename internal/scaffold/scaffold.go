@@ -98,6 +98,9 @@ trees/
 
 # Port allocations (not committed to git)
 .ramp/port_allocations.json
+
+# Feature metadata (not committed to git)
+.ramp/feature_metadata.json
 `
 
 	if err := os.WriteFile(gitignorePath, []byte(content), 0644); err != nil {
