@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"ramp/internal/config"
+	"ramp/internal/hooks"
 	"ramp/internal/ports"
 )
 
@@ -51,8 +52,16 @@ func RunCommand(opts RunOptions) (*RunResult, error) {
 	commandName := opts.CommandName
 	featureName := opts.FeatureName
 
-	// Find the command in configuration
-	command := cfg.GetCommand(commandName)
+	// Load merged config to support commands from local and user configs
+	mergedCfg, mergeErr := config.LoadMergedConfig(projectDir)
+
+	// Find the command in configuration (try merged config first, fall back to project config)
+	var command *config.Command
+	if mergeErr == nil {
+		command = mergedCfg.GetCommand(commandName)
+	} else {
+		command = cfg.GetCommand(commandName)
+	}
 	if command == nil {
 		return nil, fmt.Errorf("command '%s' not found in configuration", commandName)
 	}
@@ -112,7 +121,33 @@ func RunCommand(opts RunOptions) (*RunResult, error) {
 			CommandName: commandName,
 			ExitCode:    exitCode,
 			Duration:    duration,
-		}, fmt.Errorf("command exited with code %d", exitCode)
+		}, fmt.Errorf("command '%s' failed: exited with code %d", commandName, exitCode)
+	}
+
+	// Execute run hooks (after command success)
+	if mergeErr == nil && len(mergedCfg.Hooks) > 0 {
+		repos := cfg.GetRepos()
+		var allocatedPorts []int
+		var treesDir, workDir string
+
+		if featureName != "" {
+			treesDir = filepath.Join(projectDir, "trees", featureName)
+			workDir = treesDir
+			if cfg.HasPortConfig() {
+				portAllocations, portErr := ports.NewPortAllocations(projectDir, cfg.GetBasePort(), cfg.GetMaxPorts())
+				if portErr == nil {
+					if p, exists := portAllocations.GetPorts(featureName); exists {
+						allocatedPorts = p
+					}
+				}
+			}
+		} else {
+			workDir = projectDir
+		}
+
+		hookEnv := BuildEnvVars(projectDir, treesDir, featureName, allocatedPorts, cfg, repos)
+		hookEnv["RAMP_COMMAND_NAME"] = commandName
+		hooks.ExecuteHooksForCommand(mergedCfg.Hooks, commandName, projectDir, workDir, hookEnv, progress)
 	}
 
 	progress.Complete(fmt.Sprintf("Command '%s' completed successfully", commandName))

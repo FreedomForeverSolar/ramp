@@ -9,6 +9,7 @@ import (
 	"ramp/internal/envfile"
 	"ramp/internal/features"
 	"ramp/internal/git"
+	"ramp/internal/hooks"
 	"ramp/internal/ports"
 )
 
@@ -372,6 +373,13 @@ func Up(opts UpOptions) (*UpResult, error) {
 				progress.Warning(fmt.Sprintf("Failed to save display name: %v", err))
 			}
 		}
+	}
+
+	// Phase 8: Execute up hooks (after setup script)
+	mergedCfg, err := config.LoadMergedConfig(projectDir)
+	if err == nil && len(mergedCfg.Hooks) > 0 {
+		hookEnv := BuildEnvVars(projectDir, treesDir, featureName, allocatedPorts, cfg, repos)
+		hooks.ExecuteHooks(hooks.Up, mergedCfg.Hooks, projectDir, treesDir, hookEnv, progress)
 	}
 
 	progress.Complete(fmt.Sprintf("Feature '%s' created successfully", featureName))

@@ -1,14 +1,15 @@
 # Custom Scripts Guide
 
-This guide covers writing setup, cleanup, and custom command scripts for Ramp.
+This guide covers writing setup, cleanup, custom commands, and hooks for Ramp.
 
 ## Overview
 
-Ramp supports three types of scripts:
+Ramp supports four types of scripts:
 
-1. **Setup scripts** - Run after `ramp up` creates a feature
-2. **Cleanup scripts** - Run before `ramp down` removes a feature
+1. **Setup scripts** - Run once after `ramp up` creates a feature
+2. **Cleanup scripts** - Run once before `ramp down` removes a feature
 3. **Custom commands** - Run on-demand via `ramp run <command>`
+4. **Hooks** - Run automatically at lifecycle events (up, down, run)
 
 All scripts receive the same environment variables and context.
 
@@ -20,6 +21,7 @@ Every script receives these variables:
 RAMP_PROJECT_DIR      # Absolute path to project root
 RAMP_TREES_DIR        # Path to feature's trees directory
 RAMP_WORKTREE_NAME    # Feature name
+RAMP_COMMAND_NAME     # Custom command name (for run hooks only)
 RAMP_PORT             # Allocated port number (if configured)
 RAMP_REPO_PATH_<NAME> # Path to each repository's source
 ```
@@ -30,6 +32,7 @@ RAMP_REPO_PATH_<NAME> # Path to each repository's source
 RAMP_PROJECT_DIR=/home/user/my-project
 RAMP_TREES_DIR=/home/user/my-project/trees/my-feature
 RAMP_WORKTREE_NAME=my-feature
+RAMP_COMMAND_NAME=deploy        # Only set for run hooks
 RAMP_PORT=3000
 RAMP_REPO_PATH_FRONTEND=/home/user/my-project/repos/frontend
 RAMP_REPO_PATH_API=/home/user/my-project/repos/api
@@ -60,13 +63,13 @@ go mod download
 docker run -d \
   --name "db-${RAMP_WORKTREE_NAME}" \
   -e POSTGRES_PASSWORD=dev \
-  -p "$((RAMP_PORT + 32)):5432" \
+  -p "$RAMP_PORT_2:5432" \
   postgres:15
 
 # 3. Generate configuration files
 cat > "$RAMP_TREES_DIR/api/.env" <<EOF
-PORT=$RAMP_PORT
-DATABASE_URL=postgresql://postgres:dev@localhost:$((RAMP_PORT + 32))/myapp
+PORT=$RAMP_PORT_1
+DATABASE_URL=postgresql://postgres:dev@localhost:$RAMP_PORT_2/myapp
 EOF
 
 # 4. Run migrations
@@ -203,8 +206,8 @@ FRONTEND_PID=$!
 # Show URLs
 echo ""
 echo "✅ Development servers started!"
-echo "🔗 API:      http://localhost:$RAMP_PORT"
-echo "🌐 Frontend: http://localhost:$((RAMP_PORT + 1))"
+echo "🔗 API:      http://localhost:$RAMP_PORT_1"
+echo "🌐 Frontend: http://localhost:$RAMP_PORT_2"
 echo ""
 echo "Press Ctrl+C to stop"
 
@@ -233,12 +236,12 @@ echo "🧪 Running tests for feature: $RAMP_WORKTREE_NAME"
 
 # Backend tests
 cd "$RAMP_TREES_DIR/api"
-DATABASE_URL="postgresql://postgres:dev@localhost:$((RAMP_PORT + 32))/test" \
+DATABASE_URL="postgresql://postgres:dev@localhost:$RAMP_PORT_2/test" \
   npm test
 
 # Frontend tests
 cd "$RAMP_TREES_DIR/frontend"
-VITE_API_URL="http://localhost:$RAMP_PORT" \
+VITE_API_URL="http://localhost:$RAMP_PORT_1" \
   npm test
 
 # Integration tests
@@ -291,8 +294,8 @@ check_port() {
   fi
 }
 
-check_port "$RAMP_PORT"
-check_port "$((RAMP_PORT + 1))"
+check_port "$RAMP_PORT_1"
+check_port "$RAMP_PORT_2"
 
 # Summary
 echo ""
@@ -329,6 +332,194 @@ echo "📦 Deploying to $PREVIEW_URL..."
 # Your deployment logic here
 
 echo "✅ Deployed to $PREVIEW_URL"
+```
+
+## Hooks
+
+Hooks are scripts that run automatically at specific lifecycle events. Unlike setup/cleanup scripts (which run once per feature), hooks can be defined at project, local, or user level and execute in sequence.
+
+### Hook Events
+
+- **`up` hooks** - Run after `ramp up` completes (after setup script)
+- **`down` hooks** - Run before `ramp down` starts cleanup (before cleanup script)
+- **`run` hooks** - Run after `ramp run <command>` completes
+
+### Configuration
+
+```yaml
+hooks:
+  - event: up
+    command: scripts/open-ide.sh
+
+  - event: down
+    command: scripts/backup-db.sh
+
+  - event: run
+    command: scripts/notify.sh
+    for: deploy              # Only after 'ramp run deploy'
+```
+
+### Run Hook Filtering
+
+The `for` field filters which commands trigger a `run` hook:
+
+```yaml
+hooks:
+  # Runs after ANY command
+  - event: run
+    command: scripts/log-command.sh
+
+  # Runs only after 'ramp run deploy'
+  - event: run
+    command: scripts/notify-deploy.sh
+    for: deploy
+
+  # Runs after any test command (test-unit, test-e2e, test-integration, etc.)
+  - event: run
+    command: scripts/cleanup-test-data.sh
+    for: test-*
+```
+
+### Hooks vs Setup/Cleanup
+
+| Feature | Setup/Cleanup | Hooks |
+|---------|---------------|-------|
+| **When runs** | Once per feature lifecycle | Every time event occurs |
+| **Configuration** | Single script per project | Multiple scripts, multi-level |
+| **Failure behavior** | Aborts operation | Warns but continues |
+| **Use case** | Core feature dependencies | Personal automation, notifications |
+
+**Use setup/cleanup for:**
+- Installing dependencies
+- Starting/stopping services
+- Creating/destroying databases
+- Critical operations that must succeed
+
+**Use hooks for:**
+- Opening IDEs automatically
+- Sending notifications
+- Logging operations
+- Personal workflow automation
+- Non-critical side effects
+
+### Example: IDE Automation
+
+**Personal local hook** (`.ramp/local.yaml`):
+```yaml
+preferences:
+  RAMP_IDE: vscode
+
+hooks:
+  - event: up
+    command: scripts/open-vscode.sh
+```
+
+**Script** (`.ramp/scripts/open-vscode.sh`):
+```bash
+#!/bin/bash
+# Open feature in VSCode after creation
+
+if [ "$RAMP_IDE" = "vscode" ]; then
+  code "$RAMP_TREES_DIR"
+fi
+```
+
+This hook:
+- Only runs for team members who prefer VSCode
+- Doesn't affect other team members
+- Fails gracefully if VSCode isn't installed (warning, not error)
+
+### Example: Deployment Notifications
+
+**Project hook** (`.ramp/ramp.yaml`):
+```yaml
+hooks:
+  - event: run
+    command: scripts/notify-slack.sh
+    for: deploy
+```
+
+**Script** (`.ramp/scripts/notify-slack.sh`):
+```bash
+#!/bin/bash
+# Notify team when deployment completes
+
+WEBHOOK_URL="https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+
+curl -X POST "$WEBHOOK_URL" \
+  -H 'Content-Type: application/json' \
+  -d "{\"text\": \"Deployed feature $RAMP_WORKTREE_NAME via $RAMP_COMMAND_NAME\"}"
+```
+
+### Example: Test Cleanup
+
+**Project hook** (`.ramp/ramp.yaml`):
+```yaml
+hooks:
+  - event: run
+    command: scripts/cleanup-test-data.sh
+    for: test-*
+```
+
+**Script** (`.ramp/scripts/cleanup-test-data.sh`):
+```bash
+#!/bin/bash
+# Clean up test artifacts after any test command
+
+rm -rf "$RAMP_TREES_DIR"/*/test-output/
+rm -rf "$RAMP_TREES_DIR"/*/coverage/
+
+echo "Cleaned up test artifacts for $RAMP_COMMAND_NAME"
+```
+
+### Multi-Level Hooks
+
+Hooks can be defined at three levels:
+
+**Project** (`.ramp/ramp.yaml`) - Team-wide automation:
+```yaml
+hooks:
+  - event: up
+    command: scripts/team-setup.sh
+```
+
+**Local** (`.ramp/local.yaml`) - Personal project automation:
+```yaml
+hooks:
+  - event: up
+    command: scripts/open-ide.sh
+```
+
+**User** (`~/.config/ramp/ramp.yaml`) - Personal global automation:
+```yaml
+hooks:
+  - event: up
+    command: scripts/start-dashboard.sh  # Runs for ALL projects
+```
+
+**Execution order:** project → local → user
+
+All matching hooks execute in sequence. This allows personal automation without affecting teammates.
+
+### Hook Environment
+
+Run hooks receive `RAMP_COMMAND_NAME`:
+
+```bash
+#!/bin/bash
+# Hook that adapts to different commands
+
+case "$RAMP_COMMAND_NAME" in
+  deploy)
+    echo "Deployment complete for $RAMP_WORKTREE_NAME"
+    ;;
+  test-*)
+    echo "Tests completed: $RAMP_COMMAND_NAME"
+    ;;
+  *)
+    echo "Command completed: $RAMP_COMMAND_NAME"
+    ;;
+esac
 ```
 
 ## Advanced Patterns
@@ -427,9 +618,14 @@ wait_for_port() {
   echo "✅ Port $port is ready"
 }
 
-calculate_port() {
-  local offset=$1
-  echo $((RAMP_PORT + offset))
+get_port() {
+  local service=$1
+  case "$service" in
+    api)        echo $RAMP_PORT_1 ;;
+    db)         echo $RAMP_PORT_2 ;;
+    frontend)   echo $RAMP_PORT_3 ;;
+    *)          echo "Unknown service: $service" >&2; return 1 ;;
+  esac
 }
 ```
 
@@ -439,7 +635,7 @@ calculate_port() {
 
 source "$(dirname "$0")/common.sh"
 
-POSTGRES_PORT=$(calculate_port 32)
+POSTGRES_PORT=$RAMP_PORT_2
 docker run -d -p "$POSTGRES_PORT:5432" postgres
 
 wait_for_port "$POSTGRES_PORT" 60

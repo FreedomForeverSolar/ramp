@@ -38,7 +38,8 @@ cleanup: scripts/cleanup.sh
 default-branch-prefix: feature/
 
 base_port: 3000
-max_ports: 50
+max_ports: 300
+ports_per_feature: 6
 
 commands:
   - name: dev
@@ -58,16 +59,14 @@ commands:
 set -e
 
 echo "🚀 Setting up microservices for feature: $RAMP_WORKTREE_NAME"
-echo "📍 Base port: $RAMP_PORT"
 
-# Calculate service ports from base port
-BASE=$RAMP_PORT
-AUTH_PORT=$((BASE + 1))      # 3001
-USER_PORT=$((BASE + 2))      # 3002
-PAYMENT_PORT=$((BASE + 3))   # 3003
-GATEWAY_PORT=$((BASE + 4))   # 3004
-POSTGRES_PORT=$((BASE + 32)) # 3032
-REDIS_PORT=$((BASE + 79))    # 3079
+# Ports are allocated via ports_per_feature: 6 config
+AUTH_PORT=$RAMP_PORT_1       # 3000
+USER_PORT=$RAMP_PORT_2       # 3001
+PAYMENT_PORT=$RAMP_PORT_3    # 3002
+GATEWAY_PORT=$RAMP_PORT_4    # 3003
+POSTGRES_PORT=$RAMP_PORT_5   # 3004
+REDIS_PORT=$RAMP_PORT_6      # 3005
 
 # Start infrastructure
 echo "🐘 Starting PostgreSQL on port $POSTGRES_PORT..."
@@ -168,12 +167,11 @@ set -e
 
 echo "🚀 Starting all services for feature: $RAMP_WORKTREE_NAME"
 
-# Calculate ports
-BASE=$RAMP_PORT
-AUTH_PORT=$((BASE + 1))
-USER_PORT=$((BASE + 2))
-PAYMENT_PORT=$((BASE + 3))
-GATEWAY_PORT=$((BASE + 4))
+# Ports from ports_per_feature config
+AUTH_PORT=$RAMP_PORT_1
+USER_PORT=$RAMP_PORT_2
+PAYMENT_PORT=$RAMP_PORT_3
+GATEWAY_PORT=$RAMP_PORT_4
 
 # Start all services in background using tmux or separate terminals
 cd "$RAMP_TREES_DIR/auth-service"
@@ -243,7 +241,7 @@ npm test
 
 # Integration tests against the API gateway
 cd "$RAMP_TREES_DIR/api-gateway"
-GATEWAY_URL="http://localhost:$((RAMP_PORT + 4))" npm run integration-test
+GATEWAY_URL="http://localhost:$RAMP_PORT_4" npm run integration-test
 ```
 
 ### Cleanup
@@ -256,17 +254,16 @@ Removes worktrees, branches, and Docker containers.
 
 ## Port Allocation Strategy
 
-Since Ramp allocates **one port per feature**, use a deterministic offset strategy:
+With `ports_per_feature: 6`, Ramp allocates 6 consecutive ports per feature:
 
-| Service | Offset | Example (base=3000) |
-|---------|--------|---------------------|
-| Base | 0 | 3000 |
-| Auth Service | +1 | 3001 |
-| User Service | +2 | 3002 |
-| Payment Service | +3 | 3003 |
-| API Gateway | +4 | 3004 |
-| PostgreSQL | +32 | 3032 |
-| Redis | +79 | 3079 |
+| Service | Variable | Example (base=3000) |
+|---------|----------|---------------------|
+| Auth Service | `$RAMP_PORT_1` | 3000 |
+| User Service | `$RAMP_PORT_2` | 3001 |
+| Payment Service | `$RAMP_PORT_3` | 3002 |
+| API Gateway | `$RAMP_PORT_4` | 3003 |
+| PostgreSQL | `$RAMP_PORT_5` | 3004 |
+| Redis | `$RAMP_PORT_6` | 3005 |
 
 This ensures:
 - Each feature has unique ports
@@ -288,7 +285,7 @@ This ensures:
 ## Best Practices
 
 1. **Use Docker for infrastructure** - Easy to start/stop, isolate between features
-2. **Script port calculations** - Use `$RAMP_PORT` + offsets consistently
+2. **Configure `ports_per_feature`** - Use indexed port variables (`$RAMP_PORT_1`, `$RAMP_PORT_2`, etc.)
 3. **Generate .env files** - Don't commit them, generate per-feature
 4. **Run migrations in setup** - Ensure database schema is ready
 5. **Health checks** - Add to dev script to ensure services are ready

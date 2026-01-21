@@ -8,6 +8,7 @@ import (
 	"ramp/internal/config"
 	"ramp/internal/features"
 	"ramp/internal/git"
+	"ramp/internal/hooks"
 	"ramp/internal/ports"
 )
 
@@ -128,6 +129,25 @@ func Down(opts DownOptions) (*DownResult, error) {
 		}
 	}
 
+	// Get allocated ports for hook environment
+	repos := cfg.GetRepos()
+	var allocatedPorts []int
+	if cfg.HasPortConfig() {
+		portAllocations, err := ports.NewPortAllocations(projectDir, cfg.GetBasePort(), cfg.GetMaxPorts())
+		if err == nil {
+			if p, exists := portAllocations.GetPorts(featureName); exists {
+				allocatedPorts = p
+			}
+		}
+	}
+
+	// Execute down hooks (before cleanup script)
+	mergedCfg, err := config.LoadMergedConfig(projectDir)
+	if err == nil && len(mergedCfg.Hooks) > 0 && treesDirExists {
+		hookEnv := BuildEnvVars(projectDir, treesDir, featureName, allocatedPorts, cfg, repos)
+		hooks.ExecuteHooks(hooks.Down, mergedCfg.Hooks, projectDir, treesDir, hookEnv, progress)
+	}
+
 	// Run cleanup script if configured and directory exists
 	if cfg.Cleanup != "" && treesDirExists {
 		if err := RunCleanupScript(projectDir, treesDir, featureName, cfg, progress); err != nil {
@@ -142,7 +162,6 @@ func Down(opts DownOptions) (*DownResult, error) {
 	}
 
 	// Remove git worktrees and branches
-	repos := cfg.GetRepos()
 	total := len(repos)
 	i := 0
 

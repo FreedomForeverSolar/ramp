@@ -55,6 +55,13 @@ type Command struct {
 	Scope   string `yaml:"scope,omitempty"` // "source", "feature", or empty (both)
 }
 
+// Hook represents a script to execute at a specific lifecycle event.
+type Hook struct {
+	Event   string `yaml:"event"`         // up, down, run
+	Command string `yaml:"command"`       // Path to script relative to .ramp/
+	For     string `yaml:"for,omitempty"` // For run hooks: command name, prefix pattern (e.g., "test-*"), or empty for all
+}
+
 type PromptOption struct {
 	Value string `yaml:"value"`
 	Label string `yaml:"label"`
@@ -74,6 +81,7 @@ type Config struct {
 	Cleanup             string     `yaml:"cleanup,omitempty"`
 	DefaultBranchPrefix string     `yaml:"default-branch-prefix,omitempty"`
 	Commands            []*Command `yaml:"commands,omitempty"`
+	Hooks               []*Hook    `yaml:"hooks,omitempty"`
 	BasePort            int        `yaml:"base_port,omitempty"`
 	MaxPorts            int        `yaml:"max_ports,omitempty"`
 	PortsPerFeature     int        `yaml:"ports_per_feature,omitempty"`
@@ -82,6 +90,8 @@ type Config struct {
 
 type LocalConfig struct {
 	Preferences map[string]string `yaml:"preferences"`
+	Commands    []*Command        `yaml:"commands,omitempty"`
+	Hooks       []*Hook           `yaml:"hooks,omitempty"`
 }
 
 func (c *Config) GetRepos() map[string]*Repo {
@@ -113,6 +123,17 @@ func (c *Config) GetCommandsForScope(scope string) []*Command {
 	for _, cmd := range c.Commands {
 		if cmd.Scope == "" || cmd.Scope == scope {
 			filtered = append(filtered, cmd)
+		}
+	}
+	return filtered
+}
+
+// GetHooksForEvent returns hooks filtered by event type.
+func (c *Config) GetHooksForEvent(event string) []*Hook {
+	var filtered []*Hook
+	for _, hook := range c.Hooks {
+		if hook.Event == event {
+			filtered = append(filtered, hook)
 		}
 	}
 	return filtered
@@ -360,6 +381,18 @@ func SaveConfig(cfg *Config, projectDir string) error {
 			yamlBuilder.WriteString(fmt.Sprintf("    command: %s\n", cmd.Command))
 			if cmd.Scope != "" {
 				yamlBuilder.WriteString(fmt.Sprintf("    scope: %s\n", cmd.Scope))
+			}
+		}
+	}
+
+	// Hooks section
+	if len(cfg.Hooks) > 0 {
+		yamlBuilder.WriteString("\nhooks:\n")
+		for _, hook := range cfg.Hooks {
+			yamlBuilder.WriteString(fmt.Sprintf("  - event: %s\n", hook.Event))
+			yamlBuilder.WriteString(fmt.Sprintf("    command: %s\n", hook.Command))
+			if hook.For != "" {
+				yamlBuilder.WriteString(fmt.Sprintf("    for: %s\n", hook.For))
 			}
 		}
 	}

@@ -81,6 +81,19 @@ commands:
   - name: doctor
     command: scripts/doctor.sh
     scope: source               # Only available for source repos
+
+# Optional: Lifecycle hooks
+hooks:
+  - event: up
+    command: scripts/post-setup-hook.sh
+  - event: down
+    command: scripts/pre-cleanup-hook.sh
+  - event: run
+    command: scripts/notify-on-deploy.sh
+    for: deploy                 # Only runs after 'ramp run deploy'
+  - event: run
+    command: scripts/test-hook.sh
+    for: test-*                 # Runs after any 'ramp run test-*' command
 ```
 
 ## Configuration Fields
@@ -422,6 +435,102 @@ commands:
     scope: feature
 ```
 
+### `hooks` (optional)
+
+Lifecycle hooks allow you to run scripts at specific points during ramp operations. Hooks receive the same environment variables as commands and can be defined at project, local, or user level.
+
+**When hooks execute:**
+- `up` hooks run **after** feature creation (after setup script)
+- `down` hooks run **before** feature deletion (before cleanup script)
+- `run` hooks run **after** custom command execution
+
+**Hook failure behavior:** If a hook script exits with a non-zero code, ramp shows a warning but continues with the operation.
+
+Each hook has:
+
+#### `event` (required)
+
+The lifecycle event when the hook should execute.
+
+Valid events:
+- `up` - Runs after `ramp up` completes (after setup script)
+- `down` - Runs before `ramp down` starts cleanup (before cleanup script)
+- `run` - Runs after `ramp run <command>` completes
+
+```yaml
+hooks:
+  - event: up
+    command: scripts/open-ide.sh
+  - event: down
+    command: scripts/backup-db.sh
+  - event: run
+    command: scripts/notify.sh
+```
+
+#### `command` (required)
+
+Path to script file. Relative to `.ramp/` directory (same as commands).
+
+```yaml
+hooks:
+  - event: up
+    command: scripts/post-setup.sh
+```
+
+#### `for` (optional, run hooks only)
+
+For `run` hooks, filter which commands trigger the hook:
+- **Empty/omitted**: runs after any `ramp run` command
+- **Exact match**: runs only after specific command (e.g., `for: deploy`)
+- **Glob pattern**: runs after matching commands (e.g., `for: test-*`)
+
+```yaml
+hooks:
+  - event: run
+    command: scripts/log-all-commands.sh
+    # No 'for' = runs after ALL commands
+
+  - event: run
+    command: scripts/notify-deploy.sh
+    for: deploy                       # Only after 'ramp run deploy'
+
+  - event: run
+    command: scripts/test-cleanup.sh
+    for: test-*                       # After 'ramp run test-unit', 'test-e2e', etc.
+```
+
+**Common hook patterns:**
+
+```yaml
+hooks:
+  # Open IDE after creating feature
+  - event: up
+    command: scripts/open-vscode.sh
+
+  # Backup databases before deleting feature
+  - event: down
+    command: scripts/backup-feature-db.sh
+
+  # Send Slack notification after deployment
+  - event: run
+    command: scripts/notify-slack.sh
+    for: deploy
+
+  # Clean up test artifacts after any test command
+  - event: run
+    command: scripts/cleanup-test-output.sh
+    for: test-*
+```
+
+**Hooks vs setup/cleanup scripts:**
+- `setup` script: Runs once during `ramp up`, typically for installing dependencies
+- `cleanup` script: Runs once during `ramp down`, typically for stopping services
+- `up` hooks: Additional automation after setup completes (IDE, databases, notifications)
+- `down` hooks: Additional automation before cleanup starts (backups, warnings)
+- `run` hooks: Automation after custom commands (logging, notifications, cleanup)
+
+See the [Custom Scripts Guide](guides/custom-scripts.md) for detailed examples and patterns.
+
 ### `prompts` (optional)
 
 Define interactive prompts to collect team member preferences. Ramp will prompt once per project and store responses in `.ramp/local.yaml` (which is gitignored). These values become environment variables available in scripts and env_files.
@@ -597,9 +706,102 @@ preferences:
 - Prompt variable names must start with `RAMP_` prefix
 - All prompt values are available as environment variables
 
+## Multi-Level Configuration
+
+Ramp supports configuration at three levels, allowing both project-wide and personal customization:
+
+### Configuration Levels
+
+1. **Project Config** - `.ramp/ramp.yaml` (committed to git)
+   - Full configuration including repos, setup, cleanup, ports
+   - Project-wide commands and hooks
+   - Shared by entire team
+
+2. **Local Config** - `.ramp/local.yaml` (gitignored)
+   - Personal preferences from prompts
+   - Personal commands and hooks
+   - Team member-specific customization
+
+3. **User Config** - `~/.config/ramp/ramp.yaml` (global)
+   - Personal commands and hooks that apply to ALL ramp projects
+   - Cannot define repos or project-specific settings
+
+### Merging Rules
+
+**Commands** - First match wins (precedence: project > local > user)
+- If a command named `test` exists in both project and local config, the project version is used
+- Allows projects to override user defaults
+
+**Hooks** - All execute in sequence (order: project → local → user)
+- All matching hooks from all levels execute
+- Project hooks run first, then local hooks, then user hooks
+- Allows personal automation without affecting team
+
+### Example: Personal IDE Hook
+
+**Project config** (`.ramp/ramp.yaml`):
+```yaml
+name: my-project
+repos:
+  - path: repos
+    git: git@github.com:org/api.git
+
+hooks:
+  - event: up
+    command: scripts/start-services.sh
+```
+
+**Local config** (`.ramp/local.yaml`):
+```yaml
+preferences:
+  RAMP_IDE: vscode
+
+hooks:
+  - event: up
+    command: scripts/open-vscode.sh  # Personal IDE automation
+```
+
+**User config** (`~/.config/ramp/ramp.yaml`):
+```yaml
+hooks:
+  - event: up
+    command: scripts/start-dashboard.sh  # Personal dashboard for all projects
+```
+
+**When running `ramp up my-feature`, hooks execute in order:**
+1. `scripts/start-services.sh` (project)
+2. `scripts/open-vscode.sh` (local)
+3. `scripts/start-dashboard.sh` (user)
+
+### Creating User Config
+
+Create `~/.config/ramp/ramp.yaml` for personal automation:
+
+```bash
+mkdir -p ~/.config/ramp
+cat > ~/.config/ramp/ramp.yaml << 'EOF'
+# Personal hooks that apply to all ramp projects
+hooks:
+  - event: up
+    command: scripts/notify-slack.sh
+  - event: down
+    command: scripts/cleanup-logs.sh
+
+# Personal commands available in all projects
+commands:
+  - name: notify
+    command: scripts/send-notification.sh
+EOF
+```
+
+**Notes:**
+- Scripts in user config should use absolute paths or be in PATH
+- User hooks run last, so they can observe the state after project/local hooks
+- Local config merges preferences with commands/hooks (all in `.ramp/local.yaml`)
+
 ## Environment Variables
 
-All scripts (setup, cleanup, custom commands) receive these environment variables:
+All scripts (setup, cleanup, custom commands, hooks) receive these environment variables:
 
 ### Standard Variables
 
@@ -608,6 +810,7 @@ All scripts (setup, cleanup, custom commands) receive these environment variable
 | `RAMP_PROJECT_DIR` | Absolute path to project root | `/home/user/my-project` |
 | `RAMP_TREES_DIR` | Path to feature's trees directory | `/home/user/my-project/trees/my-feature` |
 | `RAMP_WORKTREE_NAME` | Feature name | `my-feature` |
+| `RAMP_COMMAND_NAME` | Custom command name (for `run` hooks only) | `deploy` |
 | `RAMP_PORT` | First allocated port (backward compatible) | `3000` |
 | `RAMP_PORT_1` | First allocated port | `3000` |
 | `RAMP_PORT_2` | Second allocated port (if `ports_per_feature >= 2`) | `3001` |
