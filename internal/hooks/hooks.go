@@ -112,7 +112,13 @@ func runHook(
 	workDir string,
 	env map[string]string,
 ) error {
-	scriptPath := filepath.Join(projectDir, ".ramp", hook.Command)
+	// Support both absolute paths (for user-level hooks) and relative paths
+	var scriptPath string
+	if filepath.IsAbs(hook.Command) {
+		scriptPath = hook.Command
+	} else {
+		scriptPath = filepath.Join(projectDir, ".ramp", hook.Command)
+	}
 
 	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
 		return fmt.Errorf("hook script not found: %s", scriptPath)
