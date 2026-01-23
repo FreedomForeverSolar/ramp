@@ -31,7 +31,8 @@ cleanup: scripts/cleanup.sh
 default-branch-prefix: feature/
 
 base_port: 3000
-max_ports: 30
+max_ports: 90
+ports_per_feature: 3
 
 commands:
   - name: dev
@@ -52,10 +53,10 @@ set -e
 
 echo "🚀 Setting up full-stack feature: $RAMP_WORKTREE_NAME"
 
-# Calculate ports
-BACKEND_PORT=$RAMP_PORT              # 3000
-FRONTEND_PORT=$((RAMP_PORT + 1))     # 3001
-POSTGRES_PORT=$((RAMP_PORT + 32))    # 3032
+# Ports are allocated via ports_per_feature config
+BACKEND_PORT=$RAMP_PORT_1     # 3000
+FRONTEND_PORT=$RAMP_PORT_2    # 3001
+POSTGRES_PORT=$RAMP_PORT_3    # 3002
 
 echo "📦 Installing backend dependencies..."
 cd "$RAMP_TREES_DIR/api-backend"
@@ -139,8 +140,8 @@ cd "$RAMP_TREES_DIR/web-frontend"
 npm run dev &
 FRONTEND_PID=$!
 
-BACKEND_PORT=$RAMP_PORT
-FRONTEND_PORT=$((RAMP_PORT + 1))
+BACKEND_PORT=$RAMP_PORT_1
+FRONTEND_PORT=$RAMP_PORT_2
 
 echo "✅ Servers started!"
 echo ""
@@ -199,7 +200,7 @@ echo "🧪 Running tests for feature: $RAMP_WORKTREE_NAME"
 # Backend tests
 echo "📡 Testing backend..."
 cd "$RAMP_TREES_DIR/api-backend"
-DATABASE_URL="postgresql://postgres:dev@localhost:$((RAMP_PORT + 32))/myapp" npm test
+DATABASE_URL="postgresql://postgres:dev@localhost:$RAMP_PORT_3/myapp" npm test
 
 # Frontend tests
 echo "🎨 Testing frontend..."
@@ -270,12 +271,13 @@ Removes branches, worktrees, database, and feature directory.
 
 ## Port Allocation
 
-| Component | Offset | Example (base=3000) |
-|-----------|--------|---------------------|
-| Backend | 0 | 3000 |
-| Frontend | +1 | 3001 |
-| PostgreSQL | +32 | 3032 |
-| Redis (optional) | +79 | 3079 |
+With `ports_per_feature: 3`, each feature gets 3 consecutive ports:
+
+| Component | Variable | Example (base=3000) |
+|-----------|----------|---------------------|
+| Backend | `$RAMP_PORT_1` | 3000 |
+| Frontend | `$RAMP_PORT_2` | 3001 |
+| PostgreSQL | `$RAMP_PORT_3` | 3002 |
 
 ## Common Patterns
 
@@ -321,7 +323,7 @@ npm run seed
 #!/bin/bash
 # .ramp/scripts/open.sh
 
-FRONTEND_PORT=$((RAMP_PORT + 1))
+FRONTEND_PORT=$RAMP_PORT_2
 
 # macOS
 open "http://localhost:$FRONTEND_PORT"

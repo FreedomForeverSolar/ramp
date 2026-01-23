@@ -40,9 +40,10 @@ For detailed usage, see README or use `--help` flag.
 cmd/              # Cobra CLI commands (root.go, up.go, down.go, etc.)
 cmd/ramp-ui/      # HTTP server entry point for desktop app
 internal/
-  config/         # YAML parsing, project discovery
+  config/         # YAML parsing, project discovery, multi-level config merging
   features/       # Feature metadata (display names)
   git/            # Git operations and worktree management
+  hooks/          # Lifecycle hook execution
   scaffold/       # Project initialization templates
   envfile/        # Environment file processing
   ports/          # Port allocation management
@@ -74,7 +75,21 @@ base_port: 3000            # Optional port management
 commands:                  # Custom commands for 'ramp run'
   - name: open
     command: scripts/open.sh
+hooks:                     # Lifecycle hooks
+  - event: up              # Runs after feature creation
+    command: scripts/post-setup-hook.sh
+  - event: down            # Runs before feature deletion
+    command: scripts/pre-cleanup-hook.sh
+  - event: run             # Runs after command execution
+    command: scripts/notify.sh
+    for: deploy            # Only for 'ramp run deploy'
 ```
+
+**Multi-level configuration:**
+- **Project**: `.ramp/ramp.yaml` (full config, committed to git)
+- **Local**: `.ramp/local.yaml` (preferences + personal commands/hooks, gitignored)
+- **User**: `~/.config/ramp/ramp.yaml` (personal commands/hooks for all projects)
+- **Merging**: Commands use precedence (project > local > user); Hooks all execute (project → local → user)
 
 ### Directory Layout
 ```
@@ -126,9 +141,11 @@ progress.Success("Done")
 
 ### `internal/config/`
 Configuration management and project discovery.
-- `Config`, `Repo`, `EnvFile`, `Prompt`, `LocalConfig` types
+- `Config`, `Repo`, `EnvFile`, `Prompt`, `LocalConfig`, `Hook`, `UserConfig` types
+- `MergedConfig` - Merged project/local/user config with command precedence and hook aggregation
 - `FindRampProject()` - Recursively searches for `.ramp/ramp.yaml`
-- `LoadConfig()`, `SaveConfig()` - YAML persistence
+- `LoadConfig()`, `LoadLocalConfig()`, `LoadUserConfig()` - YAML persistence
+- `LoadMergedConfig()` - Loads and merges all three config levels
 - `DetectFeatureFromWorkingDir()` - Auto-detect current feature
 
 ### `internal/features/`
@@ -137,6 +154,13 @@ Feature metadata management (display names, etc.):
 - `GetDisplayName()`, `SetDisplayName()` - Read/write display names
 - `RemoveFeature()` - Clean up metadata when feature is deleted
 - `ListMetadata()` - Get all feature metadata
+
+### `internal/hooks/`
+Lifecycle hook execution:
+- `ExecuteHooks()` - Runs hooks for an event (up, down, run)
+- `ExecuteHooksForCommand()` - Runs filtered run hooks matching command name
+- `HookEvent` constants - `Up`, `Down`, `Run`
+- Hook failure behavior: warns but continues operation
 
 ### `internal/git/`
 Git operations with two variants for each operation:
@@ -179,10 +203,11 @@ REST API and WebSocket handlers for the desktop app:
 
 ## Environment Variables
 
-Scripts receive these variables:
+Scripts and hooks receive these variables:
 - `RAMP_PROJECT_DIR` - Project root
 - `RAMP_TREES_DIR` - Feature trees directory
 - `RAMP_WORKTREE_NAME` - Feature name
+- `RAMP_COMMAND_NAME` - Command name (for `run` hooks only)
 - `RAMP_PORT` - Allocated port (if configured)
 - `RAMP_REPO_PATH_<REPO>` - Path to each repo (uppercase, underscores)
 - Custom variables from `prompts` configuration
