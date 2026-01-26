@@ -8,8 +8,7 @@ git:
 
 before:
   hooks:
-    # Run tests before building
-    - go test ./...
+    # Tests run in the 'test' job before GoReleaser (release workflow has needs: test)
     - go mod tidy
 
 builds:
