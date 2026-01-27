@@ -18,6 +18,7 @@ type MockProgressReporter struct {
 func (m *MockProgressReporter) Start(message string)                        { m.Messages = append(m.Messages, "start: "+message) }
 func (m *MockProgressReporter) Update(message string)                       { m.Messages = append(m.Messages, "update: "+message) }
 func (m *MockProgressReporter) UpdateWithProgress(message string, pct int)  { m.Messages = append(m.Messages, "progress: "+message) }
+func (m *MockProgressReporter) Stop()                                       { m.Messages = append(m.Messages, "stop") }
 func (m *MockProgressReporter) Success(message string)                      { m.Messages = append(m.Messages, "success: "+message) }
 func (m *MockProgressReporter) Error(message string)                        { m.Messages = append(m.Messages, "error: "+message) }
 func (m *MockProgressReporter) Warning(message string)                      { m.Messages = append(m.Messages, "warning: "+message) }

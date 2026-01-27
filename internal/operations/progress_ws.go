@@ -54,6 +54,10 @@ func (r *WSProgressReporter) UpdateWithProgress(message string, percentage int) 
 	r.broadcast(WSMessage{Type: "progress", Operation: r.operation, Message: message, Percentage: percentage, Target: r.target, Command: r.command})
 }
 
+func (r *WSProgressReporter) Stop() {
+	// No-op for WebSocket - there's no spinner to stop
+}
+
 func (r *WSProgressReporter) Success(message string) {
 	r.broadcast(WSMessage{Type: "progress", Operation: r.operation, Message: message, Target: r.target, Command: r.command})
 }

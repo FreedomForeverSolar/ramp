@@ -27,6 +27,10 @@ func (r *CLIProgressReporter) UpdateWithProgress(message string, _ int) {
 	r.progress.Update(message)
 }
 
+func (r *CLIProgressReporter) Stop() {
+	r.progress.Stop()
+}
+
 func (r *CLIProgressReporter) Success(message string) {
 	r.progress.Success(message)
 }

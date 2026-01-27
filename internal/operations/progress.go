@@ -13,6 +13,10 @@ type ProgressReporter interface {
 	// CLI implementations may ignore the percentage.
 	UpdateWithProgress(message string, percentage int)
 
+	// Stop halts progress indication without a status message.
+	// Use this before streaming command output to avoid visual conflicts.
+	Stop()
+
 	// Success ends the current phase successfully.
 	Success(message string)
 
