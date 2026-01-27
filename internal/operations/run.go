@@ -185,11 +185,11 @@ func runInFeature(opts RunOptions, scriptPath, treesDir string) (int, error) {
 		}
 	}
 
-	// Add repo path variables
+	// Add repo path variables (use worktree paths in feature mode)
 	repos := cfg.GetRepos()
-	for name, repo := range repos {
+	for name := range repos {
 		envVarName := config.GenerateEnvVarName(name)
-		repoPath := repo.GetRepoPath(projectDir)
+		repoPath := filepath.Join(treesDir, name)
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", envVarName, repoPath))
 	}
 
@@ -200,6 +200,9 @@ func runInFeature(opts RunOptions, scriptPath, treesDir string) (int, error) {
 			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", key, value))
 		}
 	}
+
+	// Stop spinner before streaming output to avoid visual conflicts
+	opts.Progress.Stop()
 
 	return executeWithStreaming(cmd, opts.Output, opts.Cancel, opts.ProcessCallback)
 }
@@ -234,6 +237,9 @@ func runInSource(opts RunOptions, scriptPath string) (int, error) {
 			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", key, value))
 		}
 	}
+
+	// Stop spinner before streaming output to avoid visual conflicts
+	opts.Progress.Stop()
 
 	return executeWithStreaming(cmd, opts.Output, opts.Cancel, opts.ProcessCallback)
 }

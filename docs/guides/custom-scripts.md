@@ -23,17 +23,25 @@ RAMP_TREES_DIR        # Path to feature's trees directory
 RAMP_WORKTREE_NAME    # Feature name
 RAMP_COMMAND_NAME     # Custom command name (for run hooks only)
 RAMP_PORT             # Allocated port number (if configured)
-RAMP_REPO_PATH_<NAME> # Path to each repository's source
+RAMP_REPO_PATH_<NAME> # Path to each repository (context-dependent)
 ```
 
 ### Example Values
 
+**Feature mode** (running against a feature worktree):
 ```bash
 RAMP_PROJECT_DIR=/home/user/my-project
 RAMP_TREES_DIR=/home/user/my-project/trees/my-feature
 RAMP_WORKTREE_NAME=my-feature
 RAMP_COMMAND_NAME=deploy        # Only set for run hooks
 RAMP_PORT=3000
+RAMP_REPO_PATH_FRONTEND=/home/user/my-project/trees/my-feature/frontend
+RAMP_REPO_PATH_API=/home/user/my-project/trees/my-feature/api
+```
+
+**Source mode** (running against source repos, no feature):
+```bash
+RAMP_PROJECT_DIR=/home/user/my-project
 RAMP_REPO_PATH_FRONTEND=/home/user/my-project/repos/frontend
 RAMP_REPO_PATH_API=/home/user/my-project/repos/api
 ```

@@ -827,6 +827,10 @@ repos:
   - git: git@github.com:org/shared-lib.git    # RAMP_REPO_PATH_SHARED_LIB
 ```
 
+The path depends on context:
+- **Feature mode**: Points to the worktree path (`trees/<feature>/<repo>`)
+- **Source mode**: Points to the source path (`repos/<repo>`)
+
 Repository names are converted to valid environment variable names:
 1. Extract name from git URL (last path segment before `.git`)
 2. Convert to uppercase
