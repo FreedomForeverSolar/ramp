@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -39,7 +40,7 @@ Example:
 
 		if err := runCustomCommand(commandName, featureName); err != nil {
 			// Don't print error for intentional cancellation (Ctrl+C)
-			if err == operations.ErrCommandCancelled {
+			if errors.Is(err, operations.ErrCommandCancelled) {
 				os.Exit(130) // Standard exit code for SIGINT (128 + 2)
 			}
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -98,10 +99,18 @@ func runCustomCommand(commandName, featureName string) error {
 	// Create cancel channel to signal command termination
 	cancel := make(chan struct{})
 
+	// Done channel to clean up signal goroutine on normal exit
+	done := make(chan struct{})
+	defer close(done)
+
 	// Handle signals in goroutine
 	go func() {
-		<-sigChan
-		close(cancel)
+		select {
+		case <-sigChan:
+			close(cancel)
+		case <-done:
+			// Command completed normally, exit goroutine
+		}
 	}()
 
 	// Use shared operations.RunCommand for consistent behavior with UI
