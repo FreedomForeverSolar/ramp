@@ -107,7 +107,10 @@ func RunCommand(opts RunOptions) (*RunResult, error) {
 	duration := time.Since(start)
 
 	if err != nil {
-		progress.Error(fmt.Sprintf("Command '%s' failed: %v", commandName, err))
+		// Don't show error message for intentional cancellation
+		if !errors.Is(err, ErrCommandCancelled) {
+			progress.Error(fmt.Sprintf("Command '%s' failed: %v", commandName, err))
+		}
 		return &RunResult{
 			CommandName: commandName,
 			ExitCode:    exitCode,
@@ -314,12 +317,19 @@ func executeWithStreaming(cmd *exec.Cmd, output OutputStreamer, cancel <-chan st
 		return 0, nil
 
 	case <-cancel:
-		// Kill entire process group with SIGKILL
-		// Negative PID kills all processes in the process group
-		syscall.Kill(-pgid, syscall.SIGKILL)
+		// Send SIGTERM first to allow graceful shutdown (trap handlers)
+		// Negative PID sends signal to all processes in the process group
+		syscall.Kill(-pgid, syscall.SIGTERM)
 
-		// Wait for the process to actually terminate
-		<-resultCh
+		// Wait up to 5 seconds for graceful termination
+		select {
+		case <-resultCh:
+			// Process exited gracefully
+		case <-time.After(5 * time.Second):
+			// Force kill if still running
+			syscall.Kill(-pgid, syscall.SIGKILL)
+			<-resultCh
+		}
 
 		return -1, ErrCommandCancelled
 	}
