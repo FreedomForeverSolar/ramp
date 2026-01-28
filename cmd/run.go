@@ -3,7 +3,9 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	"github.com/spf13/cobra"
 
@@ -36,6 +38,10 @@ Example:
 		}
 
 		if err := runCustomCommand(commandName, featureName); err != nil {
+			// Don't print error for intentional cancellation (Ctrl+C)
+			if err == operations.ErrCommandCancelled {
+				os.Exit(130) // Standard exit code for SIGINT (128 + 2)
+			}
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -84,6 +90,20 @@ func runCustomCommand(commandName, featureName string) error {
 		}
 	}
 
+	// Set up signal handling for graceful shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(sigChan)
+
+	// Create cancel channel to signal command termination
+	cancel := make(chan struct{})
+
+	// Handle signals in goroutine
+	go func() {
+		<-sigChan
+		close(cancel)
+	}()
+
 	// Use shared operations.RunCommand for consistent behavior with UI
 	// This ensures hooks execute for both CLI and UI
 	_, err = operations.RunCommand(operations.RunOptions{
@@ -93,6 +113,7 @@ func runCustomCommand(commandName, featureName string) error {
 		FeatureName: featureName,
 		Progress:    operations.NewCLIProgressReporter(),
 		Output:      &operations.CLIOutputStreamer{},
+		Cancel:      cancel,
 	})
 
 	return err
