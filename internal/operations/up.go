@@ -319,7 +319,7 @@ func Up(opts UpOptions) (*UpResult, error) {
 	if HasEnvFiles(repos) {
 		progress.UpdateWithProgress("Processing environment files...", 65)
 
-		envVars := BuildEnvVars(projectDir, treesDir, featureName, allocatedPorts, cfg, repos)
+		envVars := BuildEnvVars(projectDir, treesDir, featureName, opts.DisplayName, allocatedPorts, cfg, repos)
 
 		for name, repo := range repos {
 			if len(repo.EnvFiles) > 0 {
@@ -348,7 +348,7 @@ func Up(opts UpOptions) (*UpResult, error) {
 	if cfg.Setup != "" {
 		progress.UpdateWithProgress("Running setup script...", 80)
 
-		if err := RunSetupScript(projectDir, treesDir, featureName, cfg, allocatedPorts, repos, progress, opts.Output); err != nil {
+		if err := RunSetupScript(projectDir, treesDir, featureName, opts.DisplayName, cfg, allocatedPorts, repos, progress, opts.Output); err != nil {
 			progress.Error("Setup script failed")
 			for _, state := range states {
 				state.setupRan = true
@@ -378,7 +378,7 @@ func Up(opts UpOptions) (*UpResult, error) {
 	// Phase 8: Execute up hooks (after setup script)
 	mergedCfg, err := config.LoadMergedConfig(projectDir)
 	if err == nil && len(mergedCfg.Hooks) > 0 {
-		hookEnv := BuildEnvVars(projectDir, treesDir, featureName, allocatedPorts, cfg, repos)
+		hookEnv := BuildEnvVars(projectDir, treesDir, featureName, opts.DisplayName, allocatedPorts, cfg, repos)
 		hooks.ExecuteHooks(hooks.Up, mergedCfg.Hooks, projectDir, treesDir, hookEnv, progress)
 	}
 

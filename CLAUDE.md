@@ -207,6 +207,7 @@ Scripts and hooks receive these variables:
 - `RAMP_PROJECT_DIR` - Project root
 - `RAMP_TREES_DIR` - Feature trees directory
 - `RAMP_WORKTREE_NAME` - Feature name
+- `RAMP_DISPLAY_NAME` - Human-readable display name (if set via `--name` flag)
 - `RAMP_COMMAND_NAME` - Command name (for `run` hooks only)
 - `RAMP_PORT` - Allocated port (if configured)
 - `RAMP_REPO_PATH_<REPO>` - Path to each repo (uppercase, underscores)

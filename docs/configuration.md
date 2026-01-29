@@ -810,6 +810,7 @@ All scripts (setup, cleanup, custom commands, hooks) receive these environment v
 | `RAMP_PROJECT_DIR` | Absolute path to project root | `/home/user/my-project` |
 | `RAMP_TREES_DIR` | Path to feature's trees directory | `/home/user/my-project/trees/my-feature` |
 | `RAMP_WORKTREE_NAME` | Feature name | `my-feature` |
+| `RAMP_DISPLAY_NAME` | Human-readable display name (if set via `--name` flag) | `My Feature` |
 | `RAMP_COMMAND_NAME` | Custom command name (for `run` hooks only) | `deploy` |
 | `RAMP_PORT` | First allocated port (backward compatible) | `3000` |
 | `RAMP_PORT_1` | First allocated port | `3000` |

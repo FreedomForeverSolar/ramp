@@ -14,7 +14,7 @@ import (
 
 // RunSetupScript runs the setup script for a feature with progress reporting.
 // If output is provided, stdout/stderr will be streamed via the OutputStreamer.
-func RunSetupScript(projectDir, treesDir, featureName string, cfg *config.Config, allocatedPorts []int, repos map[string]*config.Repo, progress ProgressReporter, output OutputStreamer) error {
+func RunSetupScript(projectDir, treesDir, featureName, displayName string, cfg *config.Config, allocatedPorts []int, repos map[string]*config.Repo, progress ProgressReporter, output OutputStreamer) error {
 	if cfg.Setup == "" {
 		return nil
 	}
@@ -33,7 +33,7 @@ func RunSetupScript(projectDir, treesDir, featureName string, cfg *config.Config
 	cmd.Dir = treesDir
 
 	// Set up environment variables
-	cmd.Env = buildScriptEnv(projectDir, treesDir, featureName, allocatedPorts, cfg, repos)
+	cmd.Env = BuildScriptEnv(projectDir, treesDir, featureName, displayName, allocatedPorts, cfg, repos)
 
 	// If output streamer provided, stream output in real-time
 	if output != nil {
@@ -52,7 +52,7 @@ func RunSetupScript(projectDir, treesDir, featureName string, cfg *config.Config
 }
 
 // RunCleanupScript runs the cleanup script for a feature with progress reporting.
-func RunCleanupScript(projectDir, treesDir, featureName string, cfg *config.Config, progress ProgressReporter) error {
+func RunCleanupScript(projectDir, treesDir, featureName, displayName string, cfg *config.Config, progress ProgressReporter) error {
 	if cfg.Cleanup == "" {
 		return nil
 	}
@@ -84,44 +84,9 @@ func RunCleanupScript(projectDir, treesDir, featureName string, cfg *config.Conf
 	repos := cfg.GetRepos()
 
 	// Set up environment variables
-	cmd.Env = buildScriptEnv(projectDir, treesDir, featureName, allocatedPorts, cfg, repos)
+	cmd.Env = BuildScriptEnv(projectDir, treesDir, featureName, displayName, allocatedPorts, cfg, repos)
 
 	return runScriptWithCapture(cmd)
-}
-
-// buildScriptEnv builds the environment variables for script execution.
-func buildScriptEnv(projectDir, treesDir, featureName string, allocatedPorts []int, cfg *config.Config, repos map[string]*config.Repo) []string {
-	env := os.Environ()
-
-	// Standard RAMP variables
-	env = append(env, fmt.Sprintf("RAMP_PROJECT_DIR=%s", projectDir))
-	env = append(env, fmt.Sprintf("RAMP_TREES_DIR=%s", treesDir))
-	env = append(env, fmt.Sprintf("RAMP_WORKTREE_NAME=%s", featureName))
-
-	// Add port environment variables if configured
-	if cfg.HasPortConfig() && len(allocatedPorts) > 0 {
-		env = append(env, fmt.Sprintf("RAMP_PORT=%d", allocatedPorts[0]))
-		for i, port := range allocatedPorts {
-			env = append(env, fmt.Sprintf("RAMP_PORT_%d=%d", i+1, port))
-		}
-	}
-
-	// Add repo path variables
-	for name, repo := range repos {
-		envVarName := config.GenerateEnvVarName(name)
-		repoPath := repo.GetRepoPath(projectDir)
-		env = append(env, fmt.Sprintf("%s=%s", envVarName, repoPath))
-	}
-
-	// Add local config environment variables
-	localCfg, err := config.LoadLocalConfig(projectDir)
-	if err == nil && localCfg != nil {
-		for key, value := range localCfg.Preferences {
-			env = append(env, fmt.Sprintf("%s=%s", key, value))
-		}
-	}
-
-	return env
 }
 
 // runScriptWithCapture runs a script, showing output only on error (unless verbose mode).

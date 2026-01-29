@@ -132,10 +132,12 @@ func RunCommand(opts RunOptions) (*RunResult, error) {
 		repos := cfg.GetRepos()
 		var allocatedPorts []int
 		var treesDir, workDir string
+		displayName := ""
 
 		if featureName != "" {
 			treesDir = filepath.Join(projectDir, "trees", featureName)
 			workDir = treesDir
+			displayName = LoadDisplayName(projectDir, featureName)
 			if cfg.HasPortConfig() {
 				portAllocations, portErr := ports.NewPortAllocations(projectDir, cfg.GetBasePort(), cfg.GetMaxPorts())
 				if portErr == nil {
@@ -148,7 +150,7 @@ func RunCommand(opts RunOptions) (*RunResult, error) {
 			workDir = projectDir
 		}
 
-		hookEnv := BuildEnvVars(projectDir, treesDir, featureName, allocatedPorts, cfg, repos)
+		hookEnv := BuildEnvVars(projectDir, treesDir, featureName, displayName, allocatedPorts, cfg, repos)
 		hookEnv["RAMP_COMMAND_NAME"] = commandName
 		hooks.ExecuteHooksForCommand(mergedCfg.Hooks, commandName, projectDir, workDir, hookEnv, progress)
 	}
@@ -167,41 +169,31 @@ func runInFeature(opts RunOptions, scriptPath, treesDir string) (int, error) {
 	projectDir := opts.ProjectDir
 	cfg := opts.Config
 	featureName := opts.FeatureName
+	displayName := LoadDisplayName(projectDir, featureName)
+
+	// Get allocated ports
+	var allocatedPorts []int
+	portAllocations, err := ports.NewPortAllocations(projectDir, cfg.GetBasePort(), cfg.GetMaxPorts())
+	if err == nil {
+		if p, exists := portAllocations.GetPorts(featureName); exists {
+			allocatedPorts = p
+		}
+	}
 
 	// Use login shell (-l) to source user's profile and get full PATH
 	// This ensures tools like bun, node, etc. are available in GUI environments
 	cmd := exec.Command("/bin/bash", "-l", scriptPath)
 	cmd.Dir = treesDir
 
-	// Build environment variables
-	cmd.Env = append(os.Environ(),
-		fmt.Sprintf("RAMP_PROJECT_DIR=%s", projectDir),
-		fmt.Sprintf("RAMP_TREES_DIR=%s", treesDir),
-		fmt.Sprintf("RAMP_WORKTREE_NAME=%s", featureName),
-	)
-
-	// Add port environment variables
-	portAllocations, err := ports.NewPortAllocations(projectDir, cfg.GetBasePort(), cfg.GetMaxPorts())
-	if err == nil {
-		if allocatedPorts, exists := portAllocations.GetPorts(featureName); exists {
-			addPortEnvVars(cmd, allocatedPorts)
-		}
-	}
-
-	// Add repo path variables (use worktree paths in feature mode)
+	// Build environment variables using the standard builder, but override repo paths for worktrees
 	repos := cfg.GetRepos()
+	cmd.Env = BuildScriptEnv(projectDir, treesDir, featureName, displayName, allocatedPorts, cfg, repos)
+
+	// Override repo paths to use worktree paths instead of source paths
 	for name := range repos {
 		envVarName := config.GenerateEnvVarName(name)
 		repoPath := filepath.Join(treesDir, name)
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", envVarName, repoPath))
-	}
-
-	// Add local config environment variables
-	localEnvVars, err := GetLocalEnvVars(projectDir)
-	if err == nil {
-		for key, value := range localEnvVars {
-			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", key, value))
-		}
 	}
 
 	// Stop spinner before streaming output to avoid visual conflicts
@@ -332,20 +324,5 @@ func executeWithStreaming(cmd *exec.Cmd, output OutputStreamer, cancel <-chan st
 		}
 
 		return -1, ErrCommandCancelled
-	}
-}
-
-// addPortEnvVars adds port environment variables to a command.
-func addPortEnvVars(cmd *exec.Cmd, ports []int) {
-	if len(ports) == 0 {
-		return
-	}
-
-	// Set RAMP_PORT to first port (backward compatibility)
-	cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_PORT=%d", ports[0]))
-
-	// Set indexed ports (RAMP_PORT_1, RAMP_PORT_2, etc.)
-	for i, port := range ports {
-		cmd.Env = append(cmd.Env, fmt.Sprintf("RAMP_PORT_%d=%d", i+1, port))
 	}
 }

@@ -141,16 +141,23 @@ func Down(opts DownOptions) (*DownResult, error) {
 		}
 	}
 
+	// Load metadata store - used for display name and cleanup
+	metadataStore, metaErr := features.NewMetadataStore(projectDir)
+	displayName := ""
+	if metaErr == nil {
+		displayName = metadataStore.GetDisplayName(featureName)
+	}
+
 	// Execute down hooks (before cleanup script)
 	mergedCfg, err := config.LoadMergedConfig(projectDir)
 	if err == nil && len(mergedCfg.Hooks) > 0 && treesDirExists {
-		hookEnv := BuildEnvVars(projectDir, treesDir, featureName, allocatedPorts, cfg, repos)
+		hookEnv := BuildEnvVars(projectDir, treesDir, featureName, displayName, allocatedPorts, cfg, repos)
 		hooks.ExecuteHooks(hooks.Down, mergedCfg.Hooks, projectDir, treesDir, hookEnv, progress)
 	}
 
 	// Run cleanup script if configured and directory exists
 	if cfg.Cleanup != "" && treesDirExists {
-		if err := RunCleanupScript(projectDir, treesDir, featureName, cfg, progress); err != nil {
+		if err := RunCleanupScript(projectDir, treesDir, featureName, displayName, cfg, progress); err != nil {
 			progress.Warning(fmt.Sprintf("Cleanup script failed: %v", err))
 		}
 	}
@@ -228,9 +235,8 @@ func Down(opts DownOptions) (*DownResult, error) {
 	}
 
 	// Remove feature metadata (display name, etc.)
-	metadataStore, err := features.NewMetadataStore(projectDir)
-	if err != nil {
-		progress.Warning(fmt.Sprintf("Failed to initialize metadata store for cleanup: %v", err))
+	if metaErr != nil {
+		progress.Warning(fmt.Sprintf("Failed to initialize metadata store for cleanup: %v", metaErr))
 	} else {
 		if err := metadataStore.RemoveFeature(featureName); err != nil {
 			progress.Warning(fmt.Sprintf("Failed to remove feature metadata: %v", err))
