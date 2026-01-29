@@ -35,7 +35,7 @@ brew install freedomforeversolar/tools/ramp
 git clone https://github.com/FreedomForeverSolar/ramp.git
 cd ramp
 go build -o ramp .
-sudo ./install.sh
+./install.sh
 ```
 
 ### Auto-Updates
@@ -156,6 +156,7 @@ commands:
 Scripts receive environment variables for automation:
 - `RAMP_PORT` - Unique port for this feature
 - `RAMP_TREES_DIR` - Feature workspace path
+- `RAMP_DISPLAY_NAME` - Human-readable name (if set via `--name`)
 - `RAMP_REPO_PATH_<NAME>` - Path to each repository
 
 See [docs/configuration.md](docs/configuration.md) for full reference.

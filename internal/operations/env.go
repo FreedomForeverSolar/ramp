@@ -2,18 +2,31 @@ package operations
 
 import (
 	"fmt"
+	"os"
 
 	"ramp/internal/config"
+	"ramp/internal/features"
 )
 
+// LoadDisplayName loads the display name for a feature from metadata.
+// Returns empty string if no display name is set or if there's an error.
+func LoadDisplayName(projectDir, featureName string) string {
+	metadataStore, err := features.NewMetadataStore(projectDir)
+	if err != nil {
+		return ""
+	}
+	return metadataStore.GetDisplayName(featureName)
+}
+
 // BuildEnvVars builds the environment variables map for env file processing and script execution.
-func BuildEnvVars(projectDir, treesDir, featureName string, allocatedPorts []int, cfg *config.Config, repos map[string]*config.Repo) map[string]string {
+func BuildEnvVars(projectDir, treesDir, featureName, displayName string, allocatedPorts []int, cfg *config.Config, repos map[string]*config.Repo) map[string]string {
 	envVars := make(map[string]string)
 
 	// Standard RAMP variables
 	envVars["RAMP_PROJECT_DIR"] = projectDir
 	envVars["RAMP_TREES_DIR"] = treesDir
 	envVars["RAMP_WORKTREE_NAME"] = featureName
+	envVars["RAMP_DISPLAY_NAME"] = displayName
 
 	// Add port variables if configured
 	if cfg.HasPortConfig() && len(allocatedPorts) > 0 {
@@ -64,4 +77,15 @@ func GetLocalEnvVars(projectDir string) (map[string]string, error) {
 	}
 
 	return localCfg.Preferences, nil
+}
+
+// BuildScriptEnv builds the environment variables for script execution as a slice.
+// This wraps BuildEnvVars and converts the result to the format expected by exec.Cmd.Env.
+func BuildScriptEnv(projectDir, treesDir, featureName, displayName string, allocatedPorts []int, cfg *config.Config, repos map[string]*config.Repo) []string {
+	env := os.Environ()
+	envVars := BuildEnvVars(projectDir, treesDir, featureName, displayName, allocatedPorts, cfg, repos)
+	for key, value := range envVars {
+		env = append(env, fmt.Sprintf("%s=%s", key, value))
+	}
+	return env
 }
