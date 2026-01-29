@@ -338,3 +338,147 @@ func TestLocalConfigYAMLFormat(t *testing.T) {
 		t.Error("local.yaml should contain 'vscode' value")
 	}
 }
+
+// TestEnsureLocalConfigNonInteractive tests the non-interactive mode behavior
+// In non-interactive mode, EnsureLocalConfig should always succeed (skip prompts)
+func TestEnsureLocalConfigNonInteractive(t *testing.T) {
+	tests := []struct {
+		name        string
+		hasPrompts  bool
+		hasLocalCfg bool
+	}{
+		{
+			name:        "prompts defined, no local config - should skip and succeed",
+			hasPrompts:  true,
+			hasLocalCfg: false,
+		},
+		{
+			name:        "prompts defined, has local config - should succeed",
+			hasPrompts:  true,
+			hasLocalCfg: true,
+		},
+		{
+			name:        "no prompts, no local config - should succeed",
+			hasPrompts:  false,
+			hasLocalCfg: false,
+		},
+		{
+			name:        "no prompts, has local config - should succeed",
+			hasPrompts:  false,
+			hasLocalCfg: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tp := NewTestProject(t)
+			cleanup := tp.ChangeToProjectDir()
+			defer cleanup()
+
+			// Enable non-interactive mode
+			origNonInteractive := NonInteractive
+			NonInteractive = true
+			defer func() { NonInteractive = origNonInteractive }()
+
+			// Set up prompts if needed
+			cfg, err := config.LoadConfig(tp.Dir)
+			if err != nil {
+				t.Fatalf("LoadConfig failed: %v", err)
+			}
+
+			if tt.hasPrompts {
+				cfg.Prompts = []*config.Prompt{
+					{
+						Name:     "RAMP_IDE",
+						Question: "IDE?",
+						Options: []*config.PromptOption{
+							{Value: "vscode", Label: "VSCode"},
+						},
+						Default: "vscode",
+					},
+				}
+
+				if err := config.SaveConfig(cfg, tp.Dir); err != nil {
+					t.Fatalf("SaveConfig failed: %v", err)
+				}
+				// Reload config after save
+				cfg, _ = config.LoadConfig(tp.Dir)
+			}
+
+			// Set up local config if needed
+			if tt.hasLocalCfg {
+				localCfg := &config.LocalConfig{
+					Preferences: map[string]string{"RAMP_IDE": "vscode"},
+				}
+				if err := config.SaveLocalConfig(localCfg, tp.Dir); err != nil {
+					t.Fatalf("SaveLocalConfig failed: %v", err)
+				}
+			}
+
+			// Test EnsureLocalConfig - should always succeed in non-interactive mode
+			err = EnsureLocalConfig(tp.Dir, cfg)
+			if err != nil {
+				t.Errorf("EnsureLocalConfig returned unexpected error: %v", err)
+			}
+
+			// Verify no local.yaml was created if it didn't exist
+			if !tt.hasLocalCfg {
+				localCfg, _ := config.LoadLocalConfig(tp.Dir)
+				if localCfg != nil {
+					t.Error("local.yaml should not have been created in non-interactive mode")
+				}
+			}
+		})
+	}
+}
+
+// TestEnsureLocalConfigInteractive tests that interactive mode doesn't error (it would prompt)
+func TestEnsureLocalConfigInteractive(t *testing.T) {
+	tp := NewTestProject(t)
+	cleanup := tp.ChangeToProjectDir()
+	defer cleanup()
+
+	// Ensure interactive mode (default)
+	origNonInteractive := NonInteractive
+	NonInteractive = false
+	defer func() { NonInteractive = origNonInteractive }()
+
+	cfg, err := config.LoadConfig(tp.Dir)
+	if err != nil {
+		t.Fatalf("LoadConfig failed: %v", err)
+	}
+
+	// No prompts defined - should succeed without prompting
+	err = EnsureLocalConfig(tp.Dir, cfg)
+	if err != nil {
+		t.Errorf("EnsureLocalConfig with no prompts should succeed: %v", err)
+	}
+
+	// With prompts but already configured - should succeed
+	cfg.Prompts = []*config.Prompt{
+		{
+			Name:     "RAMP_IDE",
+			Question: "IDE?",
+			Options: []*config.PromptOption{
+				{Value: "vscode", Label: "VSCode"},
+			},
+			Default: "vscode",
+		},
+	}
+	if err := config.SaveConfig(cfg, tp.Dir); err != nil {
+		t.Fatalf("SaveConfig failed: %v", err)
+	}
+	cfg, _ = config.LoadConfig(tp.Dir)
+
+	localCfg := &config.LocalConfig{
+		Preferences: map[string]string{"RAMP_IDE": "vscode"},
+	}
+	if err := config.SaveLocalConfig(localCfg, tp.Dir); err != nil {
+		t.Fatalf("SaveLocalConfig failed: %v", err)
+	}
+
+	err = EnsureLocalConfig(tp.Dir, cfg)
+	if err != nil {
+		t.Errorf("EnsureLocalConfig with existing local config should succeed: %v", err)
+	}
+}

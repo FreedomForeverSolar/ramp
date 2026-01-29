@@ -16,13 +16,15 @@ ramp install [flags]
 ### Options
 
 ```
-  -h, --help   help for install
+  -h, --help      help for install
+      --shallow   Perform a shallow clone (--depth 1) to reduce clone time and disk usage
 ```
 
 ### Options inherited from parent commands
 
 ```
   -v, --verbose   Show detailed output during operations
+  -y, --yes       Non-interactive mode: skip prompts and auto-confirm
 ```
 
 ### SEE ALSO

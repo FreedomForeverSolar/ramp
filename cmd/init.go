@@ -438,7 +438,7 @@ func promptInstallRepos(projectDir string) error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// Run install
+	// Run install (init always uses full clone for complete history)
 	fmt.Println()
-	return runInstallForProject(projectDir, cfg)
+	return runInstallForProject(projectDir, cfg, false)
 }

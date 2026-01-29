@@ -20,6 +20,7 @@ commands to manage repositories and create feature branches.
 ```
   -h, --help      help for ramp
   -v, --verbose   Show detailed output during operations
+  -y, --yes       Non-interactive mode: skip prompts and auto-confirm
 ```
 
 ### SEE ALSO

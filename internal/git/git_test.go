@@ -753,7 +753,7 @@ func TestClone(t *testing.T) {
 
 		// Clone it
 		destDir := filepath.Join(t.TempDir(), "cloned")
-		err := Clone(sourceDir, destDir)
+		err := Clone(sourceDir, destDir, false)
 		if err != nil {
 			t.Fatalf("Clone() error = %v", err)
 		}
@@ -769,13 +769,45 @@ func TestClone(t *testing.T) {
 		initTestRepo(t, sourceDir)
 
 		destDir := filepath.Join(t.TempDir(), "nested", "deep", "path", "cloned")
-		err := Clone(sourceDir, destDir)
+		err := Clone(sourceDir, destDir, false)
 		if err != nil {
 			t.Fatalf("Clone() error = %v", err)
 		}
 
 		if !IsGitRepo(destDir) {
 			t.Error("Clone() did not create repository in nested path")
+		}
+	})
+
+	t.Run("shallow clone success", func(t *testing.T) {
+		// Create a source repo with multiple commits
+		sourceDir := t.TempDir()
+		initTestRepo(t, sourceDir)
+
+		// Add a second commit
+		testFile := filepath.Join(sourceDir, "second.txt")
+		if err := os.WriteFile(testFile, []byte("second commit"), 0644); err != nil {
+			t.Fatalf("Failed to write test file: %v", err)
+		}
+		runGitCmd(t, sourceDir, "add", "second.txt")
+		runGitCmd(t, sourceDir, "commit", "-m", "second commit")
+
+		// Shallow clone using file:// protocol (required for --depth to work with local repos)
+		destDir := filepath.Join(t.TempDir(), "shallow-cloned")
+		err := Clone("file://"+sourceDir, destDir, true)
+		if err != nil {
+			t.Fatalf("Clone() with shallow=true error = %v", err)
+		}
+
+		// Verify clone
+		if !IsGitRepo(destDir) {
+			t.Error("Clone() with shallow=true did not create a git repository")
+		}
+
+		// Verify it's a shallow clone by checking for .git/shallow file
+		shallowFile := filepath.Join(destDir, ".git", "shallow")
+		if _, err := os.Stat(shallowFile); os.IsNotExist(err) {
+			t.Error("Clone() with shallow=true did not create a shallow clone (.git/shallow missing)")
 		}
 	})
 }

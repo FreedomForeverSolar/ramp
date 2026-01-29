@@ -12,6 +12,9 @@ import (
 
 var version = "dev"
 
+// NonInteractive is set by --yes/-y flag to skip all prompts
+var NonInteractive bool
+
 var rootCmd = &cobra.Command{
 	Use:   "ramp",
 	Short: "A CLI tool for managing multi-repo development workflows",
@@ -28,6 +31,7 @@ commands to manage repositories and create feature branches.`,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		verbose, _ := cmd.Flags().GetBool("verbose")
 		ui.Verbose = verbose
+		NonInteractive, _ = cmd.Flags().GetBool("yes")
 	},
 }
 
@@ -56,6 +60,7 @@ func Execute() {
 func init() {
 	rootCmd.CompletionOptions.DisableDefaultCmd = true
 	rootCmd.PersistentFlags().BoolP("verbose", "v", false, "Show detailed output during operations")
+	rootCmd.PersistentFlags().BoolP("yes", "y", false, "Non-interactive mode: skip prompts and auto-confirm")
 }
 
 // GetRootCmd returns the root command for documentation generation

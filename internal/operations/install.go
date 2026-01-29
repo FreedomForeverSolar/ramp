@@ -27,6 +27,7 @@ type InstallOptions struct {
 	ProjectDir string
 	Config     *config.Config
 	Progress   ProgressReporter
+	Shallow    bool
 }
 
 // InstallResult contains the results of installation.
@@ -69,7 +70,7 @@ func Install(opts InstallOptions) (*InstallResult, error) {
 
 		gitURL := repo.GetGitURL()
 		progress.Info(fmt.Sprintf("%s: cloning from %s to %s", name, gitURL, repoDir))
-		if err := git.Clone(gitURL, repoDir); err != nil {
+		if err := git.Clone(gitURL, repoDir, opts.Shallow); err != nil {
 			progress.Error(fmt.Sprintf("Failed to clone %s", name))
 			return nil, fmt.Errorf("failed to clone %s: %w", name, err)
 		}
