@@ -10,15 +10,24 @@ import (
 	"ramp/internal/ui"
 )
 
-func Clone(repoURL, destDir string) error {
+func Clone(repoURL, destDir string, shallow bool) error {
 	if err := os.MkdirAll(filepath.Dir(destDir), 0755); err != nil {
 		return fmt.Errorf("failed to create directory %s: %w", filepath.Dir(destDir), err)
 	}
 
-	cmd := exec.Command("git", "clone", repoURL, destDir)
-	message := fmt.Sprintf("cloning %s", repoURL)
+	args := []string{"clone"}
+	if shallow {
+		args = append(args, "--depth", "1")
+	}
+	args = append(args, repoURL, destDir)
 
-	if err := ui.RunCommandWithProgress(cmd, message); err != nil {
+	prefix := "cloning"
+	if shallow {
+		prefix = "shallow cloning"
+	}
+
+	cmd := exec.Command("git", args...)
+	if err := ui.RunCommandWithProgress(cmd, fmt.Sprintf("%s %s", prefix, repoURL)); err != nil {
 		return fmt.Errorf("failed to clone %s to %s: %w", repoURL, destDir, err)
 	}
 

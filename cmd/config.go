@@ -195,6 +195,7 @@ func promptForPreferences(prompts []*config.Prompt) (map[string]string, error) {
 // EnsureLocalConfig checks if local config is needed and prompts if necessary.
 // This is called automatically by commands that run user scripts (up, down, run).
 // Returns nil if no prompting is needed or if prompting succeeds.
+// In non-interactive mode (--yes/-y), skips prompts and continues without setting preferences.
 func EnsureLocalConfig(projectDir string, cfg *config.Config) error {
 	// If no prompts defined, nothing to do (backwards compatible)
 	if !cfg.HasPrompts() {
@@ -209,6 +210,11 @@ func EnsureLocalConfig(projectDir string, cfg *config.Config) error {
 
 	// If local config exists, nothing to do
 	if localCfg != nil {
+		return nil
+	}
+
+	// In non-interactive mode, skip prompts and continue without preferences
+	if NonInteractive {
 		return nil
 	}
 

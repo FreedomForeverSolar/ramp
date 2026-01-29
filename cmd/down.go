@@ -98,11 +98,12 @@ func runDown(featureName string) error {
 				progress.Warning(fmt.Sprintf("Uncommitted changes found in %s", name))
 				progress.Stop()
 			}
-			if !confirmDeletion(featureName) {
+			// In non-interactive mode, auto-confirm
+			if !NonInteractive && !confirmDeletion(featureName) {
 				fmt.Println("Cleanup cancelled.")
 				return nil
 			}
-			force = true // User confirmed, skip check in Down()
+			force = true // User confirmed (or non-interactive), skip check in Down()
 		}
 	}
 

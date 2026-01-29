@@ -12,6 +12,8 @@ import (
 	"ramp/internal/ui"
 )
 
+var shallowFlag bool
+
 var installCmd = &cobra.Command{
 	Use:   "install",
 	Short: "Clone all configured repositories from ramp.yaml",
@@ -29,6 +31,7 @@ This command must be run from within a directory containing a .ramp/ramp.yaml fi
 
 func init() {
 	rootCmd.AddCommand(installCmd)
+	installCmd.Flags().BoolVar(&shallowFlag, "shallow", false, "Perform a shallow clone (--depth 1) to reduce clone time and disk usage")
 }
 
 // isProjectInstalled checks if all configured repositories are present
@@ -50,9 +53,9 @@ func AutoInstallIfNeeded(projectDir string, cfg *config.Config) error {
 	}
 
 	progress := ui.NewProgress()
-	progress.Info("🚀 Repositories not installed, running auto-installation...")
+	progress.Info("Repositories not installed, running auto-installation...")
 	progress.Stop()
-	return runInstallForProject(projectDir, cfg)
+	return runInstallForProject(projectDir, cfg, false) // Auto-install always uses full clone
 }
 
 func runInstall() error {
@@ -71,13 +74,12 @@ func runInstall() error {
 		return err
 	}
 
-	return runInstallForProject(projectDir, cfg)
+	return runInstallForProject(projectDir, cfg, shallowFlag)
 }
 
-func runInstallForProject(projectDir string, cfg *config.Config) error {
+func runInstallForProject(projectDir string, cfg *config.Config, shallow bool) error {
 	progress := ui.NewProgress()
-	progress.Start(fmt.Sprintf("Installing repositories for ramp project '%s'", cfg.Name))
-	progress.Success(fmt.Sprintf("Installing repositories for ramp project '%s'", cfg.Name))
+	progress.Info(fmt.Sprintf("Installing repositories for ramp project '%s'", cfg.Name))
 
 	repos := cfg.GetRepos()
 	progress.Info(fmt.Sprintf("Found %d repositories to clone", len(repos)))
@@ -99,7 +101,7 @@ func runInstallForProject(projectDir string, cfg *config.Config) error {
 
 		gitURL := repo.GetGitURL()
 		progress.Info(fmt.Sprintf("%s: cloning from %s to %s", name, gitURL, repoDir))
-		if err := git.Clone(gitURL, repoDir); err != nil {
+		if err := git.Clone(gitURL, repoDir, shallow); err != nil {
 			progress.Error(fmt.Sprintf("Failed to clone %s", name))
 			return fmt.Errorf("failed to clone %s: %w", name, err)
 		}
