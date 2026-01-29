@@ -121,6 +121,7 @@ func (s *Server) RunCommand(w http.ResponseWriter, r *http.Request) {
 		Config:      cfg,
 		CommandName: commandName,
 		FeatureName: req.FeatureName,
+		Args:        req.Args,
 		Progress:    progress,
 		Output:      output,
 		Cancel:      cancel,

@@ -98,6 +98,7 @@ export interface CommandsResponse {
 
 export interface RunCommandRequest {
   featureName?: string; // Optional - if empty, runs against source
+  args?: string[]; // Optional - arguments to pass to the script
 }
 
 export interface CancelCommandRequest {

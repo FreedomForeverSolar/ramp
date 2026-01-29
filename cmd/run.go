@@ -15,7 +15,7 @@ import (
 )
 
 var runCmd = &cobra.Command{
-	Use:   "run <command-name> [feature-name]",
+	Use:   "run <command-name> [feature-name] [-- args...]",
 	Short: "Run a custom command defined in the configuration",
 	Long: `Run a custom command defined in the ramp.yaml configuration.
 
@@ -26,19 +26,44 @@ If no feature name is provided, ramp will attempt to auto-detect the feature
 based on your current working directory. If not in a feature tree, the command
 is executed from the source directory with access to source repository paths.
 
+Arguments after -- are passed directly to the script as positional arguments
+($1, $2, etc.) and also via the RAMP_ARGS environment variable.
+
+Note: RAMP_ARGS is space-joined, so arguments containing spaces will lose
+their boundaries. Use positional arguments ($1, $2, $@) for such cases.
+
 Example:
   ramp run open my-feature    # Run 'open' command for 'my-feature'
   ramp run open               # Auto-detect feature from current directory
-  ramp run deploy             # Run 'deploy' command against source repos`,
-	Args: cobra.RangeArgs(1, 2),
+  ramp run deploy             # Run 'deploy' command against source repos
+  ramp run check -- --cwd backend    # Pass args to the script
+  ramp run test my-feature -- --all  # Feature name + args`,
+	Args: cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		commandName := args[0]
-		var featureName string
-		if len(args) > 1 {
-			featureName = strings.TrimRight(args[1], "/")
+		dashIndex := cmd.ArgsLenAtDash()
+
+		var commandName, featureName string
+		var scriptArgs []string
+
+		if dashIndex == -1 {
+			// No -- separator, use original logic
+			commandName = args[0]
+			if len(args) > 1 {
+				featureName = strings.TrimRight(args[1], "/")
+			}
+		} else {
+			// -- was used to separate script args
+			// dashIndex indicates where -- appears in args:
+			//   dashIndex == 1: "run cmd -- args" (no feature name)
+			//   dashIndex > 1:  "run cmd feature -- args" (feature at args[1])
+			commandName = args[0]
+			if dashIndex > 1 {
+				featureName = strings.TrimRight(args[1], "/")
+			}
+			scriptArgs = args[dashIndex:]
 		}
 
-		if err := runCustomCommand(commandName, featureName); err != nil {
+		if err := runCustomCommand(commandName, featureName, scriptArgs); err != nil {
 			// Don't print error for intentional cancellation (Ctrl+C)
 			if errors.Is(err, operations.ErrCommandCancelled) {
 				os.Exit(130) // Standard exit code for SIGINT (128 + 2)
@@ -53,7 +78,7 @@ func init() {
 	rootCmd.AddCommand(runCmd)
 }
 
-func runCustomCommand(commandName, featureName string) error {
+func runCustomCommand(commandName, featureName string, args []string) error {
 	wd, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)
@@ -120,6 +145,7 @@ func runCustomCommand(commandName, featureName string) error {
 		Config:      cfg,
 		CommandName: commandName,
 		FeatureName: featureName,
+		Args:        args,
 		Progress:    operations.NewCLIProgressReporter(),
 		Output:      &operations.CLIOutputStreamer{},
 		Cancel:      cancel,

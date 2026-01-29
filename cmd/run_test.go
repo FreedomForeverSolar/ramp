@@ -42,7 +42,7 @@ exit 0
 	}
 
 	// Run the command for the feature
-	err = runCustomCommand("test", "test-feature")
+	err = runCustomCommand("test", "test-feature", nil)
 	if err != nil {
 		t.Fatalf("runCustomCommand() error = %v", err)
 	}
@@ -74,7 +74,7 @@ exit 0
 	defer cleanup()
 
 	// Run the command without a feature
-	err := runCustomCommand("source-test", "")
+	err := runCustomCommand("source-test", "", nil)
 	if err != nil {
 		t.Fatalf("runCustomCommand() error = %v", err)
 	}
@@ -89,7 +89,7 @@ func TestRunCommandNotFound(t *testing.T) {
 	defer cleanup()
 
 	// Try to run a non-existent command
-	err := runCustomCommand("nonexistent", "")
+	err := runCustomCommand("nonexistent", "", nil)
 	if err == nil {
 		t.Fatal("runCustomCommand() should fail for non-existent command")
 	}
@@ -123,7 +123,7 @@ exit 0
 	defer cleanup()
 
 	// Try to run for non-existent feature
-	err := runCustomCommand("test", "nonexistent-feature")
+	err := runCustomCommand("test", "nonexistent-feature", nil)
 	if err == nil {
 		t.Fatal("runCustomCommand() should fail for non-existent feature")
 	}
@@ -151,7 +151,7 @@ func TestRunCommandScriptNotFound(t *testing.T) {
 	defer cleanup()
 
 	// Try to run command with missing script
-	err := runCustomCommand("missing", "")
+	err := runCustomCommand("missing", "", nil)
 	if err == nil {
 		t.Fatal("runCustomCommand() should fail for missing script file")
 	}
@@ -215,7 +215,7 @@ exit 0
 	}
 
 	// Run command and verify env vars are set
-	err = runCustomCommand("env-check", "env-test")
+	err = runCustomCommand("env-check", "env-test", nil)
 	if err != nil {
 		t.Fatalf("runCustomCommand() error = %v (env vars not set correctly)", err)
 	}
@@ -261,7 +261,7 @@ exit 0
 	}
 
 	// Run command and verify port is set
-	err = runCustomCommand("port-check", "port-test")
+	err = runCustomCommand("port-check", "port-test", nil)
 	if err != nil {
 		t.Fatalf("runCustomCommand() error = %v (port not set correctly)", err)
 	}
@@ -291,7 +291,7 @@ exit 1
 	defer cleanup()
 
 	// Run command and expect failure
-	err := runCustomCommand("fail", "")
+	err := runCustomCommand("fail", "", nil)
 	if err == nil {
 		t.Fatal("runCustomCommand() should fail when script exits with non-zero")
 	}
@@ -345,7 +345,7 @@ exit 0
 	defer cleanup()
 
 	// Run in source mode (no feature name)
-	err := runCustomCommand("source-mode", "")
+	err := runCustomCommand("source-mode", "", nil)
 	if err != nil {
 		t.Fatalf("runCustomCommand() error = %v", err)
 	}
@@ -406,7 +406,7 @@ exit 0
 
 	// For now, just verify the command runs successfully
 	// The real verification will be manual testing after the fix
-	err := runCustomCommand("doctor", "")
+	err := runCustomCommand("doctor", "", nil)
 	if err != nil {
 		t.Fatalf("runCustomCommand() error = %v", err)
 	}
@@ -456,7 +456,7 @@ exit 0
 	}
 
 	// Run command without specifying feature name (should auto-detect)
-	err = runCustomCommand("test", "")
+	err = runCustomCommand("test", "", nil)
 	if err != nil {
 		t.Fatalf("runCustomCommand() with auto-detect error = %v", err)
 	}
@@ -506,7 +506,7 @@ exit 0
 	}
 
 	// Run command without specifying feature name (should auto-detect from nested path)
-	err = runCustomCommand("test", "")
+	err = runCustomCommand("test", "", nil)
 	if err != nil {
 		t.Fatalf("runCustomCommand() with auto-detect from nested path error = %v", err)
 	}
@@ -542,7 +542,7 @@ exit 0
 
 	// Stay in project root (not in trees/)
 	// Run command without feature name - should run in source mode
-	err := runCustomCommand("source-check", "")
+	err := runCustomCommand("source-check", "", nil)
 	if err != nil {
 		t.Fatalf("runCustomCommand() should run in source mode when not in trees: %v", err)
 	}
@@ -600,7 +600,7 @@ exit $EXIT_CODE
 	defer cleanup()
 
 	// Run the command - it should fail but show all output
-	err := runCustomCommand("doctor-errors", "")
+	err := runCustomCommand("doctor-errors", "", nil)
 	if err == nil {
 		t.Fatal("runCustomCommand() should fail when script exits with non-zero")
 	}
@@ -612,4 +612,77 @@ exit $EXIT_CODE
 
 	// The output should have been displayed (both success and error messages)
 	// This test ensures the workaround pattern still works as expected
+}
+
+// TestRunCommandWithArgs tests passing arguments to custom commands
+func TestRunCommandWithArgs(t *testing.T) {
+	tp := NewTestProject(t)
+	tp.InitRepo("repo1")
+
+	// Create a command that echoes its arguments
+	scriptPath := filepath.Join(tp.RampDir, "scripts", "echo-args.sh")
+	scriptContent := `#!/bin/bash
+echo "ARG_COUNT=$#"
+echo "ALL_ARGS=$@"
+echo "ARG1=$1"
+echo "ARG2=$2"
+echo "RAMP_ARGS=$RAMP_ARGS"
+exit 0
+`
+	os.WriteFile(scriptPath, []byte(scriptContent), 0755)
+
+	tp.Config.Commands = []*config.Command{
+		{Name: "echo-args", Command: "scripts/echo-args.sh"},
+	}
+	if err := config.SaveConfig(tp.Config, tp.Dir); err != nil {
+		t.Fatalf("failed to save config: %v", err)
+	}
+
+	cleanup := tp.ChangeToProjectDir()
+	defer cleanup()
+
+	// Run command with arguments
+	err := runCustomCommand("echo-args", "", []string{"--cwd", "backend"})
+	if err != nil {
+		t.Fatalf("runCustomCommand() with args error = %v", err)
+	}
+}
+
+// TestRunCommandWithArgsAndFeature tests passing arguments with a feature name
+func TestRunCommandWithArgsAndFeature(t *testing.T) {
+	tp := NewTestProject(t)
+	tp.InitRepo("repo1")
+
+	// Create a command that echoes its arguments and feature info
+	scriptPath := filepath.Join(tp.RampDir, "scripts", "echo-args.sh")
+	scriptContent := `#!/bin/bash
+echo "FEATURE=$RAMP_WORKTREE_NAME"
+echo "ARG_COUNT=$#"
+echo "ALL_ARGS=$@"
+echo "RAMP_ARGS=$RAMP_ARGS"
+exit 0
+`
+	os.WriteFile(scriptPath, []byte(scriptContent), 0755)
+
+	tp.Config.Commands = []*config.Command{
+		{Name: "echo-args", Command: "scripts/echo-args.sh"},
+	}
+	if err := config.SaveConfig(tp.Config, tp.Dir); err != nil {
+		t.Fatalf("failed to save config: %v", err)
+	}
+
+	cleanup := tp.ChangeToProjectDir()
+	defer cleanup()
+
+	// Create a feature first
+	err := runUp("args-feature", "", "", "")
+	if err != nil {
+		t.Fatalf("runUp() error = %v", err)
+	}
+
+	// Run command with feature and arguments
+	err = runCustomCommand("echo-args", "args-feature", []string{"--all", "--verbose"})
+	if err != nil {
+		t.Fatalf("runCustomCommand() with feature and args error = %v", err)
+	}
 }

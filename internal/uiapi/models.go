@@ -167,7 +167,8 @@ type CommandsResponse struct {
 
 // RunCommandRequest is the request body for running a command
 type RunCommandRequest struct {
-	FeatureName string `json:"featureName,omitempty"` // Optional - if empty, runs against source
+	FeatureName string   `json:"featureName,omitempty"` // Optional - if empty, runs against source
+	Args        []string `json:"args,omitempty"`        // Optional - arguments to pass to the script
 }
 
 // CancelCommandRequest is the request body for cancelling a command
