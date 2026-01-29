@@ -27,6 +27,7 @@ ramp down [feature-name] [flags]
 
 ```
   -v, --verbose   Show detailed output during operations
+  -y, --yes       Non-interactive mode: skip prompts and auto-confirm
 ```
 
 ### SEE ALSO
