@@ -11,6 +11,7 @@ const TERMINAL_OPTIONS = [
   { value: 'terminal', label: 'Terminal.app', description: 'macOS default terminal' },
   { value: 'iterm', label: 'iTerm2', description: 'Popular macOS terminal' },
   { value: 'warp', label: 'Warp', description: 'Modern terminal with AI' },
+  { value: 'ghostty', label: 'Ghostty', description: 'Modern Rust-based terminal' },
 ];
 
 export default function GlobalSettingsDialog({ onClose }: GlobalSettingsDialogProps) {

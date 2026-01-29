@@ -73,6 +73,10 @@ func openTerminalApp(terminalApp, path string) error {
 		// Warp terminal - use open command with directory
 		cmd = exec.Command("open", "-a", "Warp", path)
 
+	case "ghostty":
+		// Ghostty terminal - use open command with directory
+		cmd = exec.Command("open", "-a", "Ghostty", path)
+
 	default:
 		// Custom command - replace $PATH with the actual path
 		if strings.Contains(terminalApp, "$PATH") {
