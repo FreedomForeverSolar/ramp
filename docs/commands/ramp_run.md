@@ -13,13 +13,21 @@ If no feature name is provided, ramp will attempt to auto-detect the feature
 based on your current working directory. If not in a feature tree, the command
 is executed from the source directory with access to source repository paths.
 
+Arguments after -- are passed directly to the script as positional arguments
+($1, $2, etc.) and also via the RAMP_ARGS environment variable.
+
+Note: RAMP_ARGS is space-joined, so arguments containing spaces will lose
+their boundaries. Use positional arguments ($1, $2, $@) for such cases.
+
 Example:
   ramp run open my-feature    # Run 'open' command for 'my-feature'
   ramp run open               # Auto-detect feature from current directory
   ramp run deploy             # Run 'deploy' command against source repos
+  ramp run check -- --cwd backend    # Pass args to the script
+  ramp run test my-feature -- --all  # Feature name + args
 
 ```
-ramp run <command-name> [feature-name] [flags]
+ramp run <command-name> [feature-name] [-- args...] [flags]
 ```
 
 ### Options

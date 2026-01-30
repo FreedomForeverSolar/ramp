@@ -567,3 +567,257 @@ func waitForMarker(t *testing.T, markerFile, expected string, timeout time.Durat
 	}
 	return false
 }
+
+// === ARGUMENT PASSING TESTS ===
+
+func TestRunCommand_WithArgs_FeatureMode(t *testing.T) {
+	tp := NewTestProject(t)
+	tp.InitRepo("repo1")
+
+	// Create a command that echoes its arguments
+	tp.AddCommand("echo-args", `#!/bin/bash
+echo "ARG_COUNT=$#"
+echo "ALL_ARGS=$@"
+echo "ARG1=$1"
+echo "ARG2=$2"
+echo "RAMP_ARGS_VAR=$RAMP_ARGS"
+`)
+
+	progress := &MockProgressReporter{}
+
+	// Create a feature first
+	_, err := Up(UpOptions{
+		FeatureName: "args-test",
+		ProjectDir:  tp.Dir,
+		Config:      tp.Config,
+		Progress:    progress,
+		SkipRefresh: true,
+	})
+	if err != nil {
+		t.Fatalf("Up() error = %v", err)
+	}
+
+	// Run command with arguments
+	output := &MockOutputStreamer{}
+	_, err = RunCommand(RunOptions{
+		ProjectDir:  tp.Dir,
+		Config:      tp.Config,
+		CommandName: "echo-args",
+		FeatureName: "args-test",
+		Args:        []string{"--cwd", "backend", "--verbose"},
+		Progress:    progress,
+		Output:      output,
+	})
+	if err != nil {
+		t.Fatalf("RunCommand() error = %v", err)
+	}
+
+	// Verify arguments were passed correctly
+	foundArgCount := false
+	foundAllArgs := false
+	foundArg1 := false
+	foundArg2 := false
+	foundRampArgs := false
+
+	for _, line := range output.Lines {
+		if line == "ARG_COUNT=3" {
+			foundArgCount = true
+		}
+		if line == "ALL_ARGS=--cwd backend --verbose" {
+			foundAllArgs = true
+		}
+		if line == "ARG1=--cwd" {
+			foundArg1 = true
+		}
+		if line == "ARG2=backend" {
+			foundArg2 = true
+		}
+		if line == "RAMP_ARGS_VAR=--cwd backend --verbose" {
+			foundRampArgs = true
+		}
+	}
+
+	if !foundArgCount {
+		t.Errorf("Expected ARG_COUNT=3, got output: %v", output.Lines)
+	}
+	if !foundAllArgs {
+		t.Errorf("Expected ALL_ARGS=--cwd backend --verbose, got output: %v", output.Lines)
+	}
+	if !foundArg1 {
+		t.Errorf("Expected ARG1=--cwd, got output: %v", output.Lines)
+	}
+	if !foundArg2 {
+		t.Errorf("Expected ARG2=backend, got output: %v", output.Lines)
+	}
+	if !foundRampArgs {
+		t.Errorf("Expected RAMP_ARGS_VAR=--cwd backend --verbose, got output: %v", output.Lines)
+	}
+}
+
+func TestRunCommand_WithArgs_SourceMode(t *testing.T) {
+	tp := NewTestProject(t)
+	tp.InitRepo("repo1")
+
+	// Create a command that echoes its arguments
+	tp.AddCommand("echo-args", `#!/bin/bash
+echo "ARG_COUNT=$#"
+echo "ALL_ARGS=$@"
+echo "RAMP_ARGS_VAR=$RAMP_ARGS"
+`)
+
+	progress := &MockProgressReporter{}
+	output := &MockOutputStreamer{}
+
+	// Run command in source mode with arguments
+	_, err := RunCommand(RunOptions{
+		ProjectDir:  tp.Dir,
+		Config:      tp.Config,
+		CommandName: "echo-args",
+		FeatureName: "", // source mode
+		Args:        []string{"--all", "--dry-run"},
+		Progress:    progress,
+		Output:      output,
+	})
+	if err != nil {
+		t.Fatalf("RunCommand() error = %v", err)
+	}
+
+	// Verify arguments were passed correctly
+	foundArgCount := false
+	foundAllArgs := false
+	foundRampArgs := false
+
+	for _, line := range output.Lines {
+		if line == "ARG_COUNT=2" {
+			foundArgCount = true
+		}
+		if line == "ALL_ARGS=--all --dry-run" {
+			foundAllArgs = true
+		}
+		if line == "RAMP_ARGS_VAR=--all --dry-run" {
+			foundRampArgs = true
+		}
+	}
+
+	if !foundArgCount {
+		t.Errorf("Expected ARG_COUNT=2, got output: %v", output.Lines)
+	}
+	if !foundAllArgs {
+		t.Errorf("Expected ALL_ARGS=--all --dry-run, got output: %v", output.Lines)
+	}
+	if !foundRampArgs {
+		t.Errorf("Expected RAMP_ARGS_VAR=--all --dry-run, got output: %v", output.Lines)
+	}
+}
+
+func TestRunCommand_NoArgs(t *testing.T) {
+	tp := NewTestProject(t)
+	tp.InitRepo("repo1")
+
+	// Create a command that echoes its arguments
+	tp.AddCommand("echo-args", `#!/bin/bash
+echo "ARG_COUNT=$#"
+echo "ALL_ARGS=$@"
+echo "RAMP_ARGS_VAR=${RAMP_ARGS:-empty}"
+`)
+
+	progress := &MockProgressReporter{}
+	output := &MockOutputStreamer{}
+
+	// Run command without arguments
+	_, err := RunCommand(RunOptions{
+		ProjectDir:  tp.Dir,
+		Config:      tp.Config,
+		CommandName: "echo-args",
+		FeatureName: "", // source mode
+		Args:        nil, // no args
+		Progress:    progress,
+		Output:      output,
+	})
+	if err != nil {
+		t.Fatalf("RunCommand() error = %v", err)
+	}
+
+	// Verify no arguments were passed
+	foundArgCount := false
+	foundEmptyArgs := false
+	foundRampArgsEmpty := false
+
+	for _, line := range output.Lines {
+		if line == "ARG_COUNT=0" {
+			foundArgCount = true
+		}
+		if line == "ALL_ARGS=" {
+			foundEmptyArgs = true
+		}
+		if line == "RAMP_ARGS_VAR=empty" {
+			foundRampArgsEmpty = true
+		}
+	}
+
+	if !foundArgCount {
+		t.Errorf("Expected ARG_COUNT=0, got output: %v", output.Lines)
+	}
+	if !foundEmptyArgs {
+		t.Errorf("Expected ALL_ARGS= (empty), got output: %v", output.Lines)
+	}
+	if !foundRampArgsEmpty {
+		t.Errorf("Expected RAMP_ARGS_VAR=empty, got output: %v", output.Lines)
+	}
+}
+
+func TestRunCommand_ArgsWithSpaces(t *testing.T) {
+	tp := NewTestProject(t)
+	tp.InitRepo("repo1")
+
+	// Create a command that echoes its arguments
+	tp.AddCommand("echo-args", `#!/bin/bash
+echo "ARG_COUNT=$#"
+echo "ARG1=$1"
+echo "ARG2=$2"
+`)
+
+	progress := &MockProgressReporter{}
+	output := &MockOutputStreamer{}
+
+	// Run command with arguments that include special characters
+	_, err := RunCommand(RunOptions{
+		ProjectDir:  tp.Dir,
+		Config:      tp.Config,
+		CommandName: "echo-args",
+		FeatureName: "", // source mode
+		Args:        []string{"hello world", "--flag=value"},
+		Progress:    progress,
+		Output:      output,
+	})
+	if err != nil {
+		t.Fatalf("RunCommand() error = %v", err)
+	}
+
+	// Verify arguments were passed correctly (each as separate arg)
+	foundArgCount := false
+	foundArg1 := false
+	foundArg2 := false
+
+	for _, line := range output.Lines {
+		if line == "ARG_COUNT=2" {
+			foundArgCount = true
+		}
+		if line == "ARG1=hello world" {
+			foundArg1 = true
+		}
+		if line == "ARG2=--flag=value" {
+			foundArg2 = true
+		}
+	}
+
+	if !foundArgCount {
+		t.Errorf("Expected ARG_COUNT=2, got output: %v", output.Lines)
+	}
+	if !foundArg1 {
+		t.Errorf("Expected ARG1=hello world, got output: %v", output.Lines)
+	}
+	if !foundArg2 {
+		t.Errorf("Expected ARG2=--flag=value, got output: %v", output.Lines)
+	}
+}
