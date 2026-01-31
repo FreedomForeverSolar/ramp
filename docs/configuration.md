@@ -807,7 +807,8 @@ EOF
 ```
 
 **Notes:**
-- Scripts in user config should use absolute paths or be in PATH
+- Scripts in user config resolve relative to `~/.config/ramp/` (e.g., `scripts/notify-slack.sh` becomes `~/.config/ramp/scripts/notify-slack.sh`)
+- Absolute paths and executables in PATH also work
 - User hooks run last, so they can observe the state after project/local hooks
 - Local config merges preferences with commands/hooks (all in `.ramp/local.yaml`)
 

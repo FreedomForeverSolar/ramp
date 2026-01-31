@@ -1,5 +1,7 @@
 package config
 
+import "path/filepath"
+
 // MergedConfig holds the result of merging project, local, and user configs.
 // Used internally by operations that need access to merged commands and hooks.
 type MergedConfig struct {
@@ -36,14 +38,15 @@ func LoadMergedConfig(projectDir string) (*MergedConfig, error) {
 	localCfg, _ := LoadLocalConfig(projectDir) // nil is fine
 	userCfg, _ := LoadUserConfig()             // nil is fine
 
-	return MergeConfigs(projectCfg, localCfg, userCfg), nil
+	return MergeConfigs(projectCfg, localCfg, userCfg, projectDir), nil
 }
 
 // MergeConfigs merges project, local, and user configs according to these rules:
 // - Commands: First match wins (project > local > user precedence)
 // - Hooks: Execute ALL hooks from project -> local -> user order
 // - Other settings: Project only (repos, setup, cleanup, etc.)
-func MergeConfigs(projectCfg *Config, localCfg *LocalConfig, userCfg *UserConfig) *MergedConfig {
+// The projectDir is used to resolve relative paths in hooks and commands.
+func MergeConfigs(projectCfg *Config, localCfg *LocalConfig, userCfg *UserConfig, projectDir string) *MergedConfig {
 	merged := &MergedConfig{
 		// Project-only fields
 		Name:                projectCfg.Name,
@@ -59,23 +62,27 @@ func MergeConfigs(projectCfg *Config, localCfg *LocalConfig, userCfg *UserConfig
 	}
 
 	// Merge commands with precedence (project > local > user)
-	merged.Commands = mergeCommands(projectCfg.Commands, localCfg, userCfg)
+	merged.Commands = mergeCommands(projectCfg.Commands, localCfg, userCfg, projectDir)
 
 	// Aggregate hooks from all levels (project -> local -> user order)
-	merged.Hooks = aggregateHooks(projectCfg.Hooks, localCfg, userCfg)
+	merged.Hooks = aggregateHooks(projectCfg.Hooks, localCfg, userCfg, projectDir)
 
 	return merged
 }
 
 // mergeCommands merges commands with first-match-wins precedence.
-func mergeCommands(projectCmds []*Command, localCfg *LocalConfig, userCfg *UserConfig) []*Command {
+// Sets BaseDir on each command for proper path resolution.
+func mergeCommands(projectCmds []*Command, localCfg *LocalConfig, userCfg *UserConfig, projectDir string) []*Command {
 	seenNames := make(map[string]bool)
 	result := make([]*Command, 0)
+	rampDir := filepath.Join(projectDir, ".ramp")
 
 	// Add project commands first (highest priority)
 	for _, cmd := range projectCmds {
 		if !seenNames[cmd.Name] {
-			result = append(result, cmd)
+			cmdCopy := *cmd
+			cmdCopy.BaseDir = rampDir
+			result = append(result, &cmdCopy)
 			seenNames[cmd.Name] = true
 		}
 	}
@@ -84,7 +91,9 @@ func mergeCommands(projectCmds []*Command, localCfg *LocalConfig, userCfg *UserC
 	if localCfg != nil {
 		for _, cmd := range localCfg.Commands {
 			if !seenNames[cmd.Name] {
-				result = append(result, cmd)
+				cmdCopy := *cmd
+				cmdCopy.BaseDir = rampDir
+				result = append(result, &cmdCopy)
 				seenNames[cmd.Name] = true
 			}
 		}
@@ -92,10 +101,15 @@ func mergeCommands(projectCmds []*Command, localCfg *LocalConfig, userCfg *UserC
 
 	// Add user commands if name not already seen
 	if userCfg != nil {
-		for _, cmd := range userCfg.Commands {
-			if !seenNames[cmd.Name] {
-				result = append(result, cmd)
-				seenNames[cmd.Name] = true
+		userConfigDir, err := GetUserConfigDir()
+		if err == nil {
+			for _, cmd := range userCfg.Commands {
+				if !seenNames[cmd.Name] {
+					cmdCopy := *cmd
+					cmdCopy.BaseDir = userConfigDir
+					result = append(result, &cmdCopy)
+					seenNames[cmd.Name] = true
+				}
 			}
 		}
 	}
@@ -105,20 +119,37 @@ func mergeCommands(projectCmds []*Command, localCfg *LocalConfig, userCfg *UserC
 
 // aggregateHooks collects all hooks from all levels.
 // Execution order: project hooks -> local hooks -> user hooks
-func aggregateHooks(projectHooks []*Hook, localCfg *LocalConfig, userCfg *UserConfig) []*Hook {
+// Sets BaseDir on each hook for proper path resolution.
+func aggregateHooks(projectHooks []*Hook, localCfg *LocalConfig, userCfg *UserConfig, projectDir string) []*Hook {
 	result := make([]*Hook, 0)
+	rampDir := filepath.Join(projectDir, ".ramp")
 
-	// Project hooks first
-	result = append(result, projectHooks...)
-
-	// Local hooks second
-	if localCfg != nil {
-		result = append(result, localCfg.Hooks...)
+	// Project hooks first - resolve relative to projectDir/.ramp/
+	for _, hook := range projectHooks {
+		hookCopy := *hook
+		hookCopy.BaseDir = rampDir
+		result = append(result, &hookCopy)
 	}
 
-	// User hooks last
+	// Local hooks second - resolve relative to projectDir/.ramp/
+	if localCfg != nil {
+		for _, hook := range localCfg.Hooks {
+			hookCopy := *hook
+			hookCopy.BaseDir = rampDir
+			result = append(result, &hookCopy)
+		}
+	}
+
+	// User hooks last - resolve relative to ~/.config/ramp/
 	if userCfg != nil {
-		result = append(result, userCfg.Hooks...)
+		userConfigDir, err := GetUserConfigDir()
+		if err == nil {
+			for _, hook := range userCfg.Hooks {
+				hookCopy := *hook
+				hookCopy.BaseDir = userConfigDir
+				result = append(result, &hookCopy)
+			}
+		}
 	}
 
 	return result
