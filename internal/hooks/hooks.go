@@ -112,11 +112,14 @@ func runHook(
 	workDir string,
 	env map[string]string,
 ) error {
-	// Support both absolute paths (for user-level hooks) and relative paths
+	// Resolve script path based on BaseDir (set during config merge)
 	var scriptPath string
 	if filepath.IsAbs(hook.Command) {
 		scriptPath = hook.Command
+	} else if hook.BaseDir != "" {
+		scriptPath = filepath.Join(hook.BaseDir, hook.Command)
 	} else {
+		// Fallback for backward compatibility
 		scriptPath = filepath.Join(projectDir, ".ramp", hook.Command)
 	}
 

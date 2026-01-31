@@ -90,6 +90,7 @@ hooks:                     # Lifecycle hooks
 - **Local**: `.ramp/local.yaml` (preferences + personal commands/hooks, gitignored)
 - **User**: `~/.config/ramp/ramp.yaml` (personal commands/hooks for all projects)
 - **Merging**: Commands use precedence (project > local > user); Hooks all execute (project → local → user)
+- **Path resolution**: Script paths in project/local configs resolve relative to `.ramp/`; user config paths resolve relative to `~/.config/ramp/`
 
 ### Directory Layout
 ```
@@ -143,9 +144,11 @@ progress.Success("Done")
 Configuration management and project discovery.
 - `Config`, `Repo`, `EnvFile`, `Prompt`, `LocalConfig`, `Hook`, `UserConfig` types
 - `MergedConfig` - Merged project/local/user config with command precedence and hook aggregation
+- `Hook.BaseDir`, `Command.BaseDir` - Set during merge to enable correct path resolution for user-level configs
 - `FindRampProject()` - Recursively searches for `.ramp/ramp.yaml`
 - `LoadConfig()`, `LoadLocalConfig()`, `LoadUserConfig()` - YAML persistence
-- `LoadMergedConfig()` - Loads and merges all three config levels
+- `LoadMergedConfig()` - Loads and merges all three config levels, sets `BaseDir` on hooks/commands
+- `GetUserConfigDir()` - Returns `~/.config/ramp` directory path
 - `DetectFeatureFromWorkingDir()` - Auto-detect current feature
 
 ### `internal/features/`
@@ -161,6 +164,7 @@ Lifecycle hook execution:
 - `ExecuteHooksForCommand()` - Runs filtered run hooks matching command name
 - `HookEvent` constants - `Up`, `Down`, `Run`
 - Hook failure behavior: warns but continues operation
+- Path resolution: Uses `hook.BaseDir` if set, falls back to `projectDir/.ramp/` for backward compatibility
 
 ### `internal/git/`
 Git operations with two variants for each operation:
@@ -187,6 +191,7 @@ Shared operation logic used by both CLI and desktop app:
 - `OutputStreamer` interface - Line-by-line command output streaming
 - `ConfirmationHandler` interface - User confirmation abstraction
 - `Up()`, `Down()`, `Refresh()`, `Install()`, `Run()` - Core operations accepting `ProgressReporter`
+- `Run()` uses `command.BaseDir` for path resolution, enabling user-level commands from `~/.config/ramp/`
 
 ### `internal/uiapi/`
 REST API and WebSocket handlers for the desktop app:

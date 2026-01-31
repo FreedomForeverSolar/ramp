@@ -75,7 +75,16 @@ func RunCommand(opts RunOptions) (*RunResult, error) {
 		return nil, fmt.Errorf("command '%s' requires a feature name", commandName)
 	}
 
-	scriptPath := filepath.Join(projectDir, ".ramp", command.Command)
+	// Resolve script path based on BaseDir (set during config merge)
+	var scriptPath string
+	if filepath.IsAbs(command.Command) {
+		scriptPath = command.Command
+	} else if command.BaseDir != "" {
+		scriptPath = filepath.Join(command.BaseDir, command.Command)
+	} else {
+		// Fallback for backward compatibility
+		scriptPath = filepath.Join(projectDir, ".ramp", command.Command)
+	}
 
 	// Validate script exists
 	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {

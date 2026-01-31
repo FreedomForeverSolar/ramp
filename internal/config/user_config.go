@@ -26,6 +26,16 @@ func GetUserConfigPath() (string, error) {
 	return filepath.Join(home, ".config", "ramp", "ramp.yaml"), nil
 }
 
+// GetUserConfigDir returns the directory containing user-level ramp config.
+// Returns ~/.config/ramp
+func GetUserConfigDir() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to get home directory: %w", err)
+	}
+	return filepath.Join(home, ".config", "ramp"), nil
+}
+
 // LoadUserConfig loads the user-level configuration.
 // Returns nil if the file doesn't exist (not an error).
 func LoadUserConfig() (*UserConfig, error) {

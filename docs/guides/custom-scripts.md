@@ -505,6 +505,11 @@ hooks:
     command: scripts/start-dashboard.sh  # Runs for ALL projects
 ```
 
+**Path resolution:**
+- Project/local config: relative paths resolve from `.ramp/` (e.g., `scripts/setup.sh` → `.ramp/scripts/setup.sh`)
+- User config: relative paths resolve from `~/.config/ramp/` (e.g., `scripts/start-dashboard.sh` → `~/.config/ramp/scripts/start-dashboard.sh`)
+- Absolute paths work everywhere
+
 **Execution order:** project → local → user
 
 All matching hooks execute in sequence. This allows personal automation without affecting teammates.
