@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -25,6 +26,7 @@ type RunOptions struct {
 	Config      *config.Config
 	CommandName string
 	FeatureName string           // Empty = run against source
+	Args        []string         // Arguments to pass to the script
 	Progress    ProgressReporter
 	Output      OutputStreamer   // For streaming stdout/stderr
 
@@ -174,6 +176,23 @@ func RunCommand(opts RunOptions) (*RunResult, error) {
 	}, nil
 }
 
+// buildBashCommand creates an exec.Cmd for running a script with login shell.
+// Uses -l flag to source user's profile, ensuring tools like bun/node are available.
+func buildBashCommand(scriptPath string, args []string, workDir string) *exec.Cmd {
+	bashArgs := append([]string{"-l", scriptPath}, args...)
+	cmd := exec.Command("/bin/bash", bashArgs...)
+	cmd.Dir = workDir
+	return cmd
+}
+
+// appendArgsEnv adds RAMP_ARGS to the environment if args are provided.
+func appendArgsEnv(env []string, args []string) []string {
+	if len(args) > 0 {
+		return append(env, fmt.Sprintf("RAMP_ARGS=%s", strings.Join(args, " ")))
+	}
+	return env
+}
+
 // runInFeature executes a command in feature mode with feature-specific env vars.
 func runInFeature(opts RunOptions, scriptPath, treesDir string) (int, error) {
 	projectDir := opts.ProjectDir
@@ -190,10 +209,7 @@ func runInFeature(opts RunOptions, scriptPath, treesDir string) (int, error) {
 		}
 	}
 
-	// Use login shell (-l) to source user's profile and get full PATH
-	// This ensures tools like bun, node, etc. are available in GUI environments
-	cmd := exec.Command("/bin/bash", "-l", scriptPath)
-	cmd.Dir = treesDir
+	cmd := buildBashCommand(scriptPath, opts.Args, treesDir)
 
 	// Build environment variables using the standard builder, but override repo paths for worktrees
 	repos := cfg.GetRepos()
@@ -206,6 +222,8 @@ func runInFeature(opts RunOptions, scriptPath, treesDir string) (int, error) {
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", envVarName, repoPath))
 	}
 
+	cmd.Env = appendArgsEnv(cmd.Env, opts.Args)
+
 	// Stop spinner before streaming output to avoid visual conflicts
 	opts.Progress.Stop()
 
@@ -217,10 +235,7 @@ func runInSource(opts RunOptions, scriptPath string) (int, error) {
 	projectDir := opts.ProjectDir
 	cfg := opts.Config
 
-	// Use login shell (-l) to source user's profile and get full PATH
-	// This ensures tools like bun, node, etc. are available in GUI environments
-	cmd := exec.Command("/bin/bash", "-l", scriptPath)
-	cmd.Dir = projectDir
+	cmd := buildBashCommand(scriptPath, opts.Args, projectDir)
 
 	// Build environment variables (excluding feature-specific vars)
 	cmd.Env = append(os.Environ(),
@@ -242,6 +257,8 @@ func runInSource(opts RunOptions, scriptPath string) (int, error) {
 			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", key, value))
 		}
 	}
+
+	cmd.Env = appendArgsEnv(cmd.Env, opts.Args)
 
 	// Stop spinner before streaming output to avoid visual conflicts
 	opts.Progress.Stop()

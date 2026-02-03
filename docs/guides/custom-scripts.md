@@ -24,6 +24,7 @@ RAMP_WORKTREE_NAME    # Feature name
 RAMP_COMMAND_NAME     # Custom command name (for run hooks only)
 RAMP_PORT             # Allocated port number (if configured)
 RAMP_REPO_PATH_<NAME> # Path to each repository (context-dependent)
+RAMP_ARGS             # Arguments passed via -- separator (space-joined)
 ```
 
 ### Example Values
@@ -191,6 +192,50 @@ rm -rf node_modules  # Missing absolute path!
 ## Custom Commands
 
 Custom commands let you create domain-specific workflows.
+
+### Passing Arguments to Commands
+
+You can pass arguments to custom commands using the `--` separator:
+
+```bash
+ramp run check -- --cwd backend          # Script receives: $1="--cwd" $2="backend"
+ramp run test my-feature -- --all        # Feature name + arguments
+ramp run deploy -- --env prod --dry-run  # Multiple arguments
+```
+
+Arguments are available in your scripts two ways:
+
+1. **Positional arguments** (`$1`, `$2`, `$@`) - Recommended for arguments with spaces
+2. **`RAMP_ARGS` environment variable** - Space-joined string of all arguments
+
+```bash
+#!/bin/bash
+# .ramp/scripts/check.sh
+
+# Using positional arguments (preferred)
+echo "First arg: $1"
+echo "All args: $@"
+
+# Forward all arguments to another command
+bun run check "$@"
+```
+
+```bash
+#!/bin/bash
+# .ramp/scripts/test.sh
+
+# Using RAMP_ARGS environment variable
+echo "Arguments: $RAMP_ARGS"
+
+# Conditional logic based on arguments
+if [[ "$1" == "--all" ]]; then
+  npm test
+else
+  npm test -- --watch
+fi
+```
+
+**Note:** `RAMP_ARGS` is space-joined, so arguments containing spaces will lose their boundaries. Use positional arguments (`$1`, `$2`, `$@`) for such cases.
 
 ### Development Command
 

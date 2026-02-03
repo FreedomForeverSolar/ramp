@@ -416,6 +416,18 @@ ramp run dev my-feature      # Works
 ramp run dev                 # Error: command 'dev' requires a feature name
 ```
 
+**Passing Arguments to Commands:**
+
+Use the `--` separator to pass arguments directly to your scripts:
+
+```bash
+ramp run check -- --cwd backend          # Script receives: $1="--cwd" $2="backend"
+ramp run test my-feature -- --all        # Feature + arguments
+ramp run deploy -- --env prod --dry-run  # Multiple arguments
+```
+
+Arguments are available as positional parameters (`$1`, `$2`, `$@`) and via the `RAMP_ARGS` environment variable. See the [Custom Scripts Guide](guides/custom-scripts.md#passing-arguments-to-commands) for details.
+
 Example custom commands:
 ```yaml
 commands:
@@ -813,6 +825,7 @@ All scripts (setup, cleanup, custom commands, hooks) receive these environment v
 | `RAMP_WORKTREE_NAME` | Feature name | `my-feature` |
 | `RAMP_DISPLAY_NAME` | Human-readable display name (if set via `--name` flag) | `My Feature` |
 | `RAMP_COMMAND_NAME` | Custom command name (for `run` hooks only) | `deploy` |
+| `RAMP_ARGS` | Arguments passed to command via `--` separator (space-joined) | `--cwd backend` |
 | `RAMP_PORT` | First allocated port (backward compatible) | `3000` |
 | `RAMP_PORT_1` | First allocated port | `3000` |
 | `RAMP_PORT_2` | Second allocated port (if `ports_per_feature >= 2`) | `3001` |

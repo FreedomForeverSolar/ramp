@@ -269,10 +269,10 @@ export function useCommands(projectId: string) {
 
 export function useRunCommand(projectId: string) {
   return useMutation<RunCommandResponse, Error, { commandName: string } & RunCommandRequest>({
-    mutationFn: ({ commandName, featureName }) =>
+    mutationFn: ({ commandName, featureName, args }) =>
       fetchAPI<RunCommandResponse>(`/projects/${projectId}/commands/${commandName}/run`, {
         method: 'POST',
-        body: JSON.stringify({ featureName }),
+        body: JSON.stringify({ featureName, args }),
       }),
   });
 }
