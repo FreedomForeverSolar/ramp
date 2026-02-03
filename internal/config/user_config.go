@@ -17,18 +17,28 @@ type UserConfig struct {
 }
 
 // GetUserConfigPath returns the path to user-level ramp config.
-// Returns ~/.config/ramp/ramp.yaml
+// Returns ~/.config/ramp/ramp.yaml, or uses RAMP_USER_CONFIG_DIR if set.
+// If RAMP_USER_CONFIG_DIR is set to empty string, returns empty to disable user config.
 func GetUserConfigPath() (string, error) {
-	home, err := os.UserHomeDir()
+	dir, err := GetUserConfigDir()
 	if err != nil {
-		return "", fmt.Errorf("failed to get home directory: %w", err)
+		return "", err
 	}
-	return filepath.Join(home, ".config", "ramp", "ramp.yaml"), nil
+	if dir == "" {
+		return "", nil // User config disabled
+	}
+	return filepath.Join(dir, "ramp.yaml"), nil
 }
 
 // GetUserConfigDir returns the directory containing user-level ramp config.
-// Returns ~/.config/ramp
+// Returns ~/.config/ramp by default, or RAMP_USER_CONFIG_DIR if set.
+// If RAMP_USER_CONFIG_DIR is set to empty string, returns empty to disable user config.
 func GetUserConfigDir() (string, error) {
+	// Check for override (useful for testing)
+	if envDir, ok := os.LookupEnv("RAMP_USER_CONFIG_DIR"); ok {
+		return envDir, nil // May be empty to disable user config
+	}
+
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("failed to get home directory: %w", err)
@@ -38,10 +48,14 @@ func GetUserConfigDir() (string, error) {
 
 // LoadUserConfig loads the user-level configuration.
 // Returns nil if the file doesn't exist (not an error).
+// Returns nil if user config is disabled via RAMP_USER_CONFIG_DIR="".
 func LoadUserConfig() (*UserConfig, error) {
 	userPath, err := GetUserConfigPath()
 	if err != nil {
 		return nil, nil // Can't determine path, treat as not existing
+	}
+	if userPath == "" {
+		return nil, nil // User config disabled
 	}
 
 	if _, err := os.Stat(userPath); os.IsNotExist(err) {

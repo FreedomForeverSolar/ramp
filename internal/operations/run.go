@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 	"syscall"
 	"time"
 
@@ -280,8 +281,13 @@ func executeWithStreaming(cmd *exec.Cmd, output OutputStreamer, cancel <-chan st
 		processCallback(cmd, pgid)
 	}
 
+	// WaitGroup to ensure output goroutines complete before returning
+	var wg sync.WaitGroup
+
 	// Stream stdout
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		scanner := bufio.NewScanner(stdout)
 		for scanner.Scan() {
 			if output != nil {
@@ -291,7 +297,9 @@ func executeWithStreaming(cmd *exec.Cmd, output OutputStreamer, cancel <-chan st
 	}()
 
 	// Stream stderr
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		scanner := bufio.NewScanner(stderr)
 		for scanner.Scan() {
 			if output != nil {
@@ -309,6 +317,7 @@ func executeWithStreaming(cmd *exec.Cmd, output OutputStreamer, cancel <-chan st
 	// Wait for completion or cancellation
 	select {
 	case err := <-resultCh:
+		wg.Wait() // Ensure output goroutines complete before returning
 		if err != nil {
 			if exitErr, ok := err.(*exec.ExitError); ok {
 				return exitErr.ExitCode(), nil
@@ -332,6 +341,7 @@ func executeWithStreaming(cmd *exec.Cmd, output OutputStreamer, cancel <-chan st
 			<-resultCh
 		}
 
+		wg.Wait() // Ensure output goroutines complete before returning
 		return -1, ErrCommandCancelled
 	}
 }

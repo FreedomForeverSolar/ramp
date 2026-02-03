@@ -67,10 +67,13 @@ func TestMergeConfigs_SetsBaseDir(t *testing.T) {
 }
 
 func TestMergeConfigs_UserConfigBaseDir(t *testing.T) {
+	// Use a test-controlled user config dir
+	t.Setenv("RAMP_USER_CONFIG_DIR", "/test/user/config")
+
 	projectDir := "/home/user/myproject"
 	rampDir := filepath.Join(projectDir, ".ramp")
 
-	// Get expected user config dir
+	// Get expected user config dir (will be our test override)
 	userConfigDir, err := GetUserConfigDir()
 	if err != nil {
 		t.Fatalf("GetUserConfigDir() error = %v", err)
@@ -240,6 +243,9 @@ func TestMergeConfigs_DoesNotMutateOriginal(t *testing.T) {
 }
 
 func TestGetUserConfigDir(t *testing.T) {
+	// Ensure env var is not set for this test (test default behavior)
+	os.Unsetenv("RAMP_USER_CONFIG_DIR")
+
 	dir, err := GetUserConfigDir()
 	if err != nil {
 		t.Fatalf("GetUserConfigDir() error = %v", err)
@@ -253,7 +259,38 @@ func TestGetUserConfigDir(t *testing.T) {
 	}
 }
 
+func TestGetUserConfigDir_EnvOverride(t *testing.T) {
+	// Test custom directory override
+	t.Setenv("RAMP_USER_CONFIG_DIR", "/custom/config/dir")
+
+	dir, err := GetUserConfigDir()
+	if err != nil {
+		t.Fatalf("GetUserConfigDir() error = %v", err)
+	}
+
+	if dir != "/custom/config/dir" {
+		t.Errorf("GetUserConfigDir() = %q, want %q", dir, "/custom/config/dir")
+	}
+}
+
+func TestGetUserConfigDir_EnvDisable(t *testing.T) {
+	// Test disabling user config via empty string
+	t.Setenv("RAMP_USER_CONFIG_DIR", "")
+
+	dir, err := GetUserConfigDir()
+	if err != nil {
+		t.Fatalf("GetUserConfigDir() error = %v", err)
+	}
+
+	if dir != "" {
+		t.Errorf("GetUserConfigDir() = %q, want empty string", dir)
+	}
+}
+
 func TestLoadMergedConfig(t *testing.T) {
+	// Disable user config to prevent personal hooks/commands from interfering with test
+	t.Setenv("RAMP_USER_CONFIG_DIR", "")
+
 	tempDir := t.TempDir()
 
 	// Create project config
@@ -284,32 +321,21 @@ hooks:
 	}
 
 	// Verify BaseDir is set correctly on project command
-	// Note: may also have user commands from ~/.config/ramp/ramp.yaml
 	expectedBaseDir := rampDir
-	if len(merged.Commands) < 1 {
-		t.Fatalf("expected at least 1 command, got %d", len(merged.Commands))
+	if len(merged.Commands) != 1 {
+		t.Fatalf("expected 1 command, got %d", len(merged.Commands))
 	}
-	// Find our project command
-	var buildCmd *Command
-	for _, cmd := range merged.Commands {
-		if cmd.Name == "build" {
-			buildCmd = cmd
-			break
-		}
+	if merged.Commands[0].Name != "build" {
+		t.Errorf("expected build command, got %q", merged.Commands[0].Name)
 	}
-	if buildCmd == nil {
-		t.Fatal("build command not found")
-	}
-	if buildCmd.BaseDir != expectedBaseDir {
-		t.Errorf("command BaseDir = %q, want %q", buildCmd.BaseDir, expectedBaseDir)
+	if merged.Commands[0].BaseDir != expectedBaseDir {
+		t.Errorf("command BaseDir = %q, want %q", merged.Commands[0].BaseDir, expectedBaseDir)
 	}
 
 	// Verify BaseDir is set correctly on project hook
-	// Note: may also have user hooks from ~/.config/ramp/ramp.yaml
-	if len(merged.Hooks) < 1 {
-		t.Fatalf("expected at least 1 hook, got %d", len(merged.Hooks))
+	if len(merged.Hooks) != 1 {
+		t.Fatalf("expected 1 hook, got %d", len(merged.Hooks))
 	}
-	// The first hook should be from project config (project hooks come first)
 	if merged.Hooks[0].BaseDir != expectedBaseDir {
 		t.Errorf("hook BaseDir = %q, want %q", merged.Hooks[0].BaseDir, expectedBaseDir)
 	}

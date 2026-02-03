@@ -29,6 +29,9 @@ type TestProjectForUI struct {
 func NewTestProjectForUI(t *testing.T) *TestProjectForUI {
 	t.Helper()
 
+	// Disable user config to prevent personal hooks/commands from interfering with tests
+	t.Setenv("RAMP_USER_CONFIG_DIR", "")
+
 	projectDir := t.TempDir()
 
 	// Resolve symlinks
