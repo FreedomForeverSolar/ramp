@@ -18,6 +18,13 @@ interface NewFeatureDialogProps {
   onClose: () => void;
 }
 
+// Sanitize feature name by removing invalid characters as user types.
+// Allows: letters, numbers, hyphens, underscores, and dots
+// Disallows: spaces, slashes, and special characters (~^:?*\[@{)
+const sanitizeFeatureName = (input: string): string => {
+  return input.replace(/[^a-zA-Z0-9_.-]/g, '');
+};
+
 export default function NewFeatureDialog({
   projectId,
   defaultBranchPrefix,
@@ -33,6 +40,7 @@ export default function NewFeatureDialog({
   const [progressMessages, setProgressMessages] = useState<string[]>([]);
   const [outputLines, setOutputLines] = useState<{ text: string; isError: boolean }[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [nameValidationHint, setNameValidationHint] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const createFeature = useCreateFeature(projectId);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -303,14 +311,30 @@ export default function NewFeatureDialog({
             type="text"
             id="feature-name"
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => {
+              const raw = e.target.value;
+              const sanitized = sanitizeFeatureName(raw);
+              setName(sanitized);
+              // Show hint if characters were removed
+              if (raw !== sanitized) {
+                setNameValidationHint('Invalid characters removed (spaces and special characters are not allowed)');
+              } else {
+                setNameValidationHint(null);
+              }
+            }}
             placeholder="e.g., user-authentication"
             className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
             autoFocus
           />
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            Use lowercase with hyphens (e.g., my-feature)
-          </p>
+          {nameValidationHint ? (
+            <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+              {nameValidationHint}
+            </p>
+          ) : (
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Letters, numbers, hyphens, underscores, and dots only
+            </p>
+          )}
           <div className="mt-2 p-2 bg-gray-100 dark:bg-gray-700 rounded text-xs">
             <span className="text-gray-500 dark:text-gray-400">Branch: </span>
             <span className="font-mono text-gray-700 dark:text-gray-300">
