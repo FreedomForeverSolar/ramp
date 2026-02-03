@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -77,7 +78,16 @@ func RunCommand(opts RunOptions) (*RunResult, error) {
 		return nil, fmt.Errorf("command '%s' requires a feature name", commandName)
 	}
 
-	scriptPath := filepath.Join(projectDir, ".ramp", command.Command)
+	// Resolve script path based on BaseDir (set during config merge)
+	var scriptPath string
+	if filepath.IsAbs(command.Command) {
+		scriptPath = command.Command
+	} else if command.BaseDir != "" {
+		scriptPath = filepath.Join(command.BaseDir, command.Command)
+	} else {
+		// Fallback for backward compatibility
+		scriptPath = filepath.Join(projectDir, ".ramp", command.Command)
+	}
 
 	// Validate script exists
 	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
@@ -288,8 +298,13 @@ func executeWithStreaming(cmd *exec.Cmd, output OutputStreamer, cancel <-chan st
 		processCallback(cmd, pgid)
 	}
 
+	// WaitGroup to ensure output goroutines complete before returning
+	var wg sync.WaitGroup
+
 	// Stream stdout
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		scanner := bufio.NewScanner(stdout)
 		for scanner.Scan() {
 			if output != nil {
@@ -299,7 +314,9 @@ func executeWithStreaming(cmd *exec.Cmd, output OutputStreamer, cancel <-chan st
 	}()
 
 	// Stream stderr
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		scanner := bufio.NewScanner(stderr)
 		for scanner.Scan() {
 			if output != nil {
@@ -317,6 +334,7 @@ func executeWithStreaming(cmd *exec.Cmd, output OutputStreamer, cancel <-chan st
 	// Wait for completion or cancellation
 	select {
 	case err := <-resultCh:
+		wg.Wait() // Ensure output goroutines complete before returning
 		if err != nil {
 			if exitErr, ok := err.(*exec.ExitError); ok {
 				return exitErr.ExitCode(), nil
@@ -340,6 +358,7 @@ func executeWithStreaming(cmd *exec.Cmd, output OutputStreamer, cancel <-chan st
 			<-resultCh
 		}
 
+		wg.Wait() // Ensure output goroutines complete before returning
 		return -1, ErrCommandCancelled
 	}
 }

@@ -53,6 +53,7 @@ type Command struct {
 	Name    string `yaml:"name"`
 	Command string `yaml:"command"`
 	Scope   string `yaml:"scope,omitempty"` // "source", "feature", or empty (both)
+	BaseDir string `yaml:"-"`               // Set during merge, excluded from YAML
 }
 
 // Hook represents a script to execute at a specific lifecycle event.
@@ -60,6 +61,7 @@ type Hook struct {
 	Event   string `yaml:"event"`         // up, down, run
 	Command string `yaml:"command"`       // Path to script relative to .ramp/
 	For     string `yaml:"for,omitempty"` // For run hooks: command name, prefix pattern (e.g., "test-*"), or empty for all
+	BaseDir string `yaml:"-"`             // Set during merge, excluded from YAML
 }
 
 type PromptOption struct {

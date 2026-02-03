@@ -32,6 +32,9 @@ type TestRepo struct {
 func NewTestProject(t *testing.T) *TestProject {
 	t.Helper()
 
+	// Disable user config to prevent personal hooks/commands from interfering with tests
+	t.Setenv("RAMP_USER_CONFIG_DIR", "")
+
 	projectDir := t.TempDir()
 
 	// Resolve symlinks to ensure canonical path (important on macOS where /var -> /private/var)
