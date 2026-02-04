@@ -1,6 +1,11 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useCreateFeature, useWebSocket } from '../hooks/useRampAPI';
 import { WSMessage } from '../types';
+import {
+  sanitizeFeatureName,
+  wasInputSanitized,
+  FEATURE_NAME_VALIDATION_HINT,
+} from '../utils/validation';
 
 interface FromBranchDialogProps {
   projectId: string;
@@ -13,6 +18,7 @@ export default function FromBranchDialog({
 }: FromBranchDialogProps) {
   const [remoteBranch, setRemoteBranch] = useState('');
   const [featureNameOverride, setFeatureNameOverride] = useState('');
+  const [featureNameValidationHint, setFeatureNameValidationHint] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [progressMessages, setProgressMessages] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -211,13 +217,27 @@ export default function FromBranchDialog({
             type="text"
             id="feature-name-override"
             value={featureNameOverride}
-            onChange={(e) => setFeatureNameOverride(e.target.value)}
+            onChange={(e) => {
+              const raw = e.target.value;
+              const sanitized = sanitizeFeatureName(raw);
+              setFeatureNameOverride(sanitized);
+              // Show hint if characters were removed
+              setFeatureNameValidationHint(
+                wasInputSanitized(raw, sanitized) ? FEATURE_NAME_VALIDATION_HINT : null
+              );
+            }}
             placeholder={parsed.derivedName || 'Auto-derived from branch'}
             className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
           />
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            Override the feature name (defaults to last part of branch)
-          </p>
+          {featureNameValidationHint ? (
+            <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+              {featureNameValidationHint}
+            </p>
+          ) : (
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Override the feature name (defaults to last part of branch). Letters, numbers, hyphens, underscores, and dots only.
+            </p>
+          )}
         </div>
 
         {/* Preview */}

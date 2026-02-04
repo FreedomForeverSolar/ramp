@@ -2,6 +2,11 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCreateFeature, useWebSocket } from '../hooks/useRampAPI';
 import { WSMessage } from '../types';
+import {
+  sanitizeFeatureName,
+  wasInputSanitized,
+  FEATURE_NAME_VALIDATION_HINT,
+} from '../utils/validation';
 import Convert from 'ansi-to-html';
 
 // Create a singleton converter with options matching dark terminal background
@@ -17,13 +22,6 @@ interface NewFeatureDialogProps {
   defaultBranchPrefix?: string;
   onClose: () => void;
 }
-
-// Sanitize feature name by removing invalid characters as user types.
-// Allows: letters, numbers, hyphens, underscores, and dots
-// Disallows: spaces, slashes, and special characters (~^:?*\[@{)
-const sanitizeFeatureName = (input: string): string => {
-  return input.replace(/[^a-zA-Z0-9_.-]/g, '');
-};
 
 export default function NewFeatureDialog({
   projectId,
@@ -316,11 +314,9 @@ export default function NewFeatureDialog({
               const sanitized = sanitizeFeatureName(raw);
               setName(sanitized);
               // Show hint if characters were removed
-              if (raw !== sanitized) {
-                setNameValidationHint('Invalid characters removed (spaces and special characters are not allowed)');
-              } else {
-                setNameValidationHint(null);
-              }
+              setNameValidationHint(
+                wasInputSanitized(raw, sanitized) ? FEATURE_NAME_VALIDATION_HINT : null
+              );
             }}
             placeholder="e.g., user-authentication"
             className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
