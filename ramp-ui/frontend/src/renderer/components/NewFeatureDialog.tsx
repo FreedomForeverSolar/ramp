@@ -4,8 +4,10 @@ import { useCreateFeature, useWebSocket } from '../hooks/useRampAPI';
 import { WSMessage } from '../types';
 import {
   sanitizeFeatureName,
+  sanitizeBranchName,
   wasInputSanitized,
   FEATURE_NAME_VALIDATION_HINT,
+  BRANCH_NAME_VALIDATION_HINT,
 } from '../utils/validation';
 import Convert from 'ansi-to-html';
 
@@ -39,6 +41,8 @@ export default function NewFeatureDialog({
   const [outputLines, setOutputLines] = useState<{ text: string; isError: boolean }[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [nameValidationHint, setNameValidationHint] = useState<string | null>(null);
+  const [targetValidationHint, setTargetValidationHint] = useState<string | null>(null);
+  const [prefixValidationHint, setPrefixValidationHint] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const createFeature = useCreateFeature(projectId);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -392,13 +396,26 @@ export default function NewFeatureDialog({
                 type="text"
                 id="target-branch"
                 value={target}
-                onChange={(e) => setTarget(e.target.value)}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  const sanitized = sanitizeBranchName(raw);
+                  setTarget(sanitized);
+                  setTargetValidationHint(
+                    wasInputSanitized(raw, sanitized) ? BRANCH_NAME_VALIDATION_HINT : null
+                  );
+                }}
                 placeholder="e.g., main, develop, feature/other"
                 className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
               />
-              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                Branch to create feature from (defaults to main/master)
-              </p>
+              {targetValidationHint ? (
+                <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                  {targetValidationHint}
+                </p>
+              ) : (
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  Branch to create feature from (defaults to main/master)
+                </p>
+              )}
             </div>
 
             {/* Branch Prefix */}
@@ -414,7 +431,14 @@ export default function NewFeatureDialog({
                   type="text"
                   id="branch-prefix"
                   value={prefix}
-                  onChange={(e) => setPrefix(e.target.value)}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    const sanitized = sanitizeBranchName(raw);
+                    setPrefix(sanitized);
+                    setPrefixValidationHint(
+                      wasInputSanitized(raw, sanitized) ? BRANCH_NAME_VALIDATION_HINT : null
+                    );
+                  }}
                   disabled={noPrefix}
                   placeholder="e.g., feature/"
                   className="block flex-1 px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm disabled:opacity-50"
@@ -435,6 +459,11 @@ export default function NewFeatureDialog({
                   No prefix (use feature name as branch name)
                 </label>
               </div>
+              {prefixValidationHint && (
+                <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                  {prefixValidationHint}
+                </p>
+              )}
             </div>
           </div>
         )}

@@ -27,3 +27,21 @@ export function wasInputSanitized(raw: string, sanitized: string): boolean {
  */
 export const FEATURE_NAME_VALIDATION_HINT =
   'Invalid characters removed (spaces and special characters are not allowed)';
+
+/**
+ * Sanitize branch name by removing invalid characters as user types.
+ * Like sanitizeFeatureName but also allows forward slashes for
+ * branch prefixes (e.g., "feature/") and branch paths (e.g., "feature/my-branch").
+ *
+ * @param input - Raw user input
+ * @returns Sanitized string with only valid characters
+ */
+export function sanitizeBranchName(input: string): string {
+  return input.replace(/[^a-zA-Z0-9_.\-/]/g, '');
+}
+
+/**
+ * Validation hint message shown when characters are filtered from branch inputs.
+ */
+export const BRANCH_NAME_VALIDATION_HINT =
+  'Invalid characters removed (spaces and special characters are not allowed)';

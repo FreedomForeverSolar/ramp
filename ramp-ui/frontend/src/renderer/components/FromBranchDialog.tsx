@@ -3,8 +3,10 @@ import { useCreateFeature, useWebSocket } from '../hooks/useRampAPI';
 import { WSMessage } from '../types';
 import {
   sanitizeFeatureName,
+  sanitizeBranchName,
   wasInputSanitized,
   FEATURE_NAME_VALIDATION_HINT,
+  BRANCH_NAME_VALIDATION_HINT,
 } from '../utils/validation';
 
 interface FromBranchDialogProps {
@@ -19,6 +21,7 @@ export default function FromBranchDialog({
   const [remoteBranch, setRemoteBranch] = useState('');
   const [featureNameOverride, setFeatureNameOverride] = useState('');
   const [featureNameValidationHint, setFeatureNameValidationHint] = useState<string | null>(null);
+  const [remoteBranchValidationHint, setRemoteBranchValidationHint] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [progressMessages, setProgressMessages] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -195,14 +198,27 @@ export default function FromBranchDialog({
             type="text"
             id="remote-branch"
             value={remoteBranch}
-            onChange={(e) => setRemoteBranch(e.target.value)}
+            onChange={(e) => {
+              const raw = e.target.value;
+              const sanitized = sanitizeBranchName(raw);
+              setRemoteBranch(sanitized);
+              setRemoteBranchValidationHint(
+                wasInputSanitized(raw, sanitized) ? BRANCH_NAME_VALIDATION_HINT : null
+              );
+            }}
             placeholder="e.g., claude/feature-123, feature/my-branch"
             className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
             autoFocus
           />
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            Enter the branch name without "origin/" prefix
-          </p>
+          {remoteBranchValidationHint ? (
+            <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+              {remoteBranchValidationHint}
+            </p>
+          ) : (
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Enter the branch name without &quot;origin/&quot; prefix
+            </p>
+          )}
         </div>
 
         {/* Feature Name Override */}
