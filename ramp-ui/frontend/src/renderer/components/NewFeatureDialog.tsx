@@ -1,7 +1,9 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCreateFeature, useWebSocket } from '../hooks/useRampAPI';
+import { useSanitizedInput } from '../hooks/useSanitizedInput';
 import { WSMessage } from '../types';
+import { sanitizeFeatureName, sanitizeBranchName } from '../utils/validation';
 import Convert from 'ansi-to-html';
 
 // Create a singleton converter with options matching dark terminal background
@@ -23,12 +25,12 @@ export default function NewFeatureDialog({
   defaultBranchPrefix,
   onClose,
 }: NewFeatureDialogProps) {
-  const [name, setName] = useState('');
+  const nameInput = useSanitizedInput(sanitizeFeatureName);
+  const targetInput = useSanitizedInput(sanitizeBranchName);
+  const prefixInput = useSanitizedInput(sanitizeBranchName, defaultBranchPrefix || '');
   const [displayName, setDisplayName] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [prefix, setPrefix] = useState(defaultBranchPrefix || '');
   const [noPrefix, setNoPrefix] = useState(false);
-  const [target, setTarget] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [progressMessages, setProgressMessages] = useState<string[]>([]);
   const [outputLines, setOutputLines] = useState<{ text: string; isError: boolean }[]>([]);
@@ -64,10 +66,10 @@ export default function NewFeatureDialog({
   }, [outputLines]);
 
   // Build the full branch name preview
-  const effectivePrefix = noPrefix ? '' : prefix;
+  const effectivePrefix = noPrefix ? '' : prefixInput.value;
   const branchPreview = effectivePrefix
-    ? `${effectivePrefix}${name || '<feature-name>'}`
-    : name || '<feature-name>';
+    ? `${effectivePrefix}${nameInput.value || '<feature-name>'}`
+    : nameInput.value || '<feature-name>';
 
   // Handle WebSocket messages for the "up" operation
   // Filter by both operation AND target (feature name) to prevent cross-contamination
@@ -76,7 +78,7 @@ export default function NewFeatureDialog({
     if (msg.operation !== 'up') return;
     // Only process messages for THIS feature to prevent race conditions
     // when multiple create operations happen in quick succession
-    if (msg.target && msg.target !== name.trim()) return;
+    if (msg.target && msg.target !== nameInput.value.trim()) return;
 
     if (msg.type === 'progress') {
       setProgressMessages(prev => [...prev, msg.message]);
@@ -86,7 +88,7 @@ export default function NewFeatureDialog({
       const text = isError ? msg.message.replace('[stderr] ', '') : msg.message;
       setOutputLines(prev => [...prev, { text, isError }]);
     } else if (msg.type === 'complete') {
-      const featureName = name.trim();
+      const featureName = nameInput.value.trim();
 
       // Immediately add the new feature to cache (instant UI update)
       // We add minimal data - background refetch will fill in details
@@ -133,14 +135,14 @@ export default function NewFeatureDialog({
     } else if (msg.type === 'error') {
       setError(msg.message);
     }
-  }, [onClose, name, queryClient, projectId]);
+  }, [onClose, nameInput.value, queryClient, projectId]);
 
   // Only subscribe to WebSocket while creating
   useWebSocket(handleWSMessage, isCreating);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return;
+    if (!nameInput.value.trim()) return;
 
     setIsCreating(true);
     setProgressMessages([]);
@@ -149,11 +151,11 @@ export default function NewFeatureDialog({
 
     try {
       await createFeature.mutateAsync({
-        name: name.trim(),
+        name: nameInput.value.trim(),
         displayName: displayName.trim() || undefined,
-        prefix: prefix !== defaultBranchPrefix ? prefix : undefined,
+        prefix: prefixInput.value !== defaultBranchPrefix ? prefixInput.value : undefined,
         noPrefix: noPrefix || undefined,
-        target: target.trim() || undefined,
+        target: targetInput.value.trim() || undefined,
       });
       // Don't close here - wait for WebSocket 'complete' message
     } catch (err) {
@@ -169,11 +171,11 @@ export default function NewFeatureDialog({
     setOutputLines([]);
     // isCreating is already true, no need to set it again
     createFeature.mutateAsync({
-      name: name.trim(),
+      name: nameInput.value.trim(),
       displayName: displayName.trim() || undefined,
-      prefix: prefix !== defaultBranchPrefix ? prefix : undefined,
+      prefix: prefixInput.value !== defaultBranchPrefix ? prefixInput.value : undefined,
       noPrefix: noPrefix || undefined,
-      target: target.trim() || undefined,
+      target: targetInput.value.trim() || undefined,
     }).catch(err => {
       setError(err instanceof Error ? err.message : 'Unknown error');
       // Keep isCreating true so user stays on progress view and can see the error
@@ -189,7 +191,7 @@ export default function NewFeatureDialog({
   const renderProgressView = () => (
     <div className="p-6">
       <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-        Creating "{name}"
+        Creating "{nameInput.value}"
       </h2>
       <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
         Setting up feature worktrees...
@@ -302,15 +304,21 @@ export default function NewFeatureDialog({
           <input
             type="text"
             id="feature-name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
+            value={nameInput.value}
+            onChange={(e) => nameInput.onChange(e.target.value)}
             placeholder="e.g., user-authentication"
             className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
             autoFocus
           />
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            Use lowercase with hyphens (e.g., my-feature)
-          </p>
+          {nameInput.validationHint ? (
+            <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+              {nameInput.validationHint}
+            </p>
+          ) : (
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Letters, numbers, hyphens, underscores, and dots only
+            </p>
+          )}
           <div className="mt-2 p-2 bg-gray-100 dark:bg-gray-700 rounded text-xs">
             <span className="text-gray-500 dark:text-gray-400">Branch: </span>
             <span className="font-mono text-gray-700 dark:text-gray-300">
@@ -371,14 +379,20 @@ export default function NewFeatureDialog({
               <input
                 type="text"
                 id="target-branch"
-                value={target}
-                onChange={(e) => setTarget(e.target.value)}
+                value={targetInput.value}
+                onChange={(e) => targetInput.onChange(e.target.value)}
                 placeholder="e.g., main, develop, feature/other"
                 className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
               />
-              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                Branch to create feature from (defaults to main/master)
-              </p>
+              {targetInput.validationHint ? (
+                <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                  {targetInput.validationHint}
+                </p>
+              ) : (
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  Branch to create feature from (defaults to main/master)
+                </p>
+              )}
             </div>
 
             {/* Branch Prefix */}
@@ -393,8 +407,8 @@ export default function NewFeatureDialog({
                 <input
                   type="text"
                   id="branch-prefix"
-                  value={prefix}
-                  onChange={(e) => setPrefix(e.target.value)}
+                  value={prefixInput.value}
+                  onChange={(e) => prefixInput.onChange(e.target.value)}
                   disabled={noPrefix}
                   placeholder="e.g., feature/"
                   className="block flex-1 px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm disabled:opacity-50"
@@ -415,6 +429,11 @@ export default function NewFeatureDialog({
                   No prefix (use feature name as branch name)
                 </label>
               </div>
+              {prefixInput.validationHint && (
+                <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                  {prefixInput.validationHint}
+                </p>
+              )}
             </div>
           </div>
         )}
@@ -430,7 +449,7 @@ export default function NewFeatureDialog({
         </button>
         <button
           type="submit"
-          disabled={!name.trim() || createFeature.isPending}
+          disabled={!nameInput.value.trim() || createFeature.isPending}
           className="px-4 py-2 text-sm font-medium text-white bg-primary-500 hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-colors"
         >
           Create Feature

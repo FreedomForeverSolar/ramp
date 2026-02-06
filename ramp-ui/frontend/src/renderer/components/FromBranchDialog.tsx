@@ -1,6 +1,8 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useCreateFeature, useWebSocket } from '../hooks/useRampAPI';
+import { useSanitizedInput } from '../hooks/useSanitizedInput';
 import { WSMessage } from '../types';
+import { sanitizeFeatureName, sanitizeBranchName } from '../utils/validation';
 
 interface FromBranchDialogProps {
   projectId: string;
@@ -11,8 +13,8 @@ export default function FromBranchDialog({
   projectId,
   onClose,
 }: FromBranchDialogProps) {
-  const [remoteBranch, setRemoteBranch] = useState('');
-  const [featureNameOverride, setFeatureNameOverride] = useState('');
+  const remoteBranchInput = useSanitizedInput(sanitizeBranchName);
+  const featureNameInput = useSanitizedInput(sanitizeFeatureName);
   const [isCreating, setIsCreating] = useState(false);
   const [progressMessages, setProgressMessages] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -20,7 +22,7 @@ export default function FromBranchDialog({
 
   // Parse the remote branch to derive prefix and feature name
   const parsed = useMemo(() => {
-    const branch = remoteBranch.trim();
+    const branch = remoteBranchInput.value.trim();
     if (!branch) {
       return { prefix: '', derivedName: '', target: '' };
     }
@@ -41,9 +43,9 @@ export default function FromBranchDialog({
       derivedName: branch.substring(lastSlash + 1),
       target: `origin/${branch}`,
     };
-  }, [remoteBranch]);
+  }, [remoteBranchInput.value]);
 
-  const effectiveFeatureName = featureNameOverride.trim() || parsed.derivedName;
+  const effectiveFeatureName = featureNameInput.value.trim() || parsed.derivedName;
 
   // Close on Escape key (only when not creating)
   useEffect(() => {
@@ -77,7 +79,7 @@ export default function FromBranchDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!remoteBranch.trim()) return;
+    if (!remoteBranchInput.value.trim()) return;
 
     setIsCreating(true);
     setProgressMessages([]);
@@ -85,8 +87,8 @@ export default function FromBranchDialog({
 
     try {
       await createFeature.mutateAsync({
-        name: featureNameOverride.trim() || undefined,
-        fromBranch: remoteBranch.trim(),
+        name: featureNameInput.value.trim() || undefined,
+        fromBranch: remoteBranchInput.value.trim(),
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
@@ -98,8 +100,8 @@ export default function FromBranchDialog({
     setProgressMessages([]);
     setIsCreating(true);
     createFeature.mutateAsync({
-      name: featureNameOverride.trim() || undefined,
-      fromBranch: remoteBranch.trim(),
+      name: featureNameInput.value.trim() || undefined,
+      fromBranch: remoteBranchInput.value.trim(),
     }).catch(err => {
       setError(err instanceof Error ? err.message : 'Unknown error');
     });
@@ -113,7 +115,7 @@ export default function FromBranchDialog({
   const renderProgressView = () => (
     <div className="p-6">
       <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-        Creating from "{remoteBranch}"
+        Creating from "{remoteBranchInput.value}"
       </h2>
       <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
         Setting up feature worktrees from remote branch...
@@ -188,15 +190,21 @@ export default function FromBranchDialog({
           <input
             type="text"
             id="remote-branch"
-            value={remoteBranch}
-            onChange={(e) => setRemoteBranch(e.target.value)}
+            value={remoteBranchInput.value}
+            onChange={(e) => remoteBranchInput.onChange(e.target.value)}
             placeholder="e.g., claude/feature-123, feature/my-branch"
             className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
             autoFocus
           />
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            Enter the branch name without "origin/" prefix
-          </p>
+          {remoteBranchInput.validationHint ? (
+            <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+              {remoteBranchInput.validationHint}
+            </p>
+          ) : (
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Enter the branch name without &quot;origin/&quot; prefix
+            </p>
+          )}
         </div>
 
         {/* Feature Name Override */}
@@ -210,18 +218,24 @@ export default function FromBranchDialog({
           <input
             type="text"
             id="feature-name-override"
-            value={featureNameOverride}
-            onChange={(e) => setFeatureNameOverride(e.target.value)}
+            value={featureNameInput.value}
+            onChange={(e) => featureNameInput.onChange(e.target.value)}
             placeholder={parsed.derivedName || 'Auto-derived from branch'}
             className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
           />
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            Override the feature name (defaults to last part of branch)
-          </p>
+          {featureNameInput.validationHint ? (
+            <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+              {featureNameInput.validationHint}
+            </p>
+          ) : (
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Override the feature name (defaults to last part of branch). Letters, numbers, hyphens, underscores, and dots only.
+            </p>
+          )}
         </div>
 
         {/* Preview */}
-        {remoteBranch.trim() && (
+        {remoteBranchInput.value.trim() && (
           <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-2">
             <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">Preview</h3>
             <div className="text-sm grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 items-baseline">
@@ -260,7 +274,7 @@ export default function FromBranchDialog({
         </button>
         <button
           type="submit"
-          disabled={!remoteBranch.trim() || !effectiveFeatureName || createFeature.isPending}
+          disabled={!remoteBranchInput.value.trim() || !effectiveFeatureName || createFeature.isPending}
           className="px-4 py-2 text-sm font-medium text-white bg-primary-500 hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-colors"
         >
           Create Feature
