@@ -170,6 +170,57 @@ func TestAddProject_NotRampProject(t *testing.T) {
 	}
 }
 
+func TestAddProject_Success(t *testing.T) {
+	cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	// Create a valid ramp project (with .ramp/ramp.yaml, no .git)
+	tempDir := t.TempDir()
+	os.MkdirAll(filepath.Join(tempDir, ".ramp"), 0755)
+	os.WriteFile(filepath.Join(tempDir, ".ramp", "ramp.yaml"), []byte("name: test-project\nrepos: []\n"), 0644)
+
+	server := NewServer()
+
+	body := AddProjectRequest{Path: tempDir}
+	bodyBytes, _ := json.Marshal(body)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/projects", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	server.AddProject(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Errorf("AddProject() status = %d, want %d. Body: %s", w.Code, http.StatusCreated, w.Body.String())
+	}
+}
+
+func TestAddProject_SuccessWithGit(t *testing.T) {
+	cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	// Create a valid ramp project that also has .git
+	tempDir := t.TempDir()
+	os.MkdirAll(filepath.Join(tempDir, ".ramp"), 0755)
+	os.WriteFile(filepath.Join(tempDir, ".ramp", "ramp.yaml"), []byte("name: test-project\nrepos: []\n"), 0644)
+	os.MkdirAll(filepath.Join(tempDir, ".git"), 0755)
+
+	server := NewServer()
+
+	body := AddProjectRequest{Path: tempDir}
+	bodyBytes, _ := json.Marshal(body)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/projects", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	server.AddProject(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Errorf("AddProject() status = %d, want %d. Body: %s", w.Code, http.StatusCreated, w.Body.String())
+	}
+}
+
 func TestAddProject_InvalidJSON(t *testing.T) {
 	cleanup := setupTestConfig(t)
 	defer cleanup()
