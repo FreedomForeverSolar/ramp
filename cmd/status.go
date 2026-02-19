@@ -21,8 +21,9 @@ import (
 )
 
 var (
-	statusTreeOnly bool
-	statusJSON     bool
+	statusTreeOnly    bool
+	statusJSON        bool
+	statusRefreshFlag bool
 )
 
 var statusCmd = &cobra.Command{
@@ -44,6 +45,9 @@ func init() {
 	rootCmd.AddCommand(statusCmd)
 	statusCmd.Flags().BoolVar(&statusTreeOnly, "tree", false, "Output only the current tree/feature name (if in one)")
 	statusCmd.Flags().BoolVar(&statusJSON, "json", false, "Output status as JSON (useful for scripts)")
+	statusCmd.Flags().BoolVarP(&statusRefreshFlag, "refresh", "r", false, "Refresh repositories before showing status")
+	statusCmd.MarkFlagsMutuallyExclusive("refresh", "tree")
+	statusCmd.MarkFlagsMutuallyExclusive("refresh", "json")
 }
 
 type repoStatus struct {
@@ -99,29 +103,52 @@ func runStatus() error {
 		return err
 	}
 
-	// Fetch all repos in parallel to get accurate remote tracking info
 	repos := cfg.GetRepos()
 
-	progress := ui.NewProgress()
-	progress.Start("Fetching remote information...")
+	// Handle --refresh flag: refresh repositories before showing status
+	if statusRefreshFlag {
+		refreshProgress := ui.NewProgress()
+		refreshProgress.Start(fmt.Sprintf("Refreshing repositories for project '%s'", cfg.Name))
+		results := RefreshRepositoriesParallel(projectDir, repos, refreshProgress)
 
-	var wg sync.WaitGroup
-	for _, repo := range repos {
-		wg.Add(1)
-		go func(r *config.Repo) {
-			defer wg.Done()
-			repoPath := r.GetRepoPath(projectDir)
-			// Check if repo exists and is a git repo before fetching
-			if _, err := os.Stat(repoPath); err == nil && git.IsGitRepo(repoPath) {
-				// Silently fetch, ignore errors (network issues, etc.)
-				_ = git.FetchAllQuiet(repoPath)
+		var warnings int
+		for _, r := range results {
+			if r.status == "warning" {
+				warnings++
+				refreshProgress.Warning(fmt.Sprintf("%s: %s", r.name, r.message))
 			}
-		}(repo)
-	}
-	wg.Wait()
+		}
 
-	progress.Success("Fetching remote information...")
-	fmt.Println()
+		if warnings > 0 {
+			refreshProgress.Warning(fmt.Sprintf("Refresh complete with %d warning(s)", warnings))
+		} else {
+			refreshProgress.Success("Repositories refreshed")
+		}
+		fmt.Println()
+	}
+
+	// Fetch all repos in parallel to get accurate remote tracking info
+	// (skip if we just refreshed, which already fetches)
+	if !statusRefreshFlag {
+		progress := ui.NewProgress()
+		progress.Start("Fetching remote information...")
+
+		var wg sync.WaitGroup
+		for _, repo := range repos {
+			wg.Add(1)
+			go func(r *config.Repo) {
+				defer wg.Done()
+				repoPath := r.GetRepoPath(projectDir)
+				if _, err := os.Stat(repoPath); err == nil && git.IsGitRepo(repoPath) {
+					_ = git.FetchAllQuiet(repoPath)
+				}
+			}(repo)
+		}
+		wg.Wait()
+
+		progress.Success("Fetching remote information...")
+		fmt.Println()
+	}
 
 	// Collect repo statuses
 	var repoStatuses []repoStatus
