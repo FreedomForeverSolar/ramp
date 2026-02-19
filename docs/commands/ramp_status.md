@@ -16,9 +16,10 @@ ramp status [flags]
 ### Options
 
 ```
-  -h, --help   help for status
-      --json   Output status as JSON (useful for scripts)
-      --tree   Output only the current tree/feature name (if in one)
+  -h, --help      help for status
+      --json      Output status as JSON (useful for scripts)
+  -r, --refresh   Refresh repositories before showing status
+      --tree      Output only the current tree/feature name (if in one)
 ```
 
 ### Options inherited from parent commands
