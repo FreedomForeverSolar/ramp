@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 
 	"ramp/internal/config"
-	"ramp/internal/git"
 
 	"github.com/gorilla/mux"
 )
@@ -52,12 +51,6 @@ func (s *Server) AddProject(w http.ResponseWriter, r *http.Request) {
 	configPath := filepath.Join(req.Path, ".ramp", "ramp.yaml")
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		writeError(w, http.StatusBadRequest, "Not a valid Ramp project", "Missing .ramp/ramp.yaml")
-		return
-	}
-
-	// Validate this is a git repository
-	if !git.IsGitRepo(req.Path) {
-		writeError(w, http.StatusBadRequest, "Not a valid Ramp project", "Directory is not a git repository. If you downloaded a zip file, please clone the repository instead.")
 		return
 	}
 
